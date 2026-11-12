@@ -1,0 +1,14 @@
+# Operating system
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Editors and tools
+.vscode/
+.idea/
+.claude/
+*.swp
+*.bak
+
+# Release packages
+*.zip

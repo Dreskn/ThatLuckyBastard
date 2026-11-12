@@ -1,0 +1,14 @@
+## Interface: 16001
+## Title: FairShare
+## Notes: Per-player loot value breakdown for dungeon runs.
+## Author: Dreskn
+## Version: 0.1.0
+## SavedVariables: FairShareDB
+## OptionalDeps: Auctionator, TradeSkillMaster
+## AddonCompartmentFunc: FairShare_OnAddonCompartmentClick
+## IconTexture: Interface\Icons\INV_Misc_Coin_02
+
+Core.lua
+UI.lua
+Options.lua
+Minimap.lua
