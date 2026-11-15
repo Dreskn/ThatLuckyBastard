@@ -8,6 +8,8 @@ FairShare records what every player in your group looted — boss drops, rolls, 
 
 Everything it shows appears on your screen only. It never sends a chat message.
 
+![The breakdown window after a run of Uldaman](.previews/run.png)
+
 ## The breakdown window
 
 - **Per player:** total value, vendor value, share of the run, and how far above or below an equal split they are.
