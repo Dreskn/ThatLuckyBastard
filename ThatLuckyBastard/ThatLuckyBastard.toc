@@ -2,12 +2,12 @@
 ## Title: |cffffffffThat|r |cff40c7b8Lucky|r |cffffffffBastard|r
 ## Notes: Who got what in your dungeon runs: loot values, awards and statistics. Shown to you alone.
 ## Author: Dreskn
-## Version: 0.3.0
+## Version: 0.3.1
 ## SavedVariables: ThatLuckyBastardDB
 ## OptionalDeps: Auctionator, TradeSkillMaster
 ## AddonCompartmentFunc: ThatLuckyBastard_OnAddonCompartmentClick
 ## IconTexture: Interface\AddOns\ThatLuckyBastard\Media\logo.tga
-## X-Wago-ID: jK8WBb6y
+## X-Wago-ID: kNMPrOGz
 
 Core.lua
 Data.lua

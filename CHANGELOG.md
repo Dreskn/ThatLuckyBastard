@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+
+- No change to the addon. It carries the ID of its new Wago listing, so addon managers match it to the right page.
+
 ## 0.3.0
 
 - The addon is now called **That Lucky Bastard**. It was FairShare until now. Another addon for WoW Forever already uses that name, with the same folder and the same saved-data name, so the two could not be installed side by side.
