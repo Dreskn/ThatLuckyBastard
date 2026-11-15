@@ -1,37 +1,19 @@
 local _, ns = ...
 
 -- Options panel: a list of pages on the left, the selected page on the
--- right. It uses the same three skins as the main window and restyles its
--- own controls to match.
+-- right. It uses the same skins as the other windows and restyles its own
+-- controls to match.
 
 local ACCENT = ns.ACCENT
 local GOLD = { 1.00, 0.82, 0.00 }
-local WIDTH, HEIGHT = 590, 460
+local WIDTH, HEIGHT = 590, 480
 local SIDEBAR_W = 140
 local ROW_H = 22
 local COL2_X = 200 -- x of the second column in two-column groups
 local PAGE_W = WIDTH - SIDEBAR_W - 46 -- width of the page area
 
-local o = CreateFrame("Frame", "FairShareOptionsFrame", UIParent)
-o:SetSize(WIDTH, HEIGHT)
+local o, ui, title, skins = ns.MakeWindow("FairShareOptionsFrame", WIDTH, HEIGHT, "DIALOG", true)
 o:SetPoint("CENTER")
-o:SetFrameStrata("DIALOG")
-o:SetMovable(true)
-o:EnableMouse(true)
-o:SetClampedToScreen(true)
-o:RegisterForDrag("LeftButton")
-o:SetScript("OnDragStart", o.StartMoving)
-o:SetScript("OnDragStop", o.StopMovingOrSizing)
-o:Hide()
-tinsert(UISpecialFrames, "FairShareOptionsFrame")
-
-local skins = ns.BuildSkins(o, function() o:Hide() end)
-
-local ui = CreateFrame("Frame", nil, o)
-ui:SetAllPoints()
-ui:SetFrameLevel(o:GetFrameLevel() + 10)
-
-local title = ui:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 title:SetText(ns.Title("Options"))
 
 local sidebar = CreateFrame("Frame", nil, ui)
@@ -333,7 +315,8 @@ do
     Choices(p, "maxHistory", {
         { "10", 10 }, { "30", 30 }, { "100", 100 }, { "300", 300 }, { "Unlimited", 99999 },
     }, 2)
-    Hint(p, "About 25 to 150 KB per run in the saved file. Pinned runs come on top.")
+    Hint(p, "About 25 to 150 KB per run in the saved file. Pinned runs come on top. "
+        .. "A lower number takes effect when the next run ends.")
     p.y = p.y - 4
 
     Section(p, "Minimap")
@@ -406,24 +389,9 @@ local function StyleCheck(b)
 end
 
 local function ApplyTheme()
-    local name = ns.db.theme
-    if name ~= "modern" then name = "classic" end
-    flat = (name == "modern")
+    local top
+    flat, top = ns.ApplyWindowTheme(skins, title)
     local hue = flat and ACCENT or GOLD
-
-    local active = skins[name] or skins.classic
-    for _, skin in pairs(skins) do skin:SetShown(skin == active) end
-
-    title:ClearAllPoints()
-    if flat then
-        title:SetFontObject("GameFontHighlightLarge")
-        title:SetPoint("TOPLEFT", 14, -10)
-    else
-        title:SetFontObject("GameFontNormal")
-        title:SetPoint("TOP", 0, -5)
-    end
-
-    local top = flat and -46 or -32
     sidebar:ClearAllPoints()
     sidebar:SetPoint("TOPLEFT", 10, top)
     sidebar:SetPoint("BOTTOMLEFT", 10, 12)
@@ -444,7 +412,8 @@ local function ApplyTheme()
             n.text:SetTextColor(0.72, 0.72, 0.72)
         end
         pages[i]:SetShown(selected)
-        if flat then pages[i].title:SetTextColor(1, 1, 1) else pages[i].title:SetTextColor(GOLD[1], GOLD[2], GOLD[3]) end
+        local tone = flat and { 1, 1, 1 } or GOLD
+        pages[i].title:SetTextColor(tone[1], tone[2], tone[3])
     end
 
     for _, s in ipairs(sections) do
@@ -477,7 +446,6 @@ function Sync()
     scaleSlider:SetValue(scale)
     scaleLabel:SetText(("Scale: %d%%"):format(scale * 100 + 0.5))
     ns.UpdateMinimapButton()
-    ns.TrimHistory()
     ns.Rerender()
 end
 

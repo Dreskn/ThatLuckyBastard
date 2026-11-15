@@ -21,23 +21,31 @@ local GOLD = 10000     -- copper
 --   available(s)   optional: whether the square can be dealt for run s
 ----------------------------------------------------------------------
 
+-- A run with someone else in it. Squares about the group, and all the
+-- roll squares, cannot be ticked alone and are not dealt then.
+local function InGroup(s)
+    return next(s.players, (next(s.players))) ~= nil
+end
+
 local SQUARES = {
     { key = "green",    text = "A green BoE drops",        check = function(c) return c.greens >= 1 end },
     { key = "greens3",  text = "3 green BoEs drop",        check = function(c) return c.greens >= 3 end },
-    { key = "blue",     text = "A blue item drops",        check = function(c) return c.bestQuality >= 3 end },
-    { key = "epic",     text = "An epic drops",            check = function(c) return c.bestQuality >= 4 end },
+    { key = "blue",     text = "A blue item drops",        check = function(c) return c.quality[3] == true end },
+    { key = "epic",     text = "An epic drops",            check = function(c) return c.quality[4] == true end },
     { key = "quest",    text = "A quest item drops",       check = function(c) return c.quest >= 1 end },
     { key = "junk10",   text = "10 greys looted",          check = function(c) return c.junk >= 10 end },
     { key = "junk5",    text = "One player: 5 greys",      check = function(c) return c.junkOne >= 5 end },
     { key = "mats20",   text = "One player: 20 materials", check = function(c) return c.matsOne >= 20 end },
     { key = "mats50",   text = "50 materials looted",      check = function(c) return c.mats >= 50 end },
-    { key = "items100", text = "100 items looted",         check = function(c) return c.sum.count >= 100 end },
+    { key = "items100", text = "100 items looted",         check = function(c) return c.items >= 100 end },
     { key = "item1g",   text = "An item worth 1g or more", check = function(c) return c.bestValue >= GOLD end },
     { key = "item10g",  text = "An item worth 10g or more", check = function(c) return c.bestValue >= 10 * GOLD end },
     { key = "total5g",  text = "Group loot reaches 5g",    check = function(c) return c.sum.market >= 5 * GOLD end },
     { key = "total25g", text = "Group loot reaches 25g",   check = function(c) return c.sum.market >= 25 * GOLD end },
-    { key = "everyone", text = "Everyone loots something", check = function(c) return c.n >= 2 and c.looters == c.n end },
-    { key = "shared",   text = "An item everyone got",     check = function(c) return c.shared end },
+    { key = "everyone", text = "Everyone loots something", available = InGroup,
+      check = function(c) return c.n >= 2 and c.looters == c.n end },
+    { key = "shared",   text = "An item everyone got",     available = InGroup,
+      check = function(c) return c.shared end },
     { key = "mine10",   text = "You loot 10 items",        check = function(c) return c.myItems >= 10 end },
     { key = "time20",   text = "20 minutes in",            check = function(c) return c.duration >= 1200 end },
     { key = "boss1",    text = "First boss down",          check = function(c) return c.kills >= 1 end },
@@ -53,10 +61,12 @@ local SQUARES = {
     { key = "needwin",  rolls = true, text = "Someone wins on Need",   check = function(c) return c.needWins >= 1 end },
     { key = "youwin",   rolls = true, text = "You win a roll",         check = function(c) return c.myWins >= 1 end },
     { key = "twowins",  rolls = true, text = "One player wins 2 rolls", check = function(c) return c.winsOne >= 2 end },
-    { key = "greed3",   rolls = true, text = "3 Greed wins",           check = function(c) return c.greedWins >= 3 end },
+    { key = "greed3",   rolls = true, text = "3 Greed wins",          check = function(c) return c.greedWins >= 3 end },
     { key = "pass",     rolls = true, text = "Someone passes",         check = function(c) return c.passes >= 1 end },
-    { key = "high",     rolls = true, text = "A roll of 95 or more",   check = function(c) return c.s.rollHigh == true end },
-    { key = "low",      rolls = true, text = "A roll of 5 or less",    check = function(c) return c.s.rollLow == true end },
+    { key = "high",     rolls = true, text = ("A roll of %d or more"):format(ns.HIGH_ROLL),
+      check = function(c) return c.s.rollHigh == true end },
+    { key = "low",      rolls = true, text = ("A roll of %d or less"):format(ns.LOW_ROLL),
+      check = function(c) return c.s.rollLow == true end },
 }
 
 local BY_KEY = {}
@@ -65,34 +75,51 @@ for _, square in ipairs(SQUARES) do BY_KEY[square.key] = square end
 -- Everything the squares look at, gathered once per check.
 local function Context(s)
     local sum = ns.Summarize(s)
+    local me = ns.Me(s)
     local c = {
-        s = s, sum = sum, n = #sum.players,
+        s = s, sum = sum, n = 0, items = 0,
         junk = 0, junkOne = 0, mats = 0, matsOne = 0, greens = 0, quest = 0,
-        bestValue = 0, bestQuality = 0, looters = 0,
+        quality = {}, bestValue = 0, looters = 0,
         needWins = 0, greedWins = 0, winsOne = 0, passes = 0,
         myItems = 0, myWins = 0,
         kills = s.kills or 0, deaths = s.myDeaths or 0,
         duration = ns.RunDuration(s) or 0,
     }
+    -- What was looted is counted from the run itself, not from the summary:
+    -- a category hidden in the options must still tick its squares.
     local holders = {} -- [item key] = how many players have it
-    for _, p in ipairs(sum.players) do
-        local junk = p.cats.junk and p.cats.junk.count or 0
-        local mats = p.cats.prof and p.cats.prof.count or 0
-        local wins = p.needWins + p.greedWins
+    for name, p in pairs(s.players) do
+        local count, junk, mats, mine = 0, 0, 0, {}
+        for _, e in pairs(p.items) do
+            if e.count > 0 then
+                count = count + e.count
+                if e.cat == "junk" then
+                    junk = junk + e.count
+                elseif e.cat == "prof" then
+                    mats = mats + e.count
+                elseif e.cat == "uncommon" then
+                    c.greens = c.greens + e.count
+                elseif e.cat == "quest" then
+                    c.quest = c.quest + e.count
+                end
+                c.quality[ns.Quality(e)] = true
+                mine[ns.ItemKey(e)] = true
+            end
+        end
+        c.n, c.items = c.n + 1, c.items + count
         c.junk, c.junkOne = c.junk + junk, math.max(c.junkOne, junk)
         c.mats, c.matsOne = c.mats + mats, math.max(c.matsOne, mats)
-        c.greens = c.greens + (p.cats.uncommon and p.cats.uncommon.count or 0)
-        c.quest = c.quest + (p.cats.quest and p.cats.quest.count or 0)
+        if count > 0 then c.looters = c.looters + 1 end
+        if name == me then c.myItems = count end
+        for key in pairs(mine) do holders[key] = (holders[key] or 0) + 1 end
+    end
+    -- Values and roll wins are taken as the window shows them.
+    for _, p in ipairs(sum.players) do
+        local wins = p.needWins + p.greedWins
         c.bestValue = math.max(c.bestValue, p.bestValue)
-        c.bestQuality = math.max(c.bestQuality, p.bestQuality)
         c.needWins, c.greedWins = c.needWins + p.needWins, c.greedWins + p.greedWins
         c.winsOne = math.max(c.winsOne, wins)
-        if p.count > 0 then c.looters = c.looters + 1 end
-        if p.name == ns.playerName then c.myItems, c.myWins = p.count, wins end
-
-        local mine = {}
-        for _, e in ipairs(p.all.items) do mine[ns.ItemKey(e)] = true end
-        for key in pairs(mine) do holders[key] = (holders[key] or 0) + 1 end
+        if p.name == me then c.myWins = wins end
     end
     if c.n >= 2 then
         for _, count in pairs(holders) do
@@ -131,7 +158,7 @@ local function NewCard(s)
             keys[#keys + 1] = table.remove(pool, rand(#pool))
         end
     end
-    take(rolls, ROLL_SQUARES)
+    if InGroup(s) then take(rolls, ROLL_SQUARES) end
     take(plain, SIZE * SIZE - #keys)
     for i = #keys, 2, -1 do -- shuffle
         local j = rand(i)
@@ -183,25 +210,10 @@ end
 local GRID_W = SIZE * CELL_W + (SIZE - 1) * GAP
 local GRID_H = SIZE * CELL_H + (SIZE - 1) * GAP
 
-local frame = CreateFrame("Frame", "FairShareBingoFrame", UIParent)
-frame:SetSize(GRID_W + 28, GRID_H + 100)
+-- Not closed by Escape: the card is meant to stay open during a run.
+local frame, ui, title, skins = ns.MakeWindow("FairShareBingoFrame", GRID_W + 28, GRID_H + 100, "MEDIUM", false)
 frame:SetPoint("RIGHT", UIParent, "RIGHT", -60, 60)
-frame:SetFrameStrata("MEDIUM")
-frame:SetMovable(true)
-frame:EnableMouse(true)
-frame:SetClampedToScreen(true)
-frame:RegisterForDrag("LeftButton")
-frame:SetScript("OnDragStart", frame.StartMoving)
-frame:SetScript("OnDragStop", frame.StopMovingOrSizing)
-frame:Hide()
 
-local skins = ns.BuildSkins(frame, function() frame:Hide() end)
-
-local ui = CreateFrame("Frame", nil, frame)
-ui:SetAllPoints()
-ui:SetFrameLevel(frame:GetFrameLevel() + 10)
-
-local title = ui:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 local status = ui:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 local grid = CreateFrame("Frame", nil, ui)
 grid:SetSize(GRID_W, GRID_H)
@@ -234,18 +246,7 @@ local function CardRun()
 end
 
 local function Draw()
-    local flat = ns.db.theme == "modern"
-    local active = flat and skins.modern or skins.classic
-    for _, skin in pairs(skins) do skin:SetShown(skin == active) end
-    title:ClearAllPoints()
-    if flat then
-        title:SetFontObject("GameFontHighlightLarge")
-        title:SetPoint("TOPLEFT", 14, -10)
-    else
-        title:SetFontObject("GameFontNormal")
-        title:SetPoint("TOP", 0, -5)
-    end
-    local top = flat and -46 or -32
+    local _, top = ns.ApplyWindowTheme(skins, title)
     status:ClearAllPoints()
     status:SetPoint("TOPLEFT", 14, top)
     grid:ClearAllPoints()
@@ -350,3 +351,7 @@ function ns.ToggleBingo()
         frame:Show()
     end
 end
+
+ns.OnRerender(function()
+    if frame:IsShown() then Draw() end
+end)

@@ -15,10 +15,6 @@ local function Clock(seconds)
     return ("%d:%02d"):format(math.floor(seconds / 60), seconds % 60)
 end
 
-local function FirstName(name)
-    return name:match("^(%S+)") or name
-end
-
 local function Colored(s, name)
     local p = s.players[name]
     return ns.ClassColored(ns.DisplayName(name), p and p.class)
@@ -32,23 +28,25 @@ local function RollText(r)
     return CHOICE_TEXT[r.choice] .. " " .. r.roll
 end
 
--- Adds the rolls on one item of a run to the tooltip being built. Used
--- here and by the main window's item rows.
+-- Adds one roll to the tooltip being built: a line per player.
+local function AddRoll(s, roll)
+    for _, r in ipairs(roll.rolls) do
+        local won = r.name == roll.winner
+        GameTooltip:AddDoubleLine(Colored(s, r.name) .. (won and "  |cff40d040won|r" or ""), RollText(r),
+                                  1, 1, 1, 1, 1, 1)
+    end
+end
+
+-- Adds the rolls on one item of a run to the tooltip being built. Used by
+-- the main window's item rows.
 function ns.AddRollLines(s, itemKey)
-    local shown = false
     for _, roll in ipairs(ns.RunRolls(s)) do
         if roll.key == itemKey then
             GameTooltip:AddLine(" ")
             GameTooltip:AddLine("Rolls", 1, 0.82, 0)
-            for _, r in ipairs(roll.rolls) do
-                local won = r.name == roll.winner
-                GameTooltip:AddDoubleLine(Colored(s, r.name) .. (won and "  |cff40d040won|r" or ""), RollText(r),
-                                          1, 1, 1, 1, 1, 1)
-            end
-            shown = true
+            AddRoll(s, roll)
         end
     end
-    return shown
 end
 
 ----------------------------------------------------------------------
@@ -56,11 +54,11 @@ end
 ----------------------------------------------------------------------
 
 local CHART_W, CHART_H = 470, 330
-local MAX_SERIES = 8
 local PALETTE = {
     { 1.00, 0.82, 0.00 }, { 0.35, 0.65, 1.00 }, { 0.35, 0.85, 0.45 }, { 1.00, 0.40, 0.40 },
     { 0.75, 0.50, 1.00 }, { 0.30, 0.85, 0.85 }, { 1.00, 0.60, 0.20 }, { 0.70, 0.70, 0.70 },
 }
+local MAX_SERIES = #PALETTE -- one colour per line
 
 local timeline = CreateFrame("Frame", nil, parent)
 
@@ -79,7 +77,6 @@ local caption = timeline:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"
 caption:SetPoint("TOPLEFT", chart, "BOTTOMLEFT", 0, -22)
 caption:SetWidth(PAGE_W - 80)
 caption:SetJustifyH("LEFT")
-caption:SetText("Running totals. Vertical lines are boss kills.")
 
 -- Axis texts: value at the top and middle of the chart, time along it.
 local function AxisText(point, relPoint, x, y, justify)
@@ -153,7 +150,7 @@ local function DrawTimeline(s)
     usedSegments = 0
 
     local data = ns.Timeline(s)
-    local has = data ~= nil and chart.CreateLine ~= nil
+    local has = data ~= nil
     chart:SetShown(has)
     caption:SetShown(has)
     yTop:SetShown(has)
@@ -164,7 +161,7 @@ local function DrawTimeline(s)
     timelineNote:SetShown(not has)
     if not has then
         timelineNote:SetText(s.example and "Example runs have no timeline."
-            or (s.log and "Nothing was picked up in this run."
+            or ((s.log or s == ns.db.active) and "Nothing has been picked up in this run."
                 or "No timeline: this run was recorded before pickup times were kept."))
         return
     end
@@ -194,6 +191,8 @@ local function DrawTimeline(s)
     -- is a staircase: flat until a pickup, then straight up. Pickups that
     -- fall on the same pixel are drawn as one step.
     local count = math.min(#data.series, MAX_SERIES)
+    caption:SetText("Running totals. Vertical lines are boss kills."
+        .. (#data.series > count and ("  The %d richest of %d players."):format(count, #data.series) or ""))
     for i = count, 1, -1 do
         local c = PALETTE[i]
         local px, py = 0, 0
@@ -201,7 +200,8 @@ local function DrawTimeline(s)
         for k, pt in ipairs(points) do
             local x, y = X(pt.t), Y(pt.v)
             local nextPt = points[k + 1]
-            if not nextPt or X(nextPt.t) - x >= 1 then
+            -- Drawn when the next pickup falls in another pixel column.
+            if not nextPt or math.floor(X(nextPt.t)) > math.floor(x) then
                 if x > px then Segment(px, py, x, py, c) end
                 if y > py then Segment(x, py, x, y, c) end
                 px, py = x, y
@@ -262,11 +262,7 @@ local function RollRowOnEnter(self)
         GameTooltip:AddLine("Item " .. roll.key)
     end
     GameTooltip:AddLine(" ")
-    for _, r in ipairs(roll.rolls) do
-        local won = r.name == roll.winner
-        GameTooltip:AddDoubleLine(Colored(rollsRun, r.name) .. (won and "  |cff40d040won|r" or ""), RollText(r),
-                                  1, 1, 1, 1, 1, 1)
-    end
+    AddRoll(rollsRun, roll)
     GameTooltip:Show()
 end
 
@@ -308,7 +304,8 @@ local function DrawRolls(s)
         if roll.method == "need" then need = need + 1 end
     end
     if #rolls == 0 then
-        rollsSummary:SetText("|cff909090" .. ((s.log or s.example) and "Nothing was rolled for in this run."
+        rollsSummary:SetText("|cff909090" .. ((s.log or s.example or s == ns.db.active)
+            and "Nothing has been rolled for in this run."
             or "No roll sheet: this run was recorded before rolls were kept in full.") .. "|r")
     else
         rollsSummary:SetText(("%d rolls: %d Need, %d Greed.   |cff909090Hover a line for every roll.|r")
@@ -324,12 +321,12 @@ local function DrawRolls(s)
             if x.name == roll.winner then
                 winnerRoll = x
             elseif x.choice == "pass" then
-                others[#others + 1] = FirstName(x.name) .. " passed"
+                others[#others + 1] = ns.FirstName(x.name) .. " passed"
             else
                 -- A choice other than the winning one is named: a Greed
                 -- against a Need was never in the race.
                 local tag = x.choice ~= roll.method and (" " .. CHOICE_TEXT[x.choice]) or ""
-                others[#others + 1] = FirstName(x.name) .. tag .. (x.roll and (" " .. x.roll) or "")
+                others[#others + 1] = ns.FirstName(x.name) .. tag .. (x.roll and (" " .. x.roll) or "")
             end
         end
         r.cells[1]:SetText(Clock(roll.t))
@@ -366,6 +363,8 @@ exportHint:SetPoint("LEFT", exportBtn, "RIGHT", 10, 0)
 exportHint:SetText("As text, for a spreadsheet.")
 
 local numberTexts = {}
+local SMALL_CHANGE = 100 -- copper: a price change below this is not worth a line
+local FITS_SHOWN = 4     -- award fits listed per player
 
 local function Percent(part, whole)
     return whole > 0 and math.floor(part / whole * 100 + 0.5) or 0
@@ -379,7 +378,7 @@ local function NumberLines(s)
     local function note(text) lines[#lines + 1] = { text = "|cff909090" .. text .. "|r" } end
 
     local sum = ns.Summarize(s)
-    local over = not (s == ns.db.active and not s.leftAt)
+    local over = not ns.InProgress(s)
 
     local fair = ns.Fairness(sum)
     if fair then
@@ -400,7 +399,7 @@ local function NumberLines(s)
         line(("After a boss kill:  %s  (%d%%)"):format(ns.Money(src.boss), Percent(src.boss, src.total)))
         line(("Profession materials:  %s  (%d%%)"):format(ns.Money(src.mats), Percent(src.mats, src.total)))
         line(("Trash and the rest:  %s  (%d%%)"):format(ns.Money(src.trash), Percent(src.trash, src.total)))
-        note("Boss loot: anything picked up within 90 seconds of a kill.")
+        note(("Boss loot: anything picked up within %d seconds of a kill."):format(ns.BOSS_WINDOW))
     end
 
     local luck = ns.RunLuck(s)
@@ -409,11 +408,9 @@ local function NumberLines(s)
         for _, p in ipairs(sum.players) do
             local l = luck[p.name]
             if l then
-                local diff = l.wins - l.expected
-                local colour = diff > 0.05 and "|cff40d040" or (diff < -0.05 and "|cffe05050" or "|cffffffff")
-                local signed = math.abs(diff) < 0.05 and "0.0" or ("%+.1f"):format(diff)
-                local text = ("%s:  %d %s, %.1f expected, %d won  (%s%s|r)"):format(
-                    Colored(s, p.name), l.rolls, l.rolls == 1 and "roll" or "rolls", l.expected, l.wins, colour, signed)
+                local text = ("%s:  %d %s, %.1f expected, %d won  (%s)"):format(
+                    Colored(s, p.name), l.rolls, l.rolls == 1 and "roll" or "rolls", l.expected, l.wins,
+                    ns.Signed(l.wins - l.expected))
                 local st = s.rollStats and s.rollStats[p.name]
                 if st and (st.n or 0) > 0 then
                     text = text .. ("   |cff909090avg roll %d|r"):format(st.sum / st.n + 0.5)
@@ -428,17 +425,21 @@ local function NumberLines(s)
     if streak then
         head("Streak")
         local text = ns.StreakLabel(streak) .. (".  Together so far: %s"):format(ns.Money(streak.total))
-        if streak.duration >= 60 then
+        if streak.duration >= ns.MIN_TIMED_RUN then
             text = text .. ("  in %s  (%s an hour)"):format(ns.Duration(streak.duration),
                 ns.Money(streak.total * 3600 / streak.duration))
         end
         line(text .. ".")
         for i, row in ipairs(streak.standings) do
-            local part = row.runs < streak.count and ("  |cff909090(%d of the %d runs)|r"):format(row.runs, streak.count) or ""
+            local part = ""
+            if row.runs < streak.count then
+                part = ("  |cff909090(%d of the %d runs)|r"):format(row.runs, streak.count)
+            end
             line(("%d.  %s   %s   %d%%%s"):format(i, ns.ClassColored(ns.DisplayName(row.name), row.class),
                 ns.Money(row.value), Percent(row.value, streak.total), part))
         end
-        note("In a row: started within 30 minutes of the last, with the same group or in the same dungeon.")
+        note(("In a row: started within %d minutes of the end of the last, with the same group or in the same dungeon.")
+            :format(ns.STREAK_GAP / 60))
     end
 
     local price = over and ns.Reprice(s) or nil
@@ -447,31 +448,29 @@ local function NumberLines(s)
         local change = (price.now - price.was) / price.was * 100
         local text = ("%s today, %s when looted"):format(ns.Money(price.now), ns.Money(price.was))
         if math.abs(change) >= 1 then
-            text = text .. ("  (%s%+d%%|r)"):format(change > 0 and "|cff40d040" or "|cffe05050", change)
+            text = text .. ("  (%s%+.0f%%|r)"):format(change > 0 and "|cff40d040" or "|cffe05050", change)
         end
         line(text .. ".")
-        if price.mover and math.abs(price.mover.now - price.mover.was) >= 100 then
+        if price.mover and math.abs(price.mover.now - price.mover.was) >= SMALL_CHANGE then
             line(("Biggest change:  %s  from %s to %s"):format(price.mover.link, ns.Money(price.mover.was),
                 ns.Money(price.mover.now)))
         end
     end
 
-    if over and ns.db.options.showAwards then
+    local awards = ns.RunAwards(s, sum)
+    if next(awards) then
         local scores = ns.AwardScores(s, sum)
-        local awards = ns.Awards(s, sum)
-        if next(awards) then
-            head("Award scores")
-            for _, p in ipairs(sum.players) do
-                local parts = {}
-                for i, score in ipairs(scores[p.name] or {}) do
-                    if i <= 4 then parts[#parts + 1] = ("%s %.2f"):format(score.title, score.fit) end
-                end
-                line(("%s:  |cffffd100%s|r   |cff909090%s|r"):format(Colored(s, p.name),
-                    awards[p.name] and awards[p.name].title or "-",
-                    #parts > 0 and ("fits: " .. table.concat(parts, ", ")) or "nothing fitted"))
+        head("Award scores")
+        for _, p in ipairs(sum.players) do
+            local parts = {}
+            for i, score in ipairs(scores[p.name] or {}) do
+                if i <= FITS_SHOWN then parts[#parts + 1] = ("%s %.2f"):format(score.title, score.fit) end
             end
-            note("0.3 just qualifies, 1 is remarkable, 2 extraordinary.")
+            line(("%s:  |cffffd100%s|r   |cff909090%s|r"):format(Colored(s, p.name),
+                awards[p.name] and awards[p.name].title or "-",
+                #parts > 0 and ("fits: " .. table.concat(parts, ", ")) or "nothing fitted"))
         end
+        note("0.3 just qualifies, 1 is remarkable, 2 extraordinary.")
     end
 
     if #lines == 0 then

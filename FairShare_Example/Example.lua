@@ -8,7 +8,7 @@
 
 if not FairShare or not FairShare.AddExampleRun then return end
 
-local me = UnitName("player") or "You"
+local me = (GetUnitName and GetUnitName("player", true)) or UnitName("player") or "You"
 local myClass = select(2, UnitClass("player"))
 
 ----------------------------------------------------------------------

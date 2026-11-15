@@ -73,7 +73,7 @@ Tables over everything recorded. Click a column title to sort.
 1. Copy the `FairShare` folder into the Forever client's `Interface\AddOns` folder.
 2. Restart the game or type `/reload`.
 
-`FairShare_Example` is an optional test addon. It adds three fake runs so the window can be tried without running a dungeon. Its runs are never saved; disable or delete it to remove them.
+`FairShare_Example` is an optional test addon, found in the source repository rather than in the download. It adds three fake runs so the window can be tried without running a dungeon. Its runs are never saved; disable or delete it to remove them.
 
 ## Usage
 
@@ -125,7 +125,9 @@ The minimap button does the same: left-click for the window, right-click for the
 - **Boss loot is a rule of thumb:** whatever was picked up within 90 seconds of a boss kill, profession materials aside.
 - **Roll luck counts what the game reports.** A roll nobody won (everyone passed) is not counted, and a roll whose messages you were too far away to receive is missed.
 - **Pictures of players who have left are stand-ins.** The game cannot save a portrait or a model. FairShare saves each player's race, sex and visible gear during the run, and afterwards shows the game's picture for that race, or a model of that race wearing that gear. Their face and hair are not known. A player whose gear was never close enough to read gets a class icon, as do runs recorded before version 0.2.0.
-- **Item search and the Runs page only cover the runs that are kept** (30 by default; any number up to unlimited). A run takes about 25 to 150 KB in the saved file. Dungeon figures, records, regulars, luck, drops and roles are kept separately and are not affected by that limit.
+- **Item search and the Runs page only cover the runs that are kept** (300 by default; any number up to unlimited). A run takes about 25 to 150 KB in the saved file. Dungeon figures, records, regulars, luck, drops and roles are kept separately and are not affected by that limit.
+- **People met once are forgotten after 90 days.** Regulars would otherwise fill up with strangers from random groups.
+- **Lowering the number of runs to keep takes effect when the next run ends,** so a misclick deletes nothing.
 - **Deleting runs does not change the statistics.** Dungeon figures, regulars, luck, drops and roles are added up when a run is closed, and keep what a deleted run contributed.
 - **Fastest run** only compares runs with the most boss kills seen for that dungeon, so an abandoned run cannot take the record.
 - **Auction prices are taken as they are.** A rarely traded item with an unrealistic listing can distort a run. Items valued at an auction price carry a blue dot, and an item worth more than half of the run on its own is highlighted in orange. Right-click an item to switch it to its vendor price for that run (and again to switch back).
@@ -162,6 +164,10 @@ python tests/run_tests.py FairShare tests/test_pin.lua
 
 ```bash
 python tests/run_tests.py FairShare tests/test_looks.lua
+```
+
+```bash
+python tests/run_tests.py FairShare tests/test_audit.lua
 ```
 
 `tools/make_logo.py` draws the addon's mark (needs Pillow); the brand colours live at the top of `FairShare/Core.lua`.

@@ -19,34 +19,14 @@ local TEXT_H = 64       -- room under the blocks for name, value and awards
 local REVEAL_STEP = 0.8 -- seconds between two players during the reveal
 local TICK = 4          -- seconds between refreshes of the pictures
 
-local MEDALS = { { 1.00, 0.82, 0.00 }, { 0.78, 0.78, 0.82 }, { 0.80, 0.50, 0.20 }, { 0.45, 0.45, 0.48 } }
-local RANK_TEXT = { "1st", "2nd", "3rd", "4th", "5th" }
-local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
+local MEDALS = ns.MEDALS -- gold, silver, bronze, then grey
 
 -- The game's emote animations, by id. Dancing loops; the others play
 -- once and are replayed on every tick.
 local ANIM = { dance = 69, applaud = 80, wave = 67, cry = 77, kneel = 75 }
 
-local show = CreateFrame("Frame", "FairShareShowFrame", UIParent)
-show:SetSize(WIDTH, HEIGHT)
+local show, ui, title, skins = ns.MakeWindow("FairShareShowFrame", WIDTH, HEIGHT, "DIALOG", true)
 show:SetPoint("CENTER", 0, 20)
-show:SetFrameStrata("DIALOG")
-show:SetMovable(true)
-show:EnableMouse(true)
-show:SetClampedToScreen(true)
-show:RegisterForDrag("LeftButton")
-show:SetScript("OnDragStart", show.StartMoving)
-show:SetScript("OnDragStop", show.StopMovingOrSizing)
-show:Hide()
-tinsert(UISpecialFrames, "FairShareShowFrame")
-
-local skins = ns.BuildSkins(show, function() show:Hide() end)
-
-local ui = CreateFrame("Frame", nil, show)
-ui:SetAllPoints()
-ui:SetFrameLevel(show:GetFrameLevel() + 10)
-
-local title = ui:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 
 local page = "podium"
 local run           -- the run on show
@@ -118,25 +98,12 @@ local function GetSlot(i)
         if slot.anim then self:SetAnimation(slot.anim) end
     end)
 
-    -- Shown in the model's place when the player is not around.
-    slot.portrait = slot:CreateTexture(nil, "ARTWORK")
+    -- Shown in the model's place when there is no model to show.
+    slot.portrait, slot.ring, slot.ringInner = ns.NewRoundPicture(slot)
     slot.portrait:SetSize(64, 64)
     slot.portrait:SetPoint("BOTTOM", slot.block, "TOP", 0, 14)
-    slot.ring = slot:CreateTexture(nil, "BORDER", nil, 1)
-    slot.ring:SetTexture(CIRCLE)
     slot.ring:SetSize(72, 72)
-    slot.ring:SetPoint("CENTER", slot.portrait)
-    slot.ringInner = slot:CreateTexture(nil, "BORDER", nil, 2)
-    slot.ringInner:SetTexture(CIRCLE)
-    slot.ringInner:SetVertexColor(0.05, 0.05, 0.07)
     slot.ringInner:SetSize(66, 66)
-    slot.ringInner:SetPoint("CENTER", slot.portrait)
-    if slot.CreateMaskTexture then
-        local mask = slot:CreateMaskTexture()
-        mask:SetTexture(CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-        mask:SetAllPoints(slot.portrait)
-        slot.portrait:AddMaskTexture(mask)
-    end
 
     slot.name = slot:CreateFontString(nil, "OVERLAY", "GameFontNormal")
     slot.name:SetPoint("TOP", slot.block, "BOTTOM", 0, -6)
@@ -167,29 +134,33 @@ local function AwardText(a)
 end
 
 -- First place dances, the Ninja kneels, last place cries, second place
--- applauds and everyone else waves.
-local function AnimFor(p, count, a)
+-- applauds and everyone else waves. `players`: how many took part in the
+-- run (in a big group, nobody on the podium is last).
+local function AnimFor(p, players, a)
     if p.rank == 1 then return ANIM.dance end
     if a and a.key == "ninja" then return ANIM.kneel end
-    if count >= 3 and p.rank == count then return ANIM.cry end
+    if players >= 3 and p.rank == players then return ANIM.cry end
     if p.rank == 2 then return ANIM.applaud end
     return ANIM.wave
 end
 
--- Shows the slot's player as a 3D model when they are close enough to be
--- seen, and as a class icon otherwise. Called again on every tick, so a
+-- Shows the slot's player as a 3D model: live when they are close enough
+-- to be seen, else rebuilt from their saved look; and as a flat picture
+-- when neither can be had. Called again on every tick, so a
 -- teammate who walks out of the dungeon a little later still gets their
 -- model.
 local function SetupPicture(slot)
     local p = slot.p
     local unit = ns.UnitForName(p.name)
-    local visible = unit and (UnitIsUnit(unit, "player") or UnitIsVisible(unit))
+    local visible = unit and ns.InSight(unit)
     -- Out of sight, or gone from the group: a look-alike rebuilt from what
-    -- was saved of them, where there is enough of it.
-    local lookKey = "look:" .. p.name
-    local rebuilt = not visible and (slot.modelFor == lookKey or ns.DressModel(slot.model, p))
+    -- was saved of them, where there is enough of it. slot.modelFor says
+    -- what the model frame holds: a name for a live player, the saved gear
+    -- for a rebuilt one.
+    local rebuilt = not visible
+        and ((p.gear ~= nil and slot.modelFor == p.gear) or ns.DressModel(slot.model, p))
     if visible or rebuilt then
-        local key = visible and p.name or lookKey
+        local key = visible and p.name or p.gear
         slot.portrait:Hide()
         slot.ring:Hide()
         slot.ringInner:Hide()
@@ -219,21 +190,14 @@ end
 local function DrawPodium(ceremony)
     local token = drawToken
     local sum = ns.Summarize(run)
-    local awards = ns.Awards(run, sum)
+    local awards = ns.RunAwards(run, sum)
 
-    -- The top five, arranged like a podium: first in the middle, second
-    -- on the left, third on the right, then outwards.
-    local ranked = {}
+    -- The top five, in podium order.
+    local ranked, top = {}, {}
     for _, p in ipairs(sum.players) do ranked[p.rank] = p end
     local count = math.min(#ranked, MAX_SLOTS)
-    local order = {}
-    for rank = 1, count do
-        if rank % 2 == 0 then
-            table.insert(order, 1, ranked[rank])
-        else
-            order[#order + 1] = ranked[rank]
-        end
-    end
+    for rank = 1, count do top[rank] = ranked[rank] end
+    local order = ns.PodiumOrder(top)
 
     emptyText:SetText("Nobody to put on the podium for this run.")
     emptyText:SetShown(count == 0)
@@ -244,7 +208,7 @@ local function DrawPodium(ceremony)
         local slot = GetSlot(i)
         slot.p = p
         slot.won = awards[p.name]
-        slot.anim = AnimFor(p, count, awards[p.name])
+        slot.anim = AnimFor(p, #ranked, awards[p.name])
         slot:ClearAllPoints()
         slot:SetPoint("BOTTOM", stage, "BOTTOMLEFT", spacing * (i - 0.5), 0)
 
@@ -253,7 +217,7 @@ local function DrawPodium(ceremony)
         slot.block:SetPoint("BOTTOM", slot, "BOTTOM", 0, TEXT_H)
         slot.block:SetSize(BLOCK_W, BLOCK_H[p.rank])
         slot.block:SetColorTexture(medal[1], medal[2], medal[3], 0.92)
-        slot.rank:SetText(RANK_TEXT[p.rank])
+        slot.rank:SetText(ns.Ordinal(p.rank))
         slot.name:SetText(ns.ClassColored(ns.DisplayName(p.name), p.class))
         slot.value:SetText(ns.Money(p.market))
         slot.awards:SetText(AwardText(awards[p.name]))
@@ -479,7 +443,9 @@ local STORIES = {
     empty = {
         heads = { "THOUGHTS AND PRAYERS", "BETTER LUCK NEXT TIME" },
         body = function(who, a)
-            return ("%s leaves with %s. A collection has not been started."):format(who, ns.MoneyPlain(a.amount))
+            local got = ns.MoneyPlain(a.amount)
+            return ("%s leaves with %s. A collection has not been started.")
+                :format(who, got == "-" and "nothing" or got)
         end,
     },
     tourist = {
@@ -494,7 +460,7 @@ local STORIES = {
 -- the "random" choices are derived from the run's start time.
 local function Paper(s)
     local sum = ns.Summarize(s)
-    local awards = ns.Awards(s, sum)
+    local awards = ns.RunAwards(s, sum)
 
     local seed = (s.startedAt or 1) % 2147483646 + 1
     local function pick(list)
@@ -623,20 +589,7 @@ end
 ----------------------------------------------------------------------
 
 local function ApplyTheme()
-    local flat = ns.db.theme == "modern"
-    local active = flat and skins.modern or skins.classic
-    for _, skin in pairs(skins) do skin:SetShown(skin == active) end
-
-    title:ClearAllPoints()
-    if flat then
-        title:SetFontObject("GameFontHighlightLarge")
-        title:SetPoint("TOPLEFT", 14, -10)
-    else
-        title:SetFontObject("GameFontNormal")
-        title:SetPoint("TOP", 0, -5)
-    end
-
-    local top = flat and -46 or -30
+    local flat, top = ns.ApplyWindowTheme(skins, title)
     podiumTab:ClearAllPoints()
     podiumTab:SetPoint("TOPLEFT", 12, top)
     podiumTab:SetFlat(flat)
@@ -718,8 +671,16 @@ end)
 -- s: the run. ceremony: reveal the podium one player at a time.
 -- which: "podium" (default), "paper", or a page added by another file.
 function ns.OpenShow(s, ceremony, which)
+    if s ~= run then
+        -- Another run: nothing the slots hold belongs to it.
+        for _, slot in ipairs(slots) do slot.modelFor = nil end
+    end
     run = s
     page = (which == "paper" or extra[which]) and which or "podium"
     show:Show()
     Draw(ceremony)
 end
+
+ns.OnRerender(function()
+    if show:IsShown() then Draw() end
+end)

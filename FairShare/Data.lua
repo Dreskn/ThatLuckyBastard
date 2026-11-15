@@ -13,7 +13,11 @@ local _, ns = ...
 --     roll luck (db.me for you, db.people for the others).
 
 local BOSS_WINDOW = 90   -- seconds after a boss kill during which loot counts as boss loot
-local STREAK_GAP = 1800  -- runs further apart than this are not "in a row"
+local STREAK_GAP = 1800  -- seconds: a run starting later than this after the one before is not "in a row"
+local SAME_GROUP = 0.6   -- of the smaller group must be the same people for "the same group"...
+local SAME_GROUP_MIN = 2 -- ...and never fewer than this many
+local MIN_ROLE_GROUP = 3 -- players needed before a run counts towards shares by role and class
+ns.BOSS_WINDOW, ns.STREAK_GAP = BOSS_WINDOW, STREAK_GAP
 local CHOICES = { n = "need", g = "greed", p = "pass" }
 local CHOICE_ORDER = { need = 1, greed = 2, pass = 3 }
 
@@ -21,7 +25,8 @@ local CHOICE_ORDER = { need = 1, greed = 2, pass = 3 }
 -- Small helpers
 ----------------------------------------------------------------------
 
--- Is this item counted in the totals, given the category options?
+-- Is this item counted in the totals, given the category options? (An
+-- item in a hidden category is, when "count hidden categories" is on.)
 local function Counted(e)
     local o = ns.db.options
     return e.count > 0 and (o.cats[e.cat] ~= false or o.countHidden)
@@ -43,20 +48,13 @@ function ns.Ordinal(n)
     return n .. "th"
 end
 
--- An item's quality, also for items recorded before it was stored: the
--- colour code of a link names it ("|cnIQ3:").
-local function Quality(e)
-    return e.quality or tonumber(e.link:match("|cnIQ(%d+):"))
-end
-
 ----------------------------------------------------------------------
 -- Pickups: the run's log, decoded
 ----------------------------------------------------------------------
 
 -- Returns the pickups in order, as { t = seconds since the start, name,
 -- e = item entry, count, value }, or nil for a run recorded without a
--- log. Items in categories that are switched off are left out, as they
--- are everywhere else.
+-- log. Items that the options leave out of the totals are left out here.
 local function Pickups(s)
     if not s.log or not s.names then return end
     local byId = {}
@@ -74,7 +72,7 @@ local function Pickups(s)
         local e = name and byId[name] and byId[name][tonumber(id)]
         if e and Counted(e) then
             count = tonumber(count)
-            e.noAH = (s.vendorOnly and s.vendorOnly[ns.ItemKey(e)]) or nil
+            ns.MarkVendorOnly(s, e)
             out[#out + 1] = { t = tonumber(t), name = name, e = e, count = count,
                               value = ns.EntryMarket(e) / e.count * count }
         end
@@ -106,11 +104,15 @@ function ns.Timeline(s)
         if a.total ~= b.total then return a.total > b.total end
         return a.name < b.name
     end)
+    local bosses = {}
+    for _, boss in ipairs(s.bosses or {}) do
+        if boss.t then bosses[#bosses + 1] = boss end -- early versions did not time them
+    end
     return {
         series = series,
         duration = math.max(ns.RunDuration(s) or 0, last, 1),
         max = math.max(series[1].total, 1),
-        bosses = s.bosses or {},
+        bosses = bosses,
     }
 end
 
@@ -128,7 +130,7 @@ function ns.Sources(s)
             source = "mats"
         else
             for _, boss in ipairs(s.bosses or {}) do
-                if pick.t >= boss.t and pick.t - boss.t <= BOSS_WINDOW then source = "boss" end
+                if boss.t and pick.t >= boss.t and pick.t - boss.t <= BOSS_WINDOW then source = "boss" end
             end
         end
         out[source] = out[source] + pick.value
@@ -181,23 +183,17 @@ function ns.RollItem(s, roll)
     end
 end
 
--- What one item of an entry is worth, in copper.
-local function UnitValue(e)
-    if not e or e.count <= 0 then return 0 end
-    return ns.EntryMarket(e) / e.count
-end
-
 -- Roll luck in one run: for every roll a player entered, their chance
 -- was one in the number of players who could win it (those who chose
 -- Need when anyone did, everyone who chose Greed otherwise). Adding the
 -- chances up gives the wins they could expect. Returns
---   [name] = { rolls, expected, wins, expectedValue, wonValue }
+--   [name] = { rolls, expected, wins }
 function ns.RunLuck(s)
     local out = {}
     local function row(name)
         local r = out[name]
         if not r then
-            r = { rolls = 0, expected = 0, wins = 0, expectedValue = 0, wonValue = 0 }
+            r = { rolls = 0, expected = 0, wins = 0 }
             out[name] = r
         end
         return r
@@ -208,19 +204,13 @@ function ns.RunLuck(s)
             if r.choice == "need" then needers = needers + 1 end
             if r.choice ~= "pass" then entered = entered + 1 end
         end
-        local value = UnitValue(ns.RollItem(s, roll))
         for _, r in ipairs(roll.rolls) do
             if r.choice ~= "pass" then
-                local me = row(r.name)
-                me.rolls = me.rolls + 1
+                local theirs = row(r.name)
+                theirs.rolls = theirs.rolls + 1
                 local inRace = needers == 0 or r.choice == "need"
-                local chance = inRace and 1 / (needers > 0 and needers or entered) or 0
-                me.expected = me.expected + chance
-                me.expectedValue = me.expectedValue + chance * value
-                if r.name == roll.winner then
-                    me.wins = me.wins + 1
-                    me.wonValue = me.wonValue + value
-                end
+                theirs.expected = theirs.expected + (inRace and 1 / (needers > 0 and needers or entered) or 0)
+                if r.name == roll.winner then theirs.wins = theirs.wins + 1 end
             end
         end
     end
@@ -263,11 +253,12 @@ function ns.Reprice(s)
     for _, p in pairs(s.players) do
         for _, e in pairs(p.items) do
             if Counted(e) then
-                e.noAH = (s.vendorOnly and s.vendorOnly[ns.ItemKey(e)]) or nil
+                ns.MarkVendorOnly(s, e)
                 local was = ns.EntryMarket(e)
                 local unit = e.vendor
                 if e.cat ~= "bop" and e.cat ~= "quest" and not e.noAH then
-                    unit = ns.AuctionPrice(e.link) or e.vendor
+                    -- No price today says nothing: the recorded one stands.
+                    unit = ns.AuctionPrice(e.link) or e.ah or e.vendor
                 end
                 local now = unit * e.count
                 out.was, out.now = out.was + was, out.now + now
@@ -288,8 +279,9 @@ end
 -- The other players of a run, as a set, and how many they are.
 local function Others(s)
     local set, n = {}, 0
+    local me = ns.Me(s)
     for name in pairs(s.players) do
-        if name ~= ns.playerName then
+        if name ~= me then
             set[name] = true
             n = n + 1
         end
@@ -297,8 +289,7 @@ local function Others(s)
     return set, n
 end
 
--- Mostly the same people: at least 60% of the smaller group, and never
--- fewer than two.
+-- Mostly the same people (see SAME_GROUP at the top of the file).
 local function SameGroup(a, b)
     local setA, nA = Others(a)
     local setB, nB = Others(b)
@@ -306,16 +297,16 @@ local function SameGroup(a, b)
     for name in pairs(setA) do
         if setB[name] then shared = shared + 1 end
     end
-    return shared >= math.max(2, math.ceil(math.min(nA, nB) * 0.6))
+    return shared >= math.max(SAME_GROUP_MIN, math.ceil(math.min(nA, nB) * SAME_GROUP))
 end
 
 local function EndOf(s)
     return s.endedAt or s.leftAt or s.lastSeen or s.startedAt or 0
 end
 
--- The streak a run belongs to, looking back from it: earlier runs that
--- each started within half an hour of the one before, and that were all
--- with the same group as this run, or all in the same dungeon. Returns
+-- The streak a run belongs to, looking back from it: earlier runs, each
+-- followed within STREAK_GAP of its end by the next, that were all with
+-- the same group as this run, or all in the same dungeon. Returns
 -- nil for a run on its own, otherwise
 --   { runs = { this run, the one before, ... }, count, kind = "group",
 --     "dungeon" or "both", total, mine, duration,
@@ -358,7 +349,7 @@ function ns.Streak(s)
             end
             row.value, row.runs = row.value + p.market, row.runs + 1
             row.class = row.class or p.class
-            if p.name == ns.playerName then out.mine = out.mine + p.market end
+            if p.name == ns.Me(run) then out.mine = out.mine + p.market end
         end
     end
     table.sort(out.standings, function(a, b)
@@ -418,13 +409,14 @@ function ns.CommitStats(s, sum)
     -- Time, hourly figures and fairness per dungeon. The hourly figures
     -- have their own sums, so that runs recorded before they existed do
     -- not skew them.
+    local me = ns.Me(s)
     local rec = s.instanceID and db.records[s.instanceID]
     if rec then
         local duration = ns.RunDuration(s)
-        if duration and duration >= 60 then
+        if duration and duration >= ns.MIN_TIMED_RUN then
             local mine = 0
             for _, p in ipairs(sum.players) do
-                if p.name == ns.playerName then mine = p.market end
+                if p.name == me then mine = p.market end
             end
             rec.tRuns = (rec.tRuns or 0) + 1
             rec.tTime = (rec.tTime or 0) + duration
@@ -439,7 +431,7 @@ function ns.CommitStats(s, sum)
     end
 
     -- Shares by role and class, each measured against an equal share.
-    if n >= 3 and sum.market > 0 then
+    if n >= MIN_ROLE_GROUP and sum.market > 0 then
         local equal = sum.market / n
         for _, p in ipairs(sum.players) do
             Bump(db.roles, p.role or "NONE", p.market / equal)
@@ -448,7 +440,9 @@ function ns.CommitStats(s, sum)
     end
 
     -- Drops per dungeon: in how many runs an item was seen, how many of
-    -- it, what it was worth, and who got it last.
+    -- it, what it was worth, and who got it last. The worth is the price
+    -- recorded at the time (auction if known, else vendor), whatever the
+    -- pricing options say today: it is kept for good.
     if s.instanceID then
         local drops = db.drops[s.instanceID]
         if not drops then
@@ -472,10 +466,9 @@ function ns.CommitStats(s, sum)
                     end
                     d.c = d.c + e.count
                     d.v = d.v + (e.ah or e.vendor or 0) * e.count
-                    d.name, d.q = ns.ItemName(e), Quality(e) or d.q
-                    if not d.at or (s.startedAt or 0) >= d.at then
-                        d.at, d.by = s.startedAt or 0, name
-                    end
+                    d.name, d.q = ns.ItemName(e), ns.Quality(e)
+                    local at = e.lastAt or s.startedAt or 0
+                    if not d.at or at >= d.at then d.at, d.by = at, name end
                 end
             end
         end
@@ -483,7 +476,7 @@ function ns.CommitStats(s, sum)
 
     -- Roll luck, for you and for the people you run with.
     local function account(name)
-        if name == ns.playerName then return db.me end
+        if name == me then return db.me end
         return db.people[name]
     end
     for name, luck in pairs(ns.RunLuck(s)) do
@@ -499,18 +492,6 @@ function ns.CommitStats(s, sum)
         if who and (st.n or 0) > 0 then
             who.rollSum = (who.rollSum or 0) + st.sum
             who.rollN = (who.rollN or 0) + st.n
-        end
-    end
-end
-
--- Counts the runs that were closed before these figures existed, oldest
--- first. Does nothing once every run has been counted.
-function ns.Backfill()
-    local history = ns.db.history
-    for i = #history, 1, -1 do
-        local s = history[i]
-        if s.recorded and not s.statted then
-            ns.CommitStats(s, ns.Summarize(s))
         end
     end
 end
@@ -550,7 +531,7 @@ local function Gold(copper)
 end
 
 local function RunDate(s)
-    return s.startedAt and date("%Y-%m-%d %H:%M", s.startedAt) or ""
+    return s.startedAt and ns.DateText(s.startedAt) or ""
 end
 
 -- One line per player and item of a run.
@@ -558,9 +539,20 @@ function ns.ExportRun(s)
     local lines = { Csv("Date", "Dungeon", "Player", "Class", "Role", "Item", "Item ID", "Count",
                         "Unit value (gold)", "Total (gold)", "Vendor total (gold)", "Category",
                         "Won on Need", "Won on Greed") }
+    -- Every item that counts towards the totals, so that the lines add up
+    -- to them: that includes hidden categories when those are counted.
     local sum = ns.Summarize(s)
     for _, p in ipairs(sum.players) do
-        for _, e in ipairs(p.all.items) do
+        local items = {}
+        for _, e in pairs(s.players[p.name].items) do
+            if Counted(e) then items[#items + 1] = e end
+        end
+        table.sort(items, function(a, b)
+            local va, vb = ns.EntryMarket(a), ns.EntryMarket(b)
+            if va ~= vb then return va > vb end
+            return a.link < b.link
+        end)
+        for _, e in ipairs(items) do
             local total = ns.EntryMarket(e)
             lines[#lines + 1] = Csv(RunDate(s), s.name, p.name, p.class, p.role, ns.ItemName(e), ns.ItemKey(e),
                                     e.count, Gold(total / e.count), Gold(total), Gold(e.vendor * e.count),
@@ -577,7 +569,7 @@ function ns.ExportAll()
                         "Award") }
     for _, s in ipairs(ns.AllRuns()) do
         local sum = ns.Summarize(s)
-        local awards = ns.Awards(s, sum)
+        local awards = ns.RunAwards(s, sum)
         local duration = ns.RunDuration(s)
         local fair = ns.Fairness(sum)
         for _, p in ipairs(sum.players) do

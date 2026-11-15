@@ -62,13 +62,14 @@ reset()
 ns.OpenShow(old, false, "podium")
 check(#CUSTOM_RACES == 4, "podium: four look-alikes, and my own live model (" .. #CUSTOM_RACES .. ")")
 
--- Too little gear is no likeness: back to the flat picture.
+-- Too little gear is no likeness: back to the flat picture. Looks belong
+-- to a run, so showing another run first makes the columns start afresh.
 old.players["Kett Longstride"].gear = { [1] = 5001 }
 db.options.portrait = "3d"
+ns.ShowRun(db.active)
 reset()
-ns.ShowRun(db.active or old) -- another run first, so the columns are redrawn from scratch
 ns.ShowRun(old)
-check(#CUSTOM_RACES <= 3, "a player with one piece of gear saved is not rebuilt")
+check(#CUSTOM_RACES == 3, "a player with one piece of gear saved is not rebuilt; the other three are (" .. #CUSTOM_RACES .. ")")
 
 -- A run from before looks were saved: class icons, as before.
 for _, p in pairs(old.players) do p.race, p.raceID, p.sex, p.gear = nil, nil, nil, nil end

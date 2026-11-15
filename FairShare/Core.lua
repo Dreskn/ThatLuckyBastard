@@ -8,6 +8,10 @@ local ARRIVAL_GRACE = 10   -- seconds during which repeated arrival events count
 local ROLL_MATCH_WINDOW = 5 -- a roll win and its loot line arrive within this many seconds
 local CAPTURE_MAX = 600    -- lines kept by /fs capture
 local LOG_MAX = 3000       -- pickups kept per run for the timeline
+local LOOK_INTERVAL = 60   -- seconds between two looks at the group's gear
+local TICKER_RETRY = 1.5   -- seconds before a notice retries an item whose value was not known yet
+local FORGET_AFTER = 90 * 24 * 3600 -- people met once are forgotten after this long
+ns.MIN_TIMED_RUN = 60      -- runs shorter than this get no per-hour figures
 
 local PLAYER_NAME, PLAYER_CLASS
 local db
@@ -66,7 +70,7 @@ ns.OPTION_DEFAULTS = {
     chatSummary = false,    -- print a one-line result in chat when a run ends
     trackRaids = true,
     askNewRun = true,       -- ask "new run?" when arriving back in the current run's dungeon
-    maxHistory = 30,
+    maxHistory = 300,
     familiar = true,        -- notice when someone you have run with joins your group
     tipPlayers = true,      -- a line about people you have run with, in their tooltip
     tipItems = true,        -- a line about items seen in your runs, in their tooltip
@@ -77,6 +81,18 @@ ns.OPTION_DEFAULTS = {
 
 local function Print(msg)
     print(ns.BRAND .. ": " .. msg)
+end
+
+-- Dates are written one way everywhere.
+function ns.DateText(t)
+    return t and date("%Y-%m-%d %H:%M", t) or "-"
+end
+
+-- Who "you" are in a run: the character that recorded it. The saved data
+-- is shared by every character of the account, so that is not always the
+-- one logged in. (Runs from before this was stored: the one logged in.)
+function ns.Me(s)
+    return (s and s.owner) or PLAYER_NAME
 end
 
 ----------------------------------------------------------------------
@@ -129,6 +145,21 @@ local function ItemKey(e)
 end
 ns.ItemKey = ItemKey
 
+-- Notes on an item entry whether its auction price is switched off for
+-- this run (see ToggleAuctionPrice). EntryMarket reads the note, so it
+-- has to be set before an entry is valued.
+local function MarkVendorOnly(s, e)
+    e.noAH = (s.vendorOnly and s.vendorOnly[ItemKey(e)]) or nil
+end
+ns.MarkVendorOnly = MarkVendorOnly
+
+-- An item's quality, also for entries saved before it was stored: the
+-- colour code of a link names it ("|cnIQ3:").
+local function Quality(e)
+    return e.quality or tonumber(e.link:match("|cnIQ(%d+):")) or 0
+end
+ns.Quality = Quality
+
 ----------------------------------------------------------------------
 -- Roll messages. They arrive on the same channel as loot and tell us who
 -- chose Need or Greed on an item and who won it.
@@ -176,6 +207,14 @@ AddRollSpec("LOOT_ROLL_ROLLED_NEED", "select", "need")
 AddRollSpec("LOOT_ROLL_ROLLED_GREED", "select", "greed")
 AddRollSpec("LOOT_ROLL_ROLLED_DE", "select", "greed")
 AddRollSpec("LOOT_ROLL_ROLLED_TRANSMOG", "select", "greed")
+-- "Everyone passed on: [item]" and "X automatically passed on: [item]
+-- because ..." come first: the plain "X passed on" below would read them
+-- as a player called "Everyone" or "X automatically".
+AddRollSpec("LOOT_ROLL_ALL_PASSED", "allpass")
+AddRollSpec("LOOT_ROLL_PASSED_SELF_AUTO", "autopass")
+AddRollSpec("LOOT_ROLL_PASSED_SELF_AUTO_FEMALE", "autopass")
+AddRollSpec("LOOT_ROLL_PASSED_AUTO", "autopass")
+AddRollSpec("LOOT_ROLL_PASSED_AUTO_FEMALE", "autopass")
 -- "X passed on: [item]".
 AddRollSpec("LOOT_ROLL_PASSED_SELF", "pass")
 AddRollSpec("LOOT_ROLL_PASSED", "pass")
@@ -183,10 +222,11 @@ AddRollSpec("LOOT_ROLL_PASSED", "pass")
 AddRollSpec("LOOT_ROLL_YOU_WON", "won")
 AddRollSpec("LOOT_ROLL_WON", "won")
 
--- Returns kind ("select", "won" or "pass"), method ("need", "greed" or
--- nil), player name, item key, the number rolled (when the message gives
--- one) and the roll's id (on clients that send one); or nothing if the
--- text is not a roll message.
+-- Returns kind ("select", "won", "pass", "autopass" for a pass the game
+-- made for a player who cannot use the item, or "allpass" when nobody
+-- wanted it), method ("need", "greed" or nil), player name, item key, the
+-- number rolled (when the message gives one) and the roll's id (on
+-- clients that send one); or nothing if the text is not a roll message.
 --
 -- Of a message's parts, the item is the text holding an item link, the
 -- player is the other text (none: the message is about you), and the
@@ -235,17 +275,30 @@ end
 -- Item valuation
 ----------------------------------------------------------------------
 
-local function AuctionPrice(link)
+-- The two addons that can supply auction prices, when they are loaded.
+local function AuctionatorAPI()
     local api = Auctionator and Auctionator.API and Auctionator.API.v1
-    if api and api.GetAuctionPriceByItemLink then
+    return api and api.GetAuctionPriceByItemLink and api or nil
+end
+
+local function HasTSM()
+    return TSM_API ~= nil and TSM_API.ToItemString ~= nil and TSM_API.GetCustomPriceValue ~= nil
+end
+
+local function TSMPrice(link)
+    local itemString = TSM_API.ToItemString(link)
+    return itemString and TSM_API.GetCustomPriceValue("dbmarket", itemString)
+end
+
+-- Auctionator's price for a link; TradeSkillMaster's when it has none.
+local function AuctionPrice(link)
+    local api = AuctionatorAPI()
+    if api then
         local ok, price = pcall(api.GetAuctionPriceByItemLink, ADDON, link)
         if ok and type(price) == "number" and price > 0 then return price end
     end
-    if TSM_API and TSM_API.ToItemString and TSM_API.GetCustomPriceValue then
-        local ok, price = pcall(function()
-            local itemString = TSM_API.ToItemString(link)
-            return itemString and TSM_API.GetCustomPriceValue("dbmarket", itemString)
-        end)
+    if HasTSM() then
+        local ok, price = pcall(TSMPrice, link)
         if ok and type(price) == "number" and price > 0 then return price end
     end
 end
@@ -253,9 +306,7 @@ ns.AuctionPrice = AuctionPrice
 
 -- True when an addon that can supply auction prices is loaded.
 function ns.HasPriceSource()
-    local api = Auctionator and Auctionator.API and Auctionator.API.v1
-    if api and api.GetAuctionPriceByItemLink then return true end
-    return TSM_API ~= nil and TSM_API.GetCustomPriceValue ~= nil
+    return AuctionatorAPI() ~= nil or HasTSM()
 end
 
 local function Categorize(quality, classID, bindType)
@@ -314,7 +365,7 @@ end
 
 local function SetRole(p, unit)
     local role = UnitGroupRolesAssigned and UnitGroupRolesAssigned(unit)
-    if role and role ~= "NONE" and not issecret(role) then p.role = role end
+    if not issecret(role) and role and role ~= "NONE" then p.role = role end
 end
 
 -- What a player looks like, saved while they are around so that their
@@ -323,6 +374,7 @@ end
 -- gear is only readable when they are close by, so a slot keeps the last
 -- thing seen in it.
 local LOOK_SLOTS = { 1, 3, 15, 5, 4, 19, 9, 10, 6, 7, 8, 16, 17 } -- head to feet, then weapons
+ns.LOOK_SLOTS = LOOK_SLOTS
 
 local function SaveLook(p, unit)
     local _, raceFile, raceID = UnitRace(unit)
@@ -352,7 +404,7 @@ local function UpdateRoster()
         local unit = (raid and "raid" or "party") .. i
         if UnitExists(unit) and not UnitIsUnit(unit, "player") then
             local name = GetUnitName(unit, true)
-            if name and not issecret(name) and name ~= UNKNOWNOBJECT then
+            if not issecret(name) and name and name ~= UNKNOWNOBJECT then
                 local _, class = UnitClass(unit)
                 if issecret(class) then class = nil end
                 local p = AddPlayer(s, name, class)
@@ -390,13 +442,25 @@ end
 local PrintSummary -- defined below
 local CommitRun    -- defined with the records code, further down
 
+-- Drops what is only of use while a run is going, to keep the saved
+-- file small.
+local function StripRun(s)
+    s.rolls, s.pendingWins, s.killed = nil, nil, nil
+    s.enteredAt, s.lastSeen, s.lookedAt, s.nextId = nil, nil, nil, nil
+    s.leftDead, s.summarized = nil, nil
+    for _, p in pairs(s.players) do
+        for _, e in pairs(p.items) do
+            e.lastAt, e.noAH = nil, nil
+        end
+    end
+end
+
 local function FinalizeSession()
     local s = db.active
     if not s then return end
     PrintSummary(s) -- no-op if already printed or switched off
     db.active = nil
     s.endedAt = s.leftAt or time()
-    s.rolls, s.pendingWins = nil, nil -- only of use while the run is going
     if HasLoot(s) then
         table.insert(db.history, 1, s)
         ns.TrimHistory()
@@ -404,6 +468,7 @@ local function FinalizeSession()
         -- the run itself, which is already safely in the history.
         local ok, err = pcall(CommitRun, s)
         if not ok then Print("could not update records: " .. tostring(err)) end
+        StripRun(s)
     end
 end
 
@@ -412,6 +477,7 @@ local function NewSession(name, instanceID, manual)
     db.active = {
         name = name or "Run",
         instanceID = instanceID,
+        owner = PLAYER_NAME, -- the character recording it
         manual = manual or nil,
         startedAt = time(),
         enteredAt = time(), -- last time we arrived in the instance
@@ -434,7 +500,7 @@ function PrintSummary(s)
     local n = #sum.players
     if n == 0 or sum.market <= 0 then return end
     for _, p in ipairs(sum.players) do
-        if p.name == PLAYER_NAME then
+        if p.name == ns.Me(s) then
             s.summarized = true
             Print(("%s: you looted %s (%.0f%%). An equal split would be %s."):format(
                 s.name or "Run", CoinText(p.market), p.market / sum.market * 100, CoinText(sum.market / n)))
@@ -447,7 +513,7 @@ end
 -- died out of it: it may be the same run, or a new one after a reset or
 -- a requeue. Until answered (or if the answer is No, or the prompt times
 -- out) the current run simply continues.
-local promptSession
+local promptSession, promptLeftAt, promptSummarized
 StaticPopupDialogs["FAIRSHARE_NEW_RUN"] = {
     text = "FairShare\n\nIs this a new run of %s?\n\n|cff909090No keeps adding to the previous run.|r",
     button1 = YES,
@@ -456,6 +522,9 @@ StaticPopupDialogs["FAIRSHARE_NEW_RUN"] = {
         local s = db.active
         -- Only if that run is still the current one and we are still inside.
         if s and s == promptSession and not s.leftAt then
+            -- The old run ended when it was left (or, after a requeue, when
+            -- we arrived again), not when the question was answered.
+            s.leftAt, s.summarized = promptLeftAt or s.enteredAt, promptSummarized
             local name, _, _, _, _, _, _, instanceID = GetInstanceInfo()
             NewSession(name, instanceID)
             ns.Refresh()
@@ -467,8 +536,10 @@ StaticPopupDialogs["FAIRSHARE_NEW_RUN"] = {
     preferredIndex = 3,
 }
 
-local function AskNewRun(s)
-    promptSession = s
+-- leftAt, summarized: how the run stood before we came back, if it had
+-- been left.
+local function AskNewRun(s, leftAt, summarized)
+    promptSession, promptLeftAt, promptSummarized = s, leftAt, summarized
     StaticPopup_Show("FAIRSHARE_NEW_RUN", s.name or "this dungeon")
 end
 
@@ -504,7 +575,21 @@ end
 -- was neither a login nor a reload. Both are nil for plain zone changes.
 local function CheckZone(isLogin, entered)
     local s = db.active
-    if s and s.manual then return end
+    -- Closes a run that ended a while ago: at the moment it was last seen,
+    -- and without announcing anything.
+    local function CloseStale()
+        s.leftAt, s.summarized = s.leftAt or s.lastSeen, true
+        FinalizeSession()
+        s = nil
+    end
+    -- A run recorded on another character of the account is over.
+    if s and s.owner and s.owner ~= PLAYER_NAME then CloseStale() end
+    if s and s.manual then
+        -- A manual run ends with /fs stop. One forgotten over a logout is
+        -- closed at a later login, or no dungeon run would ever start again.
+        if not (isLogin and time() - (s.lastSeen or 0) > RESUME_WINDOW) then return end
+        CloseStale()
+    end
 
     local inInstance, instanceType = IsInInstance()
     local tracked = inInstance
@@ -519,13 +604,17 @@ local function CheckZone(isLogin, entered)
             if recent and s.leftDead then
                 Continue(s)
             elseif recent and db.options.askNewRun then
+                local leftAt, summarized = s.leftAt, s.summarized
                 Continue(s)
-                AskNewRun(s)
+                AskNewRun(s, leftAt, summarized)
             else
                 NewSession(name, instanceID)
             end
         elseif isLogin and time() - (s.lastSeen or 0) > RESUME_WINDOW then
-            NewSession(name, instanceID) -- logged back in long after the run
+            -- Logged back in long after the run: it ended when it was last
+            -- seen, not now.
+            s.leftAt, s.summarized = s.lastSeen, true
+            NewSession(name, instanceID)
         else
             -- Never left: a reload, a relog, or moving around inside. A
             -- loading screen here means a requeue into the same dungeon.
@@ -533,18 +622,17 @@ local function CheckZone(isLogin, entered)
             if entered then MaybeAsk(s) end
         end
     elseif s then
+        if not s.leftAt and isLogin then
+            -- Logged out inside and came back outside: the run was left
+            -- when it was last seen. It can still be resumed for a while.
+            s.leftAt, s.summarized = s.lastSeen, true
+        end
         if s.leftAt then
             if time() - s.leftAt > RESUME_WINDOW then FinalizeSession() end
-        elseif isLogin then
-            -- Logged out inside and came back outside: the run ended some
-            -- time ago, so close it quietly.
-            s.leftAt = s.lastSeen
-            s.summarized = true
-            FinalizeSession()
         else
             s.leftAt = time()
             s.leftDead = UnitIsDeadOrGhost("player") or nil
-            if not s.leftDead then
+            if not s.leftDead and HasLoot(s) then -- nothing to show for a step in and out
                 PrintSummary(s)
                 -- The breakdown window, and on top of it the podium. Only one
                 -- of the two plays the reveal.
@@ -578,13 +666,14 @@ local function AnnounceLoot(s, name, e, count)
     if not db.options.ticker or not ns.Toast then return end
     local function show()
         if not e.resolved or e.count <= 0 then return end
+        MarkVendorOnly(s, e)
         local value = ns.EntryMarket(e) / e.count * count
         if value >= db.options.tickerMin then
             local p = s.players[name]
             ns.Toast(name, p and p.class, e.link, count, value)
         end
     end
-    if e.resolved then show() else C_Timer.After(1.5, show) end
+    if e.resolved then show() else C_Timer.After(TICKER_RETRY, show) end
 end
 
 -- Players are named by a small number in the run's two logs (pickups
@@ -607,17 +696,26 @@ local function LogPickup(s, name, e, count)
     s.log[#s.log + 1] = ("%d:%d:%d:%d"):format(math.max(time() - s.startedAt, 0), NameIndex(s, name), e.id, count)
 end
 
+-- What a player's item entries are filed under: the link's item string.
+-- It carries the looter's level and specialisation (its 9th and 10th
+-- fields), which say nothing about the item; they are blanked, so that
+-- the same item is one entry before and after a level-up.
+local function EntryKey(link)
+    local itemString = link:match("|H(item:[^|]+)|h") or link
+    return (itemString:gsub("^(item:%d+:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*):[^:]*:[^:]*", "%1::"))
+end
+
 local function RecordLoot(name, rawLink, count)
     local s = db.active
     if not Tracking(s) then return end
     local link = rawLink:match("(|c.-|Hitem:.-|h.-|h|r)") or rawLink:match("(|Hitem:.-|h.-|h)")
     if not link then return end
-    local key = link:match("|H(item:[^|]+)|h") or link
+    local entryKey = EntryKey(link)
     local p = AddPlayer(s, name)
-    local e = p.items[key]
+    local e = p.items[entryKey]
     if not e then
         e = { link = link, count = 0, vendor = 0, cat = "other" }
-        p.items[key] = e
+        p.items[entryKey] = e
         ResolveItem(e)
     end
     if not e.id then
@@ -635,7 +733,7 @@ local function RecordLoot(name, rawLink, count)
     AnnounceLoot(s, name, e, count)
     s.lastSeen = time()
     -- Looting happens next to the others: a good moment to note their gear.
-    if time() - (s.lookedAt or 0) >= 60 then
+    if time() - (s.lookedAt or 0) >= LOOK_INTERVAL then
         s.lookedAt = time()
         UpdateRoster()
     end
@@ -650,10 +748,9 @@ local function OpenRoll(s, rk, key)
     s.rolls = s.rolls or {}
     local r = s.rolls[rk]
     if not r then
-        r = { key = key, t = math.max(time() - s.startedAt, 0), need = {}, greed = {} }
+        r = { key = key, t = math.max(time() - s.startedAt, 0), need = {}, greed = {}, pass = {}, num = {} }
         s.rolls[rk] = r
     end
-    r.key, r.pass, r.num = r.key or key, r.pass or {}, r.num or {}
     return r
 end
 
@@ -724,32 +821,43 @@ local function RollStats(s, name)
     return st
 end
 
+ns.HIGH_ROLL, ns.LOW_ROLL = 95, 5 -- the rolls the bingo card calls high and low
+
 local function HandleRoll(text)
     local s = db.active
     if not Tracking(s) then return end
     local kind, method, name, key, roll, rollID = ParseRoll(text)
     if not kind then return end
     local rk = rollID and ("#" .. rollID) or key
+    if kind == "allpass" then -- nobody wanted it: the roll is over
+        if s.rolls then s.rolls[rk] = nil end
+        return
+    end
     local r = OpenRoll(s, rk, key)
-    if roll then
+    -- A number can come twice: with the roll, and again with the win.
+    if roll and r.num[name] == nil then
         local st = RollStats(s, name)
         st.sum, st.n = st.sum + roll, st.n + 1
         if not st.high or roll > st.high then st.high = roll end
         if not st.low or roll < st.low then st.low = roll end
         r.num[name] = roll
         -- Remembered for the bingo card.
-        if roll >= 95 then s.rollHigh = true end
-        if roll <= 5 then s.rollLow = true end
+        if roll >= ns.HIGH_ROLL then s.rollHigh = true end
+        if roll <= ns.LOW_ROLL then s.rollLow = true end
     end
     if kind == "select" then
         r[method][name] = true
     elseif kind == "won" then
         RecordRollWin(s, name, key, method, rk)
-    elseif kind == "pass" then
+    elseif kind == "pass" or kind == "autopass" then
         if not r.pass[name] then
             r.pass[name] = true
-            local st = RollStats(s, name)
-            st.passes = st.passes + 1
+            -- A pass the game made for a player who cannot use the item is
+            -- no generosity: only chosen passes count.
+            if kind == "pass" then
+                local st = RollStats(s, name)
+                st.passes = st.passes + 1
+            end
         end
     end
     if ns.BingoCheck then ns.BingoCheck() end
@@ -769,8 +877,8 @@ end
 -- Summary used by the window
 ----------------------------------------------------------------------
 
--- The value used for totals, shares and sorting. `e.noAH` is set by
--- Summarize when the player has switched this item to its vendor price.
+-- The value used for totals, shares and sorting. `e.noAH` (see
+-- MarkVendorOnly) says the player switched this item to its vendor price.
 local function EntryMarket(e)
     if db.options.valueMode == "vendor" or e.noAH then return e.vendor * e.count end
     return (e.ah or e.vendor) * e.count
@@ -810,7 +918,7 @@ function ns.Summarize(s, needOnly)
                      all = { items = {} } }
         for _, real in pairs(p.items) do
             if not real.resolved then FillItem(real) end
-            real.noAH = (s.vendorOnly and s.vendorOnly[ItemKey(real)]) or nil
+            MarkVendorOnly(s, real)
             if real.count > 0 and o.cats[real.cat] ~= false then
                 local unit = EntryMarket(real) / real.count
                 ps.needValue = ps.needValue + unit * (real.need or 0)
@@ -818,7 +926,7 @@ function ns.Summarize(s, needOnly)
                 if unit > ps.bestValue then ps.bestValue, ps.bestLink = unit, real.link end
                 ps.needWins = ps.needWins + (real.need or 0)
                 ps.greedWins = ps.greedWins + (real.greed or 0)
-                if (real.quality or 0) > ps.bestQuality then ps.bestQuality = real.quality end
+                ps.bestQuality = math.max(ps.bestQuality, Quality(real))
             end
             local e = real
             if needOnly then
@@ -879,7 +987,7 @@ function ns.Summarize(s, needOnly)
     end
     if o.selfFirst and mode ~= "podium" then
         for i, p in ipairs(out.players) do
-            if p.name == PLAYER_NAME then
+            if p.name == ns.Me(s) then
                 table.insert(out.players, 1, table.remove(out.players, i))
                 break
             end
@@ -920,10 +1028,18 @@ end
 -- fit.
 ----------------------------------------------------------------------
 
+-- Thresholds. Each is quoted in its award's `how` text: change both.
 local NINJA_MIN = 10000   -- copper: Need wins below this never make a Ninja
 local JACKPOT_MIN = 10000 -- copper: smallest item worth calling a jackpot
 local FARMER_MIN = 1000   -- copper: profession materials below this do not make a Farmer
 local DICE_MIN_ROLLS = 3  -- rolls needed before the dice awards apply
+local ONEHIT_MIN_ITEMS = 3   -- items needed for One-Hit Wonder
+local PACKMULE_MIN_ITEMS = 10
+local HOARDER_MIN_JUNK = 5
+local VENDOR_MIN_ITEMS = 4   -- items needed for Vendor's Friend
+local VENDOR_SHARE = 0.95    -- and this much of their loot's value is its vendor value
+local ERRAND_MIN_QUEST = 3
+local EPIC = 4               -- item quality
 
 -- How well `v` fits a scale on which `lo` just qualifies and `hi` is
 -- remarkable: 0.3 at `lo`, 1 at `hi`, and on up to about 2 for values far
@@ -971,7 +1087,9 @@ local AWARDS = {
           if p.bestValue < g.best or p.bestValue < JACKPOT_MIN then return end
           return Fit(p.bestValue / g.total, 0, 0.3)
       end,
-      detail = function(p) return { text = "Best single item of the run", link = p.bestLink, amount = p.bestValue } end },
+      detail = function(p)
+          return { text = "Best single item of the run", link = p.bestLink, amount = p.bestValue }
+      end },
     { key = "lionshare", title = "Lion's Share", icon = "Ability_Druid_CatForm", minPlayers = 3,
       how = "Topped the loot, far above an equal share: 36% or more in a group of five.",
       -- Where their share sits between an equal one (0) and everything (1).
@@ -999,7 +1117,7 @@ local AWARDS = {
     { key = "onehit", title = "One-Hit Wonder", icon = "INV_Misc_Gem_Ruby_01",
       how = "Got 70% or more of their loot from a single item (3 items or more).",
       fit = function(p)
-          if p.count < 3 or p.market <= 0 then return end
+          if p.count < ONEHIT_MIN_ITEMS or p.market <= 0 then return end
           return Fit(p.bestValue / p.market, 0.7, 1)
       end,
       detail = function(p)
@@ -1008,11 +1126,11 @@ local AWARDS = {
       end },
     { key = "purple", title = "Purple Rain", icon = "INV_Misc_Gem_Amethyst_02",
       how = "Looted an epic.",
-      fit = function(p) return p.bestQuality >= 4 and 1 or nil end,
+      fit = function(p) return p.bestQuality >= EPIC and 1 or nil end,
       detail = function(p)
           local best
           for _, e in ipairs(p.all.items) do
-              if (e.quality or 0) >= 4 and (not best or e.vendor > best.vendor) then best = e end
+              if Quality(e) >= EPIC and (not best or e.vendor > best.vendor) then best = e end
           end
           return { text = "Looted an epic", link = best and best.link }
       end },
@@ -1031,7 +1149,7 @@ local AWARDS = {
     { key = "packmule", title = "Pack Mule", icon = "INV_Misc_Bag_07",
       how = "Picked up the most items, well above average, yet ended below an equal share.",
       fit = function(p, _, g)
-          if p.count < 10 or p.count < g.count or p.market >= g.equal then return end
+          if p.count < PACKMULE_MIN_ITEMS or p.count < g.count or p.market >= g.equal then return end
           return Fit(p.count / (g.items / g.n), 1.3, 2.5)
       end,
       detail = function(p) return { text = ("%d items, and still below an equal share"):format(p.count) } end },
@@ -1039,7 +1157,7 @@ local AWARDS = {
       how = "Picked up 5 or more pieces of junk, 1.5 times the group's average or more.",
       fit = function(p, _, g)
           local junk = p.cats.junk and p.cats.junk.count or 0
-          if junk < 5 then return end
+          if junk < HOARDER_MIN_JUNK then return end
           return Fit(junk / (g.junk / g.n), 1.5, 3)
       end,
       detail = function(p) return { text = ("Picked up %d pieces of junk"):format(p.cats.junk.count) } end },
@@ -1047,7 +1165,7 @@ local AWARDS = {
       how = "Got nothing worth auctioning, in a run where others did (4 items or more).",
       fit = function(p, _, g)
           if db.options.valueMode == "vendor" or not ns.HasPriceSource() then return end
-          if p.count < 4 or p.market <= 0 or p.vendor < p.market * 0.95 then return end
+          if p.count < VENDOR_MIN_ITEMS or p.market <= 0 or p.vendor < p.market * VENDOR_SHARE then return end
           -- The more of the run's value is above vendor price, the more it stands out.
           return Fit(1 - g.vendor / g.total, 0.2, 0.6)
       end,
@@ -1056,7 +1174,7 @@ local AWARDS = {
       how = "Picked up 3 or more quest items, 1.5 times the group's average or more.",
       fit = function(p, _, g)
           local quest = p.cats.quest and p.cats.quest.count or 0
-          if quest < 3 then return end
+          if quest < ERRAND_MIN_QUEST then return end
           return Fit(quest / (g.quest / g.n), 1.5, 3)
       end,
       detail = function(p) return { text = ("Picked up %d quest items"):format(p.cats.quest.count) } end },
@@ -1071,11 +1189,11 @@ local AWARDS = {
     { key = "hotdice", title = "Loaded Dice", icon = "INV_Misc_Dice_02",
       how = "Rolled well above average: about 60 over 15 rolls, or 68 over 5.",
       fit = function(_, x) return x.rolls >= DICE_MIN_ROLLS and Fit(x.luck, 1.3, 2.6) or nil end,
-      detail = function(_, x) return { text = ("Average roll of %d over %d rolls"):format(x.avgRoll, x.rolls) } end },
+      detail = function(_, x) return { text = ("Average roll of %.0f over %d rolls"):format(x.avgRoll, x.rolls) } end },
     { key = "colddice", title = "Cursed Dice", icon = "INV_Misc_Dice_01",
       how = "Rolled well below average: about 41 over 15 rolls, or 33 over 5.",
       fit = function(_, x) return x.rolls >= DICE_MIN_ROLLS and Fit(-x.luck, 1.3, 2.6) or nil end,
-      detail = function(_, x) return { text = ("Average roll of %d over %d rolls"):format(x.avgRoll, x.rolls) } end },
+      detail = function(_, x) return { text = ("Average roll of %.0f over %d rolls"):format(x.avgRoll, x.rolls) } end },
     { key = "window", title = "Window Shopper", icon = "INV_Misc_Spyglass_02",
       how = "Rolled on 4 or more items and won none.",
       fit = function(p, x)
@@ -1092,7 +1210,8 @@ local AWARDS = {
 local TOURIST = { key = "tourist", title = "Tourist", icon = "INV_Misc_Map_01",
                   how = "Fitted nothing else." }
 
--- Every award there is: a list of { key, title, icon, how }.
+-- Every award there is, in the order of the guide. Each has key, title,
+-- icon and how (the rest of an entry is for working the awards out).
 function ns.AwardGuide()
     local list = {}
     for _, def in ipairs(AWARDS) do list[#list + 1] = def end
@@ -1169,6 +1288,18 @@ function ns.AwardScores(s, sum)
     return out
 end
 
+-- A run that is still going: nothing about it is final.
+function ns.InProgress(s)
+    return s == db.active and not s.leftAt
+end
+
+-- The awards to show for a run: none while it is still going, and none
+-- when awards are switched off.
+function ns.RunAwards(s, sum)
+    if not db.options.showAwards or ns.InProgress(s) then return {} end
+    return ns.Awards(s, sum)
+end
+
 -- Returns [playerName] = award, one for every player of the run. An award
 -- is { key, title, icon, how, text, link, amount }. `sum` must be a full
 -- summary (not the Need-only view). Empty for a run with fewer than two
@@ -1225,7 +1356,7 @@ end
 local function RunStats(s, sum)
     local st = { group = sum.market, mine = 0, jackpot = 0, kills = s.kills or 0 }
     for _, p in ipairs(sum.players) do
-        if p.name == PLAYER_NAME then st.mine = p.market end
+        if p.name == ns.Me(s) then st.mine = p.market end
         if p.bestValue > st.jackpot then
             st.jackpot, st.jackpotLink, st.jackpotBy = p.bestValue, p.bestLink, p.name
         end
@@ -1245,7 +1376,7 @@ function CommitRun(s)
     -- Regulars
     local awards = ns.Awards(s, sum)
     for _, p in ipairs(sum.players) do
-        if p.name ~= PLAYER_NAME then
+        if p.name ~= ns.Me(s) then
             local who = db.people[p.name]
             if not who then
                 who = { runs = 0, value = 0, lucky = 0, ninja = 0 }
@@ -1308,14 +1439,21 @@ end
 --     groupPct, minePct, priorRuns }  (every field optional)
 function ns.RunInsights(s, sum)
     local out = { duration = ns.RunDuration(s) }
-    if out.duration and out.duration >= 60 then
+    if out.duration and out.duration >= ns.MIN_TIMED_RUN then
         out.perHour = sum.market * 3600 / out.duration
     end
-    local inProgress = s == db.active and not s.leftAt
     local rec = s.instanceID and db.records[s.instanceID]
-    if not rec or inProgress or s.example then return out end
+    -- Compared with the records: a run that is counted in them, or the one
+    -- that is over and about to be. Not one still going, and not an old run
+    -- the records never saw.
+    if not rec or ns.InProgress(s) or s.example or (not s.recorded and s ~= db.active) then return out end
 
     local st = RunStats(s, sum)
+    if s.recorded and s.stats then
+        -- As it was counted: today's options and prices must not move an
+        -- old run against its own average.
+        st.group, st.mine = s.stats.group, s.stats.mine
+    end
     local priorRuns, avgGroup, avgMine
     if s.recorded then
         -- Already counted in the records: leave it out of its own average.
@@ -1367,7 +1505,10 @@ function handlers.ADDON_LOADED(name)
     db.roles = db.roles or {}     -- [role] and
     db.classes = db.classes or {} -- [class] = how loot shares turn out
     db.options = db.options or {}
-    db.options.compact = nil -- an option that no longer exists: rows are always compact
+    -- Left behind by features that no longer exist.
+    db.options.compact, db.options.popupBoss = nil, nil
+    db.finalBoss, db.bossCount = nil, nil
+    if db.theme ~= "modern" then db.theme = "classic" end
     for key, value in pairs(ns.OPTION_DEFAULTS) do
         if type(value) == "table" then
             if type(db.options[key]) ~= "table" then db.options[key] = {} end
@@ -1388,14 +1529,12 @@ function handlers.PLAYER_LOGIN()
     PLAYER_NAME = GetUnitName("player", true) or UnitName("player")
     ns.playerName = PLAYER_NAME
     PLAYER_CLASS = select(2, UnitClass("player"))
-    -- Earlier versions knew you by your first name only, and so listed
-    -- you among the people you have run with.
-    local first = UnitName("player")
-    local ghost = first and first ~= PLAYER_NAME and db.people[first]
-    if ghost and ghost.class == PLAYER_CLASS then db.people[first] = nil end
-    -- Runs recorded before the long-term figures existed are counted now.
-    local ok, err = pcall(ns.Backfill)
-    if not ok then Print("could not update the statistics: " .. tostring(err)) end
+    -- People met in a single run, long ago, are forgotten: with random
+    -- groups the list would otherwise grow for ever.
+    local cutoff = time() - FORGET_AFTER
+    for name, who in pairs(db.people) do
+        if (who.runs or 0) <= 1 and (who.last or 0) < cutoff then db.people[name] = nil end
+    end
 end
 
 function handlers.PLAYER_ENTERING_WORLD(isLogin, isReload)
@@ -1437,9 +1576,15 @@ end
 -- Boss kills are counted, to tell a full clear from an abandoned run when
 -- comparing run times, and timed, for the timeline and to tell boss loot
 -- from the rest.
-function handlers.ENCOUNTER_END(_, encounterName, _, _, success)
+function handlers.ENCOUNTER_END(encounterID, encounterName, _, _, success)
     local s = db.active
-    if Tracking(s) and (success == 1 or success == true) then
+    if not Tracking(s) or issecret(success) or not (success == 1 or success == true) then return end
+    -- Each boss counts once, so that two passes through a dungeon recorded
+    -- as one run do not read as a fuller clear.
+    local id = not issecret(encounterID) and encounterID or nil
+    s.killed = s.killed or {}
+    if id == nil or not s.killed[id] then
+        if id ~= nil then s.killed[id] = true end
         s.kills = (s.kills or 0) + 1
         s.bosses = s.bosses or {}
         s.bosses[#s.bosses + 1] = {
@@ -1494,9 +1639,8 @@ end
 -- Pins or unpins a run. Returns true when it did.
 function ns.TogglePin(s)
     if not IsStored(s) then return false end
-    s.pinned = (not s.pinned) or nil
-    ns.TrimHistory() -- an unpinned run counts towards the limit again
-    ns.Refresh()
+    s.pinned = (not s.pinned) or nil -- an unpinned run counts towards the limit again when the next run ends
+    ns.Rerender()
     return true
 end
 
@@ -1514,7 +1658,7 @@ function ns.DeleteRun(s)
             end
         end
     end
-    ns.Refresh()
+    ns.Rerender()
     return true
 end
 
@@ -1542,7 +1686,7 @@ function ns.AskDeleteRun(s)
         Print("This run is pinned. Unpin it first.")
     else
         deleteTarget = s
-        StaticPopup_Show("FAIRSHARE_DELETE_RUN", (s.name or "Run") .. ", " .. date("%Y-%m-%d %H:%M", s.startedAt))
+        StaticPopup_Show("FAIRSHARE_DELETE_RUN", (s.name or "Run") .. ", " .. ns.DateText(s.startedAt))
     end
 end
 
@@ -1583,7 +1727,7 @@ SlashCmdList.FAIRSHARE = function(msg)
             or cmd == "regulars" or cmd == "records" or cmd == "awards" then
         ns.ShowBrowse(cmd)
     elseif cmd == "details" then
-        ns.OpenShow(ns.ViewedRun(), false, "timeline")
+        ns.OpenShow(ns.ViewedRun())
     elseif cmd == "podium" or cmd == "paper" or cmd == "timeline" or cmd == "rolls" or cmd == "numbers" then
         ns.OpenShow(ns.ViewedRun(), false, cmd)
     elseif cmd == "export" then
@@ -1608,8 +1752,8 @@ SlashCmdList.FAIRSHARE = function(msg)
         Print("Manual run started. Use /fs stop to end it.")
     elseif cmd == "stop" then
         if db.active then
-            PrintSummary(db.active)
             FinalizeSession()
+            CheckZone() -- a run ended by hand inside a dungeon: tracking goes on with a new one
             Print("Run ended.")
             ns.ShowWindow()
         else
@@ -1627,7 +1771,7 @@ SlashCmdList.FAIRSHARE = function(msg)
     elseif cmd == "clear" then
         local left = ClearRuns()
         CheckZone() -- keep tracking if this was typed inside a dungeon
-        ns.Refresh()
+        ns.Rerender()
         if left > 0 then
             Print(("Runs deleted, except %d pinned."):format(left))
         else

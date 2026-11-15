@@ -27,26 +27,8 @@ local MAX_ROWS = 300
 local MAX_COLS = 8
 local MIN_QUERY = 2 -- letters needed before the item search runs
 
-local b = CreateFrame("Frame", "FairShareBrowseFrame", UIParent)
-b:SetSize(WIDTH, HEIGHT)
+local b, ui, title, skins = ns.MakeWindow("FairShareBrowseFrame", WIDTH, HEIGHT, "DIALOG", true)
 b:SetPoint("CENTER", 0, -30)
-b:SetFrameStrata("DIALOG")
-b:SetMovable(true)
-b:EnableMouse(true)
-b:SetClampedToScreen(true)
-b:RegisterForDrag("LeftButton")
-b:SetScript("OnDragStart", b.StartMoving)
-b:SetScript("OnDragStop", b.StopMovingOrSizing)
-b:Hide()
-tinsert(UISpecialFrames, "FairShareBrowseFrame")
-
-local skins = ns.BuildSkins(b, function() b:Hide() end)
-
-local ui = CreateFrame("Frame", nil, b)
-ui:SetAllPoints()
-ui:SetFrameLevel(b:GetFrameLevel() + 10)
-
-local title = ui:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 
 local mode = "dungeons"
 local sortCol, sortDesc = {}, {} -- per page: the column sorted by, and its direction
@@ -56,18 +38,32 @@ local Refresh
 -- Pages
 ----------------------------------------------------------------------
 
-local function DateText(t)
-    return t and date("%Y-%m-%d %H:%M", t) or "-"
-end
+local DateText, Signed = ns.DateText, ns.Signed
 
 local function Matches(text, query)
     return (text or ""):lower():find(query, 1, true) ~= nil
 end
 
--- "+1.6" in green, "-0.8" in red
-local function Signed(v)
-    if math.abs(v) < 0.05 then return "0.0" end
-    return ("%s%+.1f|r"):format(v > 0 and "|cff40d040" or "|cffe05050", v)
+-- The Runs page's figures for one run. Working them out means summarising
+-- the run, so they are kept while the panel is open, and thrown away when
+-- something could have changed them: the panel is opened, or everything
+-- is redrawn (an option, a pin, a deletion). A run that is not closed yet
+-- is worked out every time.
+local runFigures = setmetatable({}, { __mode = "k" })
+
+local function RunFigures(s)
+    local fig = runFigures[s]
+    if fig then return fig end
+    local sum = ns.Summarize(s)
+    local me = ns.Me(s)
+    fig = { market = sum.market, mine = 0, duration = ns.RunDuration(s), fair = ns.Fairness(sum) }
+    for _, p in ipairs(sum.players) do
+        if p.name == me then fig.mine = p.market end
+        if p.rank == 1 then fig.top, fig.topClass = p.name, p.class end
+    end
+    fig.share = sum.market > 0 and fig.mine / sum.market * 100 or 0
+    if s ~= ns.db.active then runFigures[s] = fig end
+    return fig
 end
 
 local PAGES = {}
@@ -165,29 +161,21 @@ PAGES.runs = {
                 end
             end
             if wanted then
-                local sum = ns.Summarize(s)
-                local mine, top = 0, nil
-                for _, p in ipairs(sum.players) do
-                    if p.name == ns.playerName then mine = p.market end
-                    if p.rank == 1 then top = p end
-                end
-                local duration = ns.RunDuration(s)
-                local fair = ns.Fairness(sum)
-                local share = sum.market > 0 and mine / sum.market * 100 or 0
+                local fig = RunFigures(s)
                 rows[#rows + 1] = {
                     run = s, pinned = s.pinned,
                     cells = {
                         DateText(s.startedAt),
                         (s.name or "Run") .. (s.pinned and "  |cffffd100pinned|r" or ""),
-                        duration and ns.Duration(duration) or "-",
-                        ns.Money(sum.market),
-                        ns.Money(mine),
-                        ("%d%%"):format(share + 0.5),
-                        fair and tostring(fair) or "-",
-                        top and ns.ClassColored(ns.DisplayName(top.name), top.class) or "-",
+                        fig.duration and ns.Duration(fig.duration) or "-",
+                        ns.Money(fig.market),
+                        ns.Money(fig.mine),
+                        ("%d%%"):format(fig.share + 0.5),
+                        fig.fair and tostring(fig.fair) or "-",
+                        fig.top and ns.ClassColored(ns.DisplayName(fig.top), fig.topClass) or "-",
                     },
-                    keys = { s.startedAt or 0, s.name or "Run", duration, sum.market, mine, share, fair,
-                             top and top.name or "" },
+                    keys = { s.startedAt or 0, s.name or "Run", fig.duration, fig.market, fig.mine, fig.share,
+                             fig.fair, fig.top or "" },
                 }
             end
         end
@@ -206,6 +194,7 @@ PAGES.luck = {
         { "Wins", 60, "RIGHT" }, { "Difference", 90, "RIGHT" }, { "Avg roll", 90, "RIGHT" },
         { "Out of", 80, "RIGHT" },
     },
+    defaultSort = 2,
     rows = function()
         local rows = {}
         local function add(label, who, sortName)
@@ -319,7 +308,7 @@ local ROLE_NAMES = { { "TANK", "Tank" }, { "HEALER", "Healer" }, { "DAMAGER", "D
 PAGES.roles = {
     title = "Roles",
     blurb = "Average share by role and class. 100% is an equal share. Groups of 3 or more.",
-    cols = { { "Role / class", 0 }, { "Players", 90, "RIGHT" }, { "Average share", 130, "RIGHT" } },
+    cols = { { "Role / class", 0 }, { "Counted", 90, "RIGHT" }, { "Average share", 130, "RIGHT" } },
     rows = function()
         local rows = {}
         local function add(label, row)
@@ -370,7 +359,7 @@ PAGES.search = {
         for _, s in ipairs(ns.AllRuns()) do -- newest first already
             for name, p in pairs(s.players) do
                 for _, e in pairs(p.items) do
-                    if #rows < MAX_ROWS and ns.ItemName(e):lower():find(query, 1, true) then
+                    if ns.ItemName(e):lower():find(query, 1, true) then
                         rows[#rows + 1] = {
                             link = e.link, run = s,
                             cells = {
@@ -541,20 +530,7 @@ end
 ----------------------------------------------------------------------
 
 local function ApplyTheme()
-    local flat = ns.db.theme == "modern"
-    local active = flat and skins.modern or skins.classic
-    for _, skin in pairs(skins) do skin:SetShown(skin == active) end
-
-    title:ClearAllPoints()
-    if flat then
-        title:SetFontObject("GameFontHighlightLarge")
-        title:SetPoint("TOPLEFT", 14, -10)
-    else
-        title:SetFontObject("GameFontNormal")
-        title:SetPoint("TOP", 0, -5)
-    end
-
-    local top = flat and -46 or -30
+    local flat, top = ns.ApplyWindowTheme(skins, title)
     tabs[1]:ClearAllPoints()
     tabs[1]:SetPoint("TOPLEFT", 12, top)
     for _, tab in ipairs(tabs) do tab:SetFlat(flat) end
@@ -595,7 +571,6 @@ local function Sorted(data, col, desc)
         if kx == ky then return x.order < y.order end
         if kx == nil then return false end
         if ky == nil then return true end
-        if type(kx) ~= type(ky) then kx, ky = tostring(kx), tostring(ky) end
         if desc then return kx > ky end
         return kx < ky
     end)
@@ -634,7 +609,8 @@ function Refresh()
     end
     if #data > MAX_ROWS then
         for i = #data, MAX_ROWS + 1, -1 do data[i] = nil end
-        data[#data + 1] = { note = ("First %d rows shown. Use the filter to narrow down."):format(MAX_ROWS) }
+        data[#data + 1] = { note = ("First %d rows shown. %s"):format(MAX_ROWS,
+            page.filter and "Use the filter to narrow down." or "Sort by another column to see others.") }
     end
 
     -- Column positions: fixed widths, and one column that takes the rest.
@@ -707,13 +683,23 @@ function Refresh()
     content:SetHeight(math.max(#data * ROW_H, 1))
 end
 
-b:SetScript("OnShow", function() Refresh() end)
+b:SetScript("OnShow", function()
+    wipe(runFigures)
+    Refresh()
+end)
+
+ns.OnRerender(function()
+    wipe(runFigures)
+    if b:IsShown() then Refresh() end
+end)
 
 -- page: one of the page names at the top of this file. query: text for
 -- the page's filter box.
 function ns.ShowBrowse(page, query)
-    if PAGES[page] then mode = page end
-    if query and query ~= "" then search:SetText(query) end
+    if PAGES[page] and (page ~= mode or query) then
+        mode = page
+        search:SetText(query or "") -- a filter belongs to the page it was typed on
+    end
     if b:IsShown() then
         Refresh()
     else

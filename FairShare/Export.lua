@@ -6,26 +6,9 @@ local _, ns = ...
 
 local WIDTH, HEIGHT = 640, 420
 
-local ex = CreateFrame("Frame", "FairShareExportFrame", UIParent)
-ex:SetSize(WIDTH, HEIGHT)
+local ex, ui, title, skins = ns.MakeWindow("FairShareExportFrame", WIDTH, HEIGHT, "FULLSCREEN_DIALOG", true)
 ex:SetPoint("CENTER", 0, 10)
-ex:SetFrameStrata("FULLSCREEN_DIALOG")
-ex:SetMovable(true)
-ex:EnableMouse(true)
-ex:SetClampedToScreen(true)
-ex:RegisterForDrag("LeftButton")
-ex:SetScript("OnDragStart", ex.StartMoving)
-ex:SetScript("OnDragStop", ex.StopMovingOrSizing)
-ex:Hide()
-tinsert(UISpecialFrames, "FairShareExportFrame")
 
-local skins = ns.BuildSkins(ex, function() ex:Hide() end)
-
-local ui = CreateFrame("Frame", nil, ex)
-ui:SetAllPoints()
-ui:SetFrameLevel(ex:GetFrameLevel() + 10)
-
-local title = ui:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 local hint = ui:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 hint:SetJustifyH("LEFT")
 
@@ -44,20 +27,7 @@ boxBg:SetPoint("TOPLEFT", scroll, -4, 4)
 boxBg:SetPoint("BOTTOMRIGHT", scroll, 4, -4)
 
 local function ApplyTheme()
-    local flat = ns.db.theme == "modern"
-    local active = flat and skins.modern or skins.classic
-    for _, skin in pairs(skins) do skin:SetShown(skin == active) end
-
-    title:ClearAllPoints()
-    if flat then
-        title:SetFontObject("GameFontHighlightLarge")
-        title:SetPoint("TOPLEFT", 14, -10)
-    else
-        title:SetFontObject("GameFontNormal")
-        title:SetPoint("TOP", 0, -5)
-    end
-
-    local top = flat and -46 or -32
+    local _, top = ns.ApplyWindowTheme(skins, title)
     hint:ClearAllPoints()
     hint:SetPoint("TOPLEFT", 16, top)
     hint:SetPoint("TOPRIGHT", -16, top)
@@ -88,3 +58,7 @@ function ns.ShowExport(kind, s)
     box:SetFocus()
     box:HighlightText()
 end
+
+ns.OnRerender(function()
+    if ex:IsShown() then ApplyTheme() end
+end)

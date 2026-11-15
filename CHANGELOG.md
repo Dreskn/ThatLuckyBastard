@@ -2,8 +2,6 @@
 
 ## 0.2.0
 
-Not released yet.
-
 Recording
 
 - The time of every pickup, every roll in full (who rolled what, who won) and the time of every boss kill are now recorded.
@@ -39,7 +37,7 @@ Other
 - Players keep a picture after the group is gone: their race, sex and gear are saved during the run, and a stand-in portrait or model is built from them.
 - Quest items have their own category, always shown last.
 - The number of runs to keep can be unlimited.
-- The Retail theme is gone; Classic and Modern remain.
+- The Retail theme and the "Compact rows" option are gone: Classic and Modern remain, and rows are always compact.
 - Main window toolbar: "Need rolls only", "Run details", "Statistics" and "Bingo".
 - A test rig in `tests/`.
 

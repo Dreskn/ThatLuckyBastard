@@ -15,6 +15,11 @@ local THEMES = {
                 flat = true },
 }
 
+-- The theme in force: the saved one, or Classic if that is not a theme.
+local function ThemeName()
+    return THEMES[ns.db.theme] and ns.db.theme or "classic"
+end
+
 local CATS = {
     { key = "epic",     label = "Epic BoE",                      short = "Epic BoE",    color = { 0.64, 0.21, 0.93 } },
     { key = "rare",     label = "Blue BoE",                      short = "Blue BoE",    color = { 0.20, 0.55, 1.00 } },
@@ -30,7 +35,6 @@ local cols = {}
 
 -- Podium mode: gold, silver, bronze, then grey.
 local MEDALS = { { 1.00, 0.82, 0.00 }, { 0.78, 0.78, 0.82 }, { 0.80, 0.50, 0.20 }, { 0.50, 0.50, 0.50 } }
-local RANK_LABELS = { "1st", "2nd", "3rd" }
 
 local expanded = {}   -- [playerName] = true
 local viewIndex = 1   -- 1 = current / most recent run
@@ -43,46 +47,54 @@ local currentRun      -- the run being displayed
 local needOnly = false -- show only what was won on Need rolls
 local Render
 
+-- Colour codes used all over the window.
+local GREY, DIM = "|cff909090", "|cff8a8a8a" -- secondary text; subtotals
+local GOOD, BAD = "|cff40d040", "|cffe05050" -- above / below
+
+-- Appends one unit to a money text: zero-padded when it follows a larger
+-- unit ("3g 05s"), in `color` if given.
+local function AddUnit(text, value, color, suffix)
+    local part = text and ("%02d"):format(value) or tostring(value)
+    if color then part = color .. part .. "|r" end
+    return (text and (text .. " ") or "") .. part .. suffix
+end
+
 -- Formats copper as gold / silver / copper, honouring the "show silver"
 -- and "show copper" options. A unit that is switched off is still shown
--- when it is the largest one in the amount, so nothing reads as zero.
+-- when it is the largest one in the amount, so nothing reads as zero; and
+-- copper is only shown next to silver, never straight after gold.
 local function MoneyText(c, colored)
     c = math.floor((c or 0) + 0.5)
     if c <= 0 then return "-" end
     local o = ns.db.options
     local g, s, k = math.floor(c / 10000), math.floor(c % 10000 / 100), c % 100
-    local parts = {}
-    local function unit(value, pad, color, suffix)
-        local text = pad and ("%02d"):format(value) or tostring(value)
-        if colored then text = color .. text .. "|r" end
-        parts[#parts + 1] = text .. suffix
-    end
+    local text
     if g > 0 then
         local gs = BreakUpLargeNumbers and BreakUpLargeNumbers(g) or tostring(g)
-        parts[1] = (colored and ("|cffffd700" .. gs .. "|r") or gs) .. "g"
+        text = (colored and ("|cffffd700" .. gs .. "|r") or gs) .. "g"
     end
     if (g > 0 and o.showSilver) or (g == 0 and s > 0) then
-        unit(s, g > 0, "|cffc7c7cf", "s")
+        text = AddUnit(text, s, colored and "|cffc7c7cf", "s")
     end
-    if (#parts > 0 and o.showCopper) or #parts == 0 then
-        unit(k, #parts > 0, "|cffeda55f", "c")
+    if not text or (o.showCopper and (g == 0 or o.showSilver)) then
+        text = AddUnit(text, k, colored and "|cffeda55f", "c")
     end
-    return table.concat(parts, " ")
+    return text
 end
 
 local function Money(c)
     local text = MoneyText(c, true)
-    if text == "-" then return "|cff909090-|r" end
+    if text == "-" then return GREY .. "-|r" end
     return text
 end
 
 -- Subtotals are shown in flat grey so they do not read as item values.
-local function MoneyGrey(c)
-    return "|cff8a8a8a" .. MoneyText(c, false) .. "|r"
+local function Grey(text)
+    return DIM .. text .. "|r"
 end
 
-local function Grey(text)
-    return "|cff8a8a8a" .. text .. "|r"
+local function MoneyGrey(c)
+    return Grey(MoneyText(c, false))
 end
 
 local function CatColored(text, cat)
@@ -106,13 +118,13 @@ end
 --   "ah"   (blue)   the value is an auction price
 --   "noah" (orange) the item could be auctioned but no price is known,
 --                   so the vendor price was used
+--   "off"  (grey)   an auction price is known but the player switched
+--                   this item to its vendor price (right-click)
 -- Items that cannot be auctioned, and everything in vendor-only mode,
 -- get no marker.
 ----------------------------------------------------------------------
 
 local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
---   "off"  (grey)   an auction price is known but the player switched
---                   this item to its vendor price (right-click)
 local MARK_COLORS = { ah = { 0.35, 0.70, 1.00 }, noah = { 1.00, 0.55, 0.15 }, off = { 0.55, 0.55, 0.55 } }
 local LEGEND = "|cff59b3ffBlue dot|r: auction price    "
     .. "|cffff8c26Orange|r: no auction price, vendor used    "
@@ -180,27 +192,46 @@ end
 -- Over / under an equal split, as coloured text.
 local function DiffText(diff)
     if math.abs(diff) < 1 then return "" end
-    return (diff > 0 and "|cff40d040+|r" or "|cffe05050-|r") .. Money(math.abs(diff))
+    return (diff > 0 and (GOOD .. "+|r") or (BAD .. "-|r")) .. Money(math.abs(diff))
+end
+
+-- Answers that cannot change while the window is being drawn are worked
+-- out once per redraw and kept here: who is in the group, and how names
+-- are shown. Empty outside a redraw, so other windows always get fresh
+-- answers.
+local drawing, drawCache = false, {}
+
+-- "+1.6" in green, "-0.8" in red, "0.0" plain.
+local function Signed(v)
+    if math.abs(v) < 0.05 then return "0.0" end
+    return ("%s%+.1f|r"):format(v > 0 and GOOD or BAD, v)
 end
 
 -- Whether the game is set to show second names (Options > Nameplates >
 -- My Secondary Name). Assumed on when the client cannot tell us.
 local function GameShowsSurname()
+    if drawCache.surname ~= nil then return drawCache.surname end
+    local shown = true
     local fn = C_PlayerInfo and C_PlayerInfo.ShouldDisplaySurname
     if fn then
-        local ok, shown = pcall(fn)
-        if ok and shown ~= nil and not issecret(shown) then return shown and true or false end
+        local ok, value = pcall(fn)
+        if ok and value ~= nil and not issecret(value) then shown = value and true or false end
     end
-    return true
+    if drawing then drawCache.surname = shown end
+    return shown
 end
 
 -- The name to show for a player. Names are stored in full ("First Second"
 -- or "First-Second"); the nameStyle option decides whether the second
 -- name is displayed.
+local function FirstName(name)
+    return name:match("^([^%s%-]+)") or name
+end
+
 local function DisplayName(name)
     local style = ns.db.options.nameStyle
     if style == "full" or (style ~= "first" and GameShowsSurname()) then return name end
-    return name:match("^([^%s%-]+)") or name
+    return FirstName(name)
 end
 
 local function ClassColored(name, class)
@@ -211,16 +242,22 @@ local function ClassColored(name, class)
     return name
 end
 
+-- Every run the window can show, newest first: the real ones, then the
+-- example runs.
 local function Runs()
-    local t = {}
-    if ns.db.active then t[1] = ns.db.active end
-    for _, s in ipairs(ns.db.history) do t[#t + 1] = s end
-    for _, s in ipairs(ns.exampleRuns) do t[#t + 1] = s end
-    return t
+    local runs = ns.AllRuns()
+    for _, s in ipairs(ns.exampleRuns) do runs[#runs + 1] = s end
+    return runs
+end
+
+-- Runs recorded by early versions, and the example runs, know you by your
+-- first name only.
+local function IsMe(name)
+    return name == ns.playerName or name == UnitName("player")
 end
 
 ----------------------------------------------------------------------
--- Base frame. The look comes from one of three "skin" child frames;
+-- Base frame. The look comes from one of two "skin" child frames;
 -- everything interactive lives on `ui`, which sits above the skins.
 ----------------------------------------------------------------------
 
@@ -264,7 +301,17 @@ f:Hide()
 tinsert(UISpecialFrames, "FairShareFrame")
 
 -- Builds the skins on a frame and returns them keyed by theme name.
--- Also used by the options panel so it follows the theme.
+-- Every window of the addon uses it, so they all follow the theme.
+-- Fades a texture from one transparency to another in one colour. Returns
+-- false where the client cannot do gradients, leaving the texture alone.
+local function SetFade(tex, orientation, r, g, b, fromAlpha, toAlpha)
+    if not (tex.SetGradient and CreateColor) then return false end
+    tex:SetColorTexture(1, 1, 1, 1)
+    return (pcall(tex.SetGradient, tex, orientation, CreateColor(r, g, b, fromAlpha), CreateColor(r, g, b, toAlpha)))
+end
+
+local TITLE_BAR_H = 36 -- the Modern skin's header
+
 local function BuildSkins(frame, onClose)
     local skins = {}
 
@@ -286,20 +333,15 @@ local function BuildSkins(frame, onClose)
         local bar = s:CreateTexture(nil, "BORDER")
         bar:SetPoint("TOPLEFT")
         bar:SetPoint("TOPRIGHT")
-        bar:SetHeight(36)
-        bar:SetColorTexture(1, 1, 1, 0.04)
+        bar:SetHeight(TITLE_BAR_H)
         -- The header carries the accent colour, strongest on the left
         -- where the name is. Plain where the client cannot do gradients.
-        if bar.SetGradient and CreateColor then
-            bar:SetColorTexture(1, 1, 1, 1)
-            local ok = pcall(bar.SetGradient, bar, "HORIZONTAL",
-                             CreateColor(ACCENT[1], ACCENT[2], ACCENT[3], 0.26),
-                             CreateColor(ACCENT[1], ACCENT[2], ACCENT[3], 0.03))
-            if not ok then bar:SetColorTexture(1, 1, 1, 0.04) end
+        if not SetFade(bar, "HORIZONTAL", ACCENT[1], ACCENT[2], ACCENT[3], 0.26, 0.03) then
+            bar:SetColorTexture(1, 1, 1, 0.04)
         end
         local line = s:CreateTexture(nil, "ARTWORK")
-        line:SetPoint("TOPLEFT", 0, -36)
-        line:SetPoint("TOPRIGHT", 0, -36)
+        line:SetPoint("TOPLEFT", 0, -TITLE_BAR_H)
+        line:SetPoint("TOPRIGHT", 0, -TITLE_BAR_H)
         line:SetHeight(2)
         line:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 0.9)
         local function Edge(p1, p2, w, h)
@@ -330,7 +372,47 @@ local function BuildSkins(frame, onClose)
     return skins
 end
 
-ns.BuildSkins = BuildSkins
+-- A movable window in the addon's skins, hidden to begin with. Returns
+-- the frame, the frame its content goes on (above the skins), its title
+-- text and its skins. `closeOnEscape` puts it among the windows Escape
+-- closes. The caller places it on the screen.
+function ns.MakeWindow(name, width, height, strata, closeOnEscape)
+    local w = CreateFrame("Frame", name, UIParent)
+    w:SetSize(width, height)
+    w:SetFrameStrata(strata)
+    w:SetMovable(true)
+    w:EnableMouse(true)
+    w:SetClampedToScreen(true)
+    w:RegisterForDrag("LeftButton")
+    w:SetScript("OnDragStart", w.StartMoving)
+    w:SetScript("OnDragStop", w.StopMovingOrSizing)
+    w:Hide()
+    if closeOnEscape then tinsert(UISpecialFrames, name) end
+    local windowSkins = BuildSkins(w, function() w:Hide() end)
+    local content = CreateFrame("Frame", nil, w)
+    content:SetAllPoints()
+    content:SetFrameLevel(w:GetFrameLevel() + 10)
+    return w, content, content:CreateFontString(nil, "OVERLAY", "GameFontNormal"), windowSkins
+end
+
+-- Shows the skin of the theme in force and places the title for it.
+-- Returns whether the theme is flat, and the y at which a window's own
+-- content starts under the title.
+function ns.ApplyWindowTheme(windowSkins, title)
+    local name = ThemeName()
+    local flat = THEMES[name].flat == true
+    for key, skin in pairs(windowSkins) do skin:SetShown(key == name) end
+    title:ClearAllPoints()
+    if flat then
+        title:SetFontObject("GameFontHighlightLarge")
+        title:SetPoint("TOPLEFT", 14, -10)
+    else
+        title:SetFontObject("GameFontNormal")
+        title:SetPoint("TOP", 0, -5)
+    end
+    return flat, flat and -46 or -30
+end
+
 local skins = BuildSkins(f, function() f:Hide() end)
 
 local ui = CreateFrame("Frame", nil, f)
@@ -339,9 +421,9 @@ ui:SetFrameLevel(f:GetFrameLevel() + 10)
 
 local title = ui:CreateFontString(nil, "OVERLAY", "GameFontNormal")
 
--- Column layout, measured from the right edge of a row.
+-- The list view's figure columns, measured from the right edge of a row.
 -- The gap to the right of "market" holds the price marker.
-local COLS = {
+local LIST_COLS = {
     { key = "share",  right = -4,   width = 46, header = "Share" },
     { key = "diff",   right = -56,  width = 92, header = "vs equal" },
     { key = "market", right = -160, width = 92, header = "Market" },
@@ -385,7 +467,7 @@ do
     h:SetPoint("BOTTOMLEFT", scroll, "TOPLEFT", 4, 4)
     h:SetText("Player / item")
     headers[1] = h
-    for _, col in ipairs(COLS) do
+    for _, col in ipairs(LIST_COLS) do
         h = ui:CreateFontString(nil, "OVERLAY", "GameFontNormalSmall")
         h:SetPoint("BOTTOMRIGHT", scroll, "TOPRIGHT", col.right, 4)
         h:SetWidth(col.width)
@@ -436,13 +518,7 @@ local function RowOnClick(self, button)
 end
 
 local AWARDS_HINT = "Click for all awards."
-local shownAwards = {} -- the awards of the run on show, by player name
-
--- A player's awards as a list. There is one per player today (none when
--- awards are off or the run is still going); the layout copes with more.
-local function AwardList(awards, name)
-    return { awards[name] }
-end
+local shownAwards = {} -- the award of each player of the run on show, by name
 
 local function AwardTitle(award)
     return "|cffffd100" .. award.title .. "|r" -- every award in the same gold: none is a verdict
@@ -461,12 +537,12 @@ local function AddAwardLines(award)
 end
 
 -- Tooltip for a player: what is known about them from earlier runs, and
--- with `awards` (a list) what they won in this one.
-local function PersonTooltip(owner, p, awards)
+-- with `award` what they won in this one.
+local function PersonTooltip(owner, p, award)
     GameTooltip:SetOwner(owner, "ANCHOR_RIGHT")
     GameTooltip:AddLine(ClassColored(p.name, p.class))
     local who = ns.db.people[p.name]
-    if p.name == ns.playerName then
+    if IsMe(p.name) then
         GameTooltip:AddLine("That's you.", 0.7, 0.7, 0.7)
     elseif who and who.runs > 0 then
         GameTooltip:AddLine(("Runs together: %d"):format(who.runs), 1, 1, 1)
@@ -476,7 +552,7 @@ local function PersonTooltip(owner, p, awards)
     else
         GameTooltip:AddLine("No earlier runs together.", 0.7, 0.7, 0.7)
     end
-    for _, award in ipairs(awards or {}) do
+    if award then
         GameTooltip:AddLine(" ")
         AddAwardLines(award)
     end
@@ -487,7 +563,7 @@ local function RowOnEnter(self)
     local line = self.line
     if line and line.p then
         -- The list view has no award cards, so they are explained here.
-        PersonTooltip(self, line.p, AwardList(shownAwards, line.p.name))
+        PersonTooltip(self, line.p, shownAwards[line.p.name])
     elseif line and line.link then
         GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
         GameTooltip:SetHyperlink(line.link)
@@ -502,15 +578,7 @@ local function RowOnEnter(self)
     end
 end
 
-local StyleHighlight
-
-local function StyleRow(r)
-    r.label:SetFontObject(theme.font)
-    for _, col in ipairs(COLS) do r[col.key]:SetFontObject(theme.font) end
-    StyleHighlight(r)
-end
-
-function StyleHighlight(r)
+local function StyleHighlight(r)
     if theme.flat then
         r:SetHighlightTexture("Interface\\Buttons\\WHITE8x8")
         r:GetHighlightTexture():SetVertexColor(1, 1, 1, 0.07)
@@ -518,6 +586,34 @@ function StyleHighlight(r)
         r:SetHighlightTexture("Interface\\QuestFrame\\UI-QuestTitleHighlight", "ADD")
         r:GetHighlightTexture():SetVertexColor(1, 1, 1, 1)
     end
+end
+
+local function StyleRow(r)
+    r.label:SetFontObject(theme.font)
+    for _, col in ipairs(LIST_COLS) do r[col.key]:SetFontObject(theme.font) end
+    StyleHighlight(r)
+end
+
+-- A round picture: a ring (coloured per player), a dark disc, and the
+-- picture itself clipped to a circle. Sizes and the picture's place are
+-- set by the caller; the ring and disc follow the picture.
+local DISC = { 0.05, 0.05, 0.07 }
+local function NewRoundPicture(parent)
+    local portrait = parent:CreateTexture(nil, "ARTWORK")
+    local ring = parent:CreateTexture(nil, "BORDER", nil, 1)
+    ring:SetTexture(CIRCLE)
+    ring:SetPoint("CENTER", portrait)
+    local disc = parent:CreateTexture(nil, "BORDER", nil, 2)
+    disc:SetTexture(CIRCLE)
+    disc:SetVertexColor(DISC[1], DISC[2], DISC[3])
+    disc:SetPoint("CENTER", portrait)
+    if parent.CreateMaskTexture then
+        local mask = parent:CreateMaskTexture()
+        mask:SetTexture(CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
+        mask:SetAllPoints(portrait)
+        portrait:AddMaskTexture(mask)
+    end
+    return portrait, ring, disc
 end
 
 local function GetRow(i)
@@ -530,7 +626,7 @@ local function GetRow(i)
     r.bar:SetPoint("TOPLEFT")
     r.bar:SetPoint("BOTTOMLEFT")
     r.bar:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 0.22)
-    for _, col in ipairs(COLS) do
+    for _, col in ipairs(LIST_COLS) do
         local fs = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         fs:SetPoint("RIGHT", col.right, 0)
         fs:SetWidth(col.width)
@@ -551,21 +647,8 @@ local function GetRow(i)
     r.mark:SetPoint("LEFT", r.market, "RIGHT", 3, 0)
 
     -- Player rows: round picture with a class-coloured ring.
-    r.portrait = r:CreateTexture(nil, "ARTWORK")
+    r.portrait, r.ring, r.ringInner = NewRoundPicture(r)
     r.portrait:SetPoint("LEFT", 8, 0)
-    r.ring = r:CreateTexture(nil, "BORDER", nil, 1)
-    r.ring:SetTexture(CIRCLE)
-    r.ring:SetPoint("CENTER", r.portrait)
-    r.ringInner = r:CreateTexture(nil, "BORDER", nil, 2)
-    r.ringInner:SetTexture(CIRCLE)
-    r.ringInner:SetVertexColor(0.05, 0.05, 0.07)
-    r.ringInner:SetPoint("CENTER", r.portrait)
-    if r.CreateMaskTexture then
-        local mask = r:CreateMaskTexture()
-        mask:SetTexture(CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-        mask:SetAllPoints(r.portrait)
-        r.portrait:AddMaskTexture(mask)
-    end
 
     r:RegisterForClicks("LeftButtonUp", "RightButtonUp")
     r:SetScript("OnClick", RowOnClick)
@@ -586,17 +669,28 @@ end
 -- their totals, then their items by category.
 ----------------------------------------------------------------------
 
+-- The unit a player of a run is right now, if they are in the group.
 local function UnitForName(name)
-    -- Runs recorded by early versions stored you under your first name only.
-    if name == ns.playerName or name == UnitName("player") then return "player" end
-    local prefix = IsInRaid() and "raid" or "party"
-    for i = 1, GetNumGroupMembers() do
-        local unit = prefix .. i
-        if UnitExists(unit) then
-            local n = GetUnitName(unit, true)
-            if n and not issecret(n) and n == name then return unit end
+    if IsMe(name) then return "player" end
+    local roster = drawCache.roster
+    if not roster then
+        roster = {}
+        local prefix = IsInRaid() and "raid" or "party"
+        for i = 1, GetNumGroupMembers() do
+            local unit = prefix .. i
+            if UnitExists(unit) then
+                local n = GetUnitName(unit, true)
+                if n and not issecret(n) then roster[n] = unit end
+            end
         end
+        if drawing then drawCache.roster = roster end
     end
+    return roster[name]
+end
+
+-- In the group and close enough for the game to draw them.
+local function InSight(unit)
+    return UnitIsUnit(unit, "player") or UnitIsVisible(unit)
 end
 
 -- Pictures of players who are no longer around. The game cannot save a
@@ -607,17 +701,17 @@ end
 
 -- The game's round picture for a race and sex, when this client has one.
 local RACE_ART = { Scourge = "undead" } -- where the art is not named like the race's file
+local RACE_ATLASES = { "raceicon128-%s-%s", "raceicon-%s-%s" } -- large, then small
 local function RaceAtlas(p)
     if not (p.race and p.sex and C_Texture and C_Texture.GetAtlasInfo) then return end
     local race = RACE_ART[p.race] or p.race:lower()
     local sex = p.sex == 3 and "female" or "male"
-    for _, pattern in ipairs({ "raceicon128-%s-%s", "raceicon-%s-%s" }) do
+    for _, pattern in ipairs(RACE_ATLASES) do
         local atlas = pattern:format(race, sex)
         if C_Texture.GetAtlasInfo(atlas) then return atlas end
     end
 end
 
-local LOOK_SLOTS = { 1, 3, 15, 5, 4, 19, 9, 10, 6, 7, 8, 16, 17 } -- head to feet, then weapons
 local MIN_LOOK = 4 -- pieces of gear needed: a body in its underwear is no likeness
 
 local function HasLook(p)
@@ -629,7 +723,7 @@ end
 
 local function WearLook(model, p)
     model:Undress()
-    for _, slot in ipairs(LOOK_SLOTS) do
+    for _, slot in ipairs(ns.LOOK_SLOTS) do
         if p.gear[slot] then model:TryOn("item:" .. p.gear[slot]) end
     end
 end
@@ -696,12 +790,15 @@ end
 local function SetPortrait(c, p, mode)
     local tex, model = c.portrait, c.model
     local unit = (mode == "2d" or mode == "3d") and UnitForName(p.name) or nil
-    local lookKey = "look:" .. p.name
-    local rebuilt = false
-    if mode == "3d" and not unit then
-        rebuilt = c.modelGUID == lookKey or DressModel(model, p)
-    end
-    local useModel = (mode == "3d" and unit ~= nil) or rebuilt
+    if unit and not InSight(unit) then unit = nil end -- still inside the dungeon, say
+    local live = mode == "3d" and unit ~= nil
+    -- Not around: a model rebuilt from their saved look, if there is enough
+    -- of it. c.modelKey says what the model frame holds, so that it is
+    -- only loaded again when that changes (reloading makes it flicker):
+    -- "unit:<name>" for a live player, the saved gear for a rebuilt one.
+    local rebuilt = mode == "3d" and not unit
+        and ((p.gear ~= nil and c.modelKey == p.gear) or DressModel(model, p))
+    local useModel = live or rebuilt
     local useTexture = mode ~= "none" and not useModel
 
     local r, g, b = ClassRGB(p.class)
@@ -714,26 +811,20 @@ local function SetPortrait(c, p, mode)
     tex:SetShown(useTexture)
     model:SetShown(useModel)
 
-    if rebuilt then
-        if c.modelGUID ~= lookKey then
-            if model.SetPortraitZoom then model:SetPortraitZoom(1) end
-            c.modelGUID = lookKey
-        end
+    if not useModel then
+        c.modelKey = nil
+        if useTexture then FillPortrait(tex, p, unit, mode ~= "class") end
         return
     end
-    if useModel then
-        model.look = nil
-        -- Reloading the model on every redraw makes it flicker.
-        local guid = UnitGUID(unit)
-        if issecret(guid) or c.modelGUID ~= guid then
+    local key = live and ("unit:" .. p.name) or p.gear
+    if c.modelKey ~= key then
+        if live then
+            model.look = nil
             model:SetUnit(unit)
-            if model.SetPortraitZoom then model:SetPortraitZoom(1) end
-            c.modelGUID = not issecret(guid) and guid or nil
         end
-        return
+        if model.SetPortraitZoom then model:SetPortraitZoom(1) end
+        c.modelKey = key
     end
-    c.modelGUID = nil
-    if useTexture then FillPortrait(tex, p, unit, mode ~= "class") end
 end
 
 local function GetCol(i)
@@ -742,70 +833,48 @@ local function GetCol(i)
     c = CreateFrame("Frame", nil, content)
     c.bg = c:CreateTexture(nil, "BACKGROUND")
     c.bg:SetAllPoints()
-    c.portrait = c:CreateTexture(nil, "ARTWORK")
+    -- The header's parts are placed by RenderColumns, which knows what the
+    -- options show; here they are only made.
+    c.portrait, c.ring, c.ringInner = NewRoundPicture(c)
     c.portrait:SetSize(48, 48)
-    c.portrait:SetPoint("TOP", 0, -8)
+    c.ring:SetSize(54, 54)
+    c.ringInner:SetSize(50, 50)
     c.model = NewModel(c)
     c.model:SetScript("OnModelLoaded", ModelLoaded)
     c.model:SetSize(52, 52)
-    c.model:SetPoint("TOP", 0, -6)
     c.model:Hide()
-
-    -- Round pictures: class-coloured ring, dark disc, then the picture
-    -- itself clipped to a circle.
-    c.ring = c:CreateTexture(nil, "BORDER", nil, 1)
-    c.ring:SetTexture(CIRCLE)
-    c.ring:SetSize(54, 54)
-    c.ring:SetPoint("CENTER", c.portrait)
-    c.ringInner = c:CreateTexture(nil, "BORDER", nil, 2)
-    c.ringInner:SetTexture(CIRCLE)
-    c.ringInner:SetVertexColor(0.05, 0.05, 0.07)
-    c.ringInner:SetSize(50, 50)
-    c.ringInner:SetPoint("CENTER", c.portrait)
-    if c.CreateMaskTexture then
-        local mask = c:CreateMaskTexture()
-        mask:SetTexture(CIRCLE, "CLAMPTOBLACKADDITIVE", "CLAMPTOBLACKADDITIVE")
-        mask:SetAllPoints(c.portrait)
-        c.portrait:AddMaskTexture(mask)
-    end
 
     -- 3D model: class-coloured square frame with a dark backdrop.
     c.box = c:CreateTexture(nil, "BORDER", nil, 1)
     c.box:SetSize(56, 56)
     c.box:SetPoint("CENTER", c.model)
     c.boxInner = c:CreateTexture(nil, "BORDER", nil, 2)
-    c.boxInner:SetColorTexture(0.05, 0.05, 0.07, 1)
+    c.boxInner:SetColorTexture(DISC[1], DISC[2], DISC[3], 1)
     c.boxInner:SetSize(52, 52)
     c.boxInner:SetPoint("CENTER", c.model)
-    local function Text(font, y)
+    local function Text(font)
         local fs = c:CreateFontString(nil, "OVERLAY", font)
-        fs:SetPoint("TOPLEFT", 2, y)
-        fs:SetPoint("TOPRIGHT", -2, y)
         fs:SetJustifyH("CENTER")
         fs:SetWordWrap(false)
         return fs
     end
-    c.name = Text("GameFontNormal", -60)
-    c.market = Text("GameFontHighlight", -78)
-    c.vendor = Text("GameFontHighlightSmall", -96)
-    c.share = Text("GameFontHighlightSmall", -110)
+    c.name = Text("GameFontNormal")
+    c.market = Text("GameFontHighlight")
+    c.vendor = Text("GameFontHighlightSmall")
+    c.share = Text("GameFontHighlightSmall")
     -- Modern-theme decoration: class-coloured glow and strip at the top,
     -- a pill behind the over/under figure, and a bar whose length is the
     -- player's share of the run, split into category colours.
     c.top = c:CreateTexture(nil, "BORDER")
     c.top:SetPoint("TOPLEFT")
     c.top:SetPoint("TOPRIGHT")
-    c.top:SetHeight(72)
     c.strip = c:CreateTexture(nil, "ARTWORK")
     c.strip:SetPoint("TOPLEFT")
     c.strip:SetPoint("TOPRIGHT")
     c.strip:SetHeight(2)
     c.pill = c:CreateTexture(nil, "BORDER")
-    c.pill:SetPoint("TOP", 0, -108)
     c.pill:SetHeight(14)
     c.track = c:CreateTexture(nil, "BORDER")
-    c.track:SetPoint("TOPLEFT", 8, -126)
-    c.track:SetPoint("TOPRIGHT", -8, -126)
     c.track:SetHeight(5)
     c.track:SetColorTexture(1, 1, 1, 0.08)
     c.segs = {}
@@ -827,7 +896,7 @@ local function GetCol(i)
     c.hover:SetPoint("TOPLEFT")
     c.hover:SetPoint("TOPRIGHT")
     c.hover:SetScript("OnEnter", function(self)
-        if self.p then PersonTooltip(self, self.p) end
+        if self.p then PersonTooltip(self, self.p) end -- the award card below explains itself
     end)
     c.hover:SetScript("OnLeave", GameTooltip_Hide)
     c.rows = {}
@@ -842,15 +911,27 @@ end
 ----------------------------------------------------------------------
 
 local AWARD_H = 30
-local REVEAL_STEP = 0.5 -- seconds between two cards
+local REVEAL_STEP = 0.5       -- seconds between two cards
+local REVEAL_FADE = 0.4       -- seconds a card takes to appear
+local FANFARE_DELAY = 0.3     -- after the last card
+local SCREENSHOT_DELAY = 1.2  -- after the last card
+
+local ceremonyPending = false -- reveal the cards on the next draw
+local revealEnd = 0           -- GetTime() at which the reveal is over
+local revealRun               -- the run being revealed
+local revealToken = 0         -- raised when a reveal starts or is called off, so its timers can tell
 
 -- Plays one of the game's own interface sounds, by name with the numeric
 -- id as a fallback. A missing sound is not worth an error.
 local function PlayKit(name, id)
     pcall(PlaySound, (SOUNDKIT and SOUNDKIT[name]) or id, "SFX")
 end
-local ceremonyPending = false -- reveal the cards on the next draw
-local revealEnd = 0           -- GetTime() at which the reveal is over
+
+-- Calls off a reveal in progress: its timers do nothing from now on.
+local function CancelReveal()
+    revealToken = revealToken + 1
+    revealRun, revealEnd = nil, 0
+end
 
 -- The one line that fits under the title; the tooltip has the rest.
 local function AwardShort(award)
@@ -869,9 +950,9 @@ local function AwardOnEnter(self)
     GameTooltip:Show()
 end
 
-local function GetAwardFrame(c, k)
-    c.awardFrames = c.awardFrames or {}
-    local af = c.awardFrames[k]
+-- A column's award card.
+local function GetAwardFrame(c)
+    local af = c.awardFrame
     if af then return af end
     af = CreateFrame("Button", nil, c)
     af:SetHeight(AWARD_H - 3)
@@ -895,7 +976,7 @@ local function GetAwardFrame(c, k)
     af:SetScript("OnEnter", AwardOnEnter)
     af:SetScript("OnLeave", GameTooltip_Hide)
     af:SetScript("OnClick", function() ns.ShowBrowse("awards") end)
-    c.awardFrames[k] = af
+    c.awardFrame = af
     return af
 end
 
@@ -946,6 +1027,17 @@ local function Duration(seconds)
     return ("%dm %02ds"):format(minutes, seconds % 60)
 end
 
+-- Is any item of the run valued at an auction price? (The legend for the
+-- dots is pointless otherwise.)
+local function AnyAuctionPrice(sum)
+    for _, p in ipairs(sum.players) do
+        for _, e in ipairs(p.all.items) do
+            if e.ah then return true end
+        end
+    end
+    return false
+end
+
 local RECORD_LABELS = {
     { "group", "richest run" }, { "mine", "your best haul" },
     { "jackpot", "biggest single item" }, { "fastest", "fastest run" },
@@ -954,10 +1046,11 @@ local RECORD_LABELS = {
 -- "40% higher" / "12% lower" / "about the same"
 local function Versus(pct)
     if math.abs(pct) < 5 then return "about the same" end
-    return ("%d%% %s"):format(math.abs(pct) + 0.5, pct > 0 and "|cff40d040higher|r" or "|cffe05050lower|r")
+    return ("%d%% %s"):format(math.abs(pct) + 0.5, pct > 0 and (GOOD .. "higher|r") or (BAD .. "lower|r"))
 end
 
--- includeTotals: the list view shows its totals as rows of its own.
+-- insights: nil when they are switched off. includeTotals: the list view
+-- shows its totals as rows of its own.
 local function FooterTexts(sum, insights, includeTotals)
     local o = ns.db.options
     local texts = {}
@@ -974,7 +1067,7 @@ local function FooterTexts(sum, insights, includeTotals)
         end
     end
 
-    if insights and o.showInsights then
+    if insights then
         local parts = {}
         if insights.duration then
             parts[#parts + 1] = "|cff909090Run time|r  " .. Duration(insights.duration)
@@ -1005,11 +1098,14 @@ local function FooterTexts(sum, insights, includeTotals)
             if insights.minePct then
                 text = text .. (",  your own %s"):format(Versus(insights.minePct))
             end
-            texts[#texts + 1] = text .. ("  |cff909090(%d earlier runs)|r"):format(insights.priorRuns)
+            texts[#texts + 1] = text .. ("  |cff909090(%d earlier %s)|r"):format(
+                insights.priorRuns, insights.priorRuns == 1 and "run" or "runs")
         end
     end
 
-    if n > 0 and o.valueMode ~= "vendor" then texts[#texts + 1] = LEGEND end
+    if n > 0 and o.valueMode ~= "vendor" and (ns.HasPriceSource() or AnyAuctionPrice(sum)) then
+        texts[#texts + 1] = LEGEND
+    end
     return texts
 end
 
@@ -1036,7 +1132,10 @@ local function ItemLine(e, count, market, total)
     }
 end
 
-local ItemKey = ns.ItemKey
+-- What a column or an opened player row says when there is nothing in it.
+local function NoLootLabel(sum)
+    return GREY .. (sum.needOnly and "No Need wins" or "No loot seen") .. "|r"
+end
 
 -- A player's items for one category, or all of them when `cat` is false
 -- (the "group by category" option is off).
@@ -1078,7 +1177,7 @@ local function BuildColumnLines(sum, o)
         for _, p in ipairs(sum.players) do
             local cs = GroupOf(p, cat)
             for _, e in ipairs(cs and cs.items or {}) do
-                local k = ItemKey(e)
+                local k = ns.ItemKey(e)
                 local u = union[k]
                 if not u then
                     u = { key = k, name = ns.ItemName(e), total = 0, quest = e.cat == "quest" }
@@ -1100,7 +1199,7 @@ local function BuildColumnLines(sum, o)
             local cs = GroupOf(p, cat)
             local mine = {} -- this player's items by key (same item merged)
             for _, e in ipairs(cs and cs.items or {}) do
-                local k = ItemKey(e)
+                local k = ns.ItemKey(e)
                 local m = mine[k]
                 if m then
                     m.count, m.market = m.count + e.count, m.market + ns.EntryMarket(e)
@@ -1125,15 +1224,31 @@ local function BuildColumnLines(sum, o)
         if o.alignItems then Aligned(cat) else Plain(cat) end
     end
 
-    if not o.alignItems then
-        for i, p in ipairs(sum.players) do
-            if p.count == 0 then
-                add(i, { label = sum.needOnly and "|cff909090No Need wins|r" or "|cff909090No loot seen|r" })
-            end
+    -- With aligned items an empty-handed player has a column of dashes,
+    -- which says it already; unless nobody has anything.
+    for i, p in ipairs(sum.players) do
+        if p.count == 0 and (not o.alignItems or sum.count == 0) then
+            add(i, { label = NoLootLabel(sum) })
         end
     end
     return out
 end
+
+-- The order players stand in on a podium: most loot in the middle, 2nd on
+-- its left, 3rd on its right, then outwards. `ranked` is in rank order.
+local function PodiumOrder(ranked)
+    local arranged = {}
+    for rank, p in ipairs(ranked) do
+        if rank % 2 == 0 then
+            table.insert(arranged, 1, p)
+        else
+            arranged[#arranged + 1] = p
+        end
+    end
+    return arranged
+end
+
+local HEADER_GLOW_H = 72 -- Modern theme: the class-coloured glow at the top of a column
 
 local function RenderColumns(sum, awards, insights)
     local n = #sum.players
@@ -1154,31 +1269,22 @@ local function RenderColumns(sum, awards, insights)
     if o.showShare then yShare = y; y = y - 16 end
     if showBar then yBar = y; y = y - 9 end
 
-    -- Award cards go under the totals. Every column reserves room for the
-    -- largest number any player has, so the item rows stay level.
-    local maxAwards = 0
-    for _, p in ipairs(sum.players) do
-        maxAwards = math.max(maxAwards, #AwardList(awards, p.name))
-    end
-    local yAwards = y - 4
-    if maxAwards > 0 then y = yAwards - maxAwards * AWARD_H end
+    -- The award card goes under the totals. Every column keeps room for
+    -- one when anyone has one, so the item rows stay level.
+    local yAward = y - 4
+    if next(awards) then y = yAward - AWARD_H end
     local headerH = 4 - y
     local revealIndex = 0
-
-    -- Podium: most loot in the middle, 2nd on its left, 3rd on its right,
-    -- then outwards. Columns step down by rank unless items are aligned.
-    local podium = o.sortPlayers == "podium"
-    if podium then
-        local arranged = {}
-        for _, p in ipairs(sum.players) do -- already in rank order
-            if p.rank % 2 == 0 then
-                table.insert(arranged, 1, p)
-            else
-                arranged[#arranged + 1] = p
-            end
-        end
-        sum.players = arranged
+    if ceremonyPending then
+        CancelReveal() -- an earlier one, if any
+        revealRun = currentRun
     end
+    local token = revealToken
+
+    -- Podium: columns in podium order, stepping down by rank unless items
+    -- are aligned. (Summarize leaves the players in rank order for it.)
+    local podium = o.sortPlayers == "podium"
+    if podium then sum.players = PodiumOrder(sum.players) end
     local step = (podium and not o.alignItems) and 14 or 0
     local colLines = BuildColumnLines(sum, o)
 
@@ -1192,7 +1298,7 @@ local function RenderColumns(sum, awards, insights)
         if podium then
             local medal = MEDALS[p.rank] or MEDALS[4]
             c.medal:SetColorTexture(medal[1], medal[2], medal[3], 0.95)
-            c.rank:SetText(RANK_LABELS[p.rank] or (p.rank .. "th"))
+            c.rank:SetText(ns.Ordinal(p.rank))
             c.rank:SetTextColor(medal[1], medal[2], medal[3])
         end
         c.medal:SetShown(podium)
@@ -1222,7 +1328,7 @@ local function RenderColumns(sum, awards, insights)
         local flat = theme.flat
         local cr, cg, cb = ClassRGB(p.class)
         c.top:SetShown(flat)
-        c.top:SetHeight(math.min(72, headerH))
+        c.top:SetHeight(math.min(HEADER_GLOW_H, headerH))
         c.strip:SetShown(flat and not podium)
         c.track:SetShown(showBar)
         if showBar then
@@ -1230,25 +1336,20 @@ local function RenderColumns(sum, awards, insights)
             c.track:SetPoint("TOPLEFT", 8, yBar)
             c.track:SetPoint("TOPRIGHT", -8, yBar)
         end
-        if flat then
+        if flat and c.glowClass ~= (p.class or "") then -- only when the column changes hands
+            c.glowClass = p.class or ""
             c.strip:SetColorTexture(cr, cg, cb, 0.9)
-            if c.top.SetGradient and CreateColor then
-                c.top:SetColorTexture(1, 1, 1, 1)
-                c.top:SetGradient("VERTICAL", CreateColor(cr, cg, cb, 0), CreateColor(cr, cg, cb, 0.30))
-            else
+            if not SetFade(c.top, "VERTICAL", cr, cg, cb, 0, 0.30) then
                 c.top:SetColorTexture(cr, cg, cb, 0.12)
             end
         end
         c.market:SetFontObject(flat and "GameFontHighlightLarge" or "GameFontHighlight")
 
         local diff = p.market - equal
-        local showDiff = sum.market > 0 and math.abs(diff) >= 1
+        local diffText = sum.market > 0 and DiffText(diff) or ""
+        local showDiff = diffText ~= ""
         if sum.market > 0 then
-            local text = Pct(p.market, sum.market)
-            if showDiff then
-                text = text .. (diff > 0 and "  |cff40d040+|r" or "  |cffe05050-|r") .. Money(math.abs(diff))
-            end
-            c.share:SetText(text)
+            c.share:SetText(Pct(p.market, sum.market) .. (showDiff and ("  " .. diffText) or ""))
         else
             c.share:SetText("")
         end
@@ -1266,33 +1367,30 @@ local function RenderColumns(sum, awards, insights)
             c.pill:Hide()
         end
 
-        local list = AwardList(awards, p.name)
-        for k = 1, math.max(#list, c.awardFrames and #c.awardFrames or 0) do
-            local af = GetAwardFrame(c, k)
-            local award = list[k]
+        local award = awards[p.name]
+        if award or c.awardFrame then
+            local af = GetAwardFrame(c)
             af.award = award
+            af:SetShown(award ~= nil)
             if award then
-                local top = yAwards - (k - 1) * AWARD_H
                 af:ClearAllPoints()
-                af:SetPoint("TOPLEFT", 4, top)
-                af:SetPoint("TOPRIGHT", -4, top)
+                af:SetPoint("TOPLEFT", 4, yAward)
+                af:SetPoint("TOPRIGHT", -4, yAward)
                 af.icon:SetTexture("Interface\\Icons\\" .. award.icon)
                 af.title:SetText(AwardTitle(award))
                 af.detail:SetText(AwardShort(award))
-                af:Show()
                 if ceremonyPending then
                     -- Hidden now, faded in a little later than the one before.
                     revealIndex = revealIndex + 1
                     af:SetAlpha(0)
                     C_Timer.After(REVEAL_STEP * revealIndex, function()
-                        if UIFrameFadeIn then UIFrameFadeIn(af, 0.4, 0, 1) else af:SetAlpha(1) end
+                        if token ~= revealToken or not af.award then return end
+                        if UIFrameFadeIn then UIFrameFadeIn(af, REVEAL_FADE, 0, 1) else af:SetAlpha(1) end
                         if o.ceremonySound and f:IsShown() then PlayKit("IG_MAINMENU_OPTION_CHECKBOX_ON", 856) end
                     end)
                 elseif GetTime() >= revealEnd then
                     af:SetAlpha(1)
                 end
-            else
-                af:Hide()
             end
         end
 
@@ -1359,17 +1457,17 @@ local function RenderColumns(sum, awards, insights)
     if ceremonyPending then
         ceremonyPending = false
         local length = REVEAL_STEP * revealIndex
-        revealEnd = GetTime() + length + 0.5
+        revealEnd = GetTime() + length + REVEAL_FADE
         if revealIndex > 0 then
             -- A fanfare once the last card is up, then the souvenir photo.
             if o.ceremonySound then
-                C_Timer.After(length + 0.3, function()
-                    if f:IsShown() then PlayKit("IG_QUEST_LIST_COMPLETE", 878) end
+                C_Timer.After(length + FANFARE_DELAY, function()
+                    if token == revealToken and f:IsShown() then PlayKit("IG_QUEST_LIST_COMPLETE", 878) end
                 end)
             end
             if o.ceremonyScreenshot and Screenshot then
-                C_Timer.After(length + 1.2, function()
-                    if f:IsShown() then Screenshot() end
+                C_Timer.After(length + SCREENSHOT_DELAY, function()
+                    if token == revealToken and f:IsShown() then Screenshot() end
                 end)
             end
         end
@@ -1412,14 +1510,11 @@ local function BuildLines(sum, awards, insights)
 
     for _, p in ipairs(sum.players) do
         local open = expanded[p.name]
-        local titles = ""
-        for _, award in ipairs(AwardList(awards, p.name)) do
-            titles = titles .. "   " .. AwardTitle(award)
-        end
+        local award = awards[p.name]
         add({
             player = p.name, p = p, bg = 0.12,
             label = (open and "|cffffd100-|r " or "|cffffd100+|r ")
-                .. ClassColored(DisplayName(p.name), p.class) .. titles,
+                .. ClassColored(DisplayName(p.name), p.class) .. (award and ("   " .. AwardTitle(award)) or ""),
             count = p.count, vendor = Money(p.vendor), market = Money(p.market),
             share = Pct(p.market, sum.market),
             diff = sum.market > 0 and DiffText(p.market - equal) or "",
@@ -1427,32 +1522,27 @@ local function BuildLines(sum, awards, insights)
         })
         if open then
             if p.count == 0 then
-                add({ indent = 24, wide = true,
-                      label = sum.needOnly and "|cff909090No Need wins|r" or "|cff909090No loot seen|r" })
+                add({ indent = 24, wide = true, label = NoLootLabel(sum) })
             end
             for _, cat in ipairs(o.groupByCategory and CATS or { false }) do
-                local c = GroupOf(p, cat)
-                if c then
+                local group = GroupOf(p, cat)
+                if group then
                     if cat then
                         add({
                             indent = 24, bg = 0.05, cat = cat,
                             label = CatColored(cat.label, cat),
-                            count = Grey(tostring(c.count)), vendor = MoneyGrey(c.vendor),
-                            market = MoneyGrey(c.market),
-                            share = Grey(Pct(c.market, p.market)),
+                            count = Grey(tostring(group.count)), vendor = MoneyGrey(group.vendor),
+                            market = MoneyGrey(group.market),
+                            share = Grey(Pct(group.market, p.market)),
                         })
                     end
-                    for _, e in ipairs(c.items) do
-                        local mark = PriceMark(e)
-                        local dominant = IsDominant(mark, ns.EntryMarket(e), sum.market)
-                        add({
-                            indent = cat and 36 or 24, link = e.link, e = e, label = e.link, icon = true,
-                            mark = mark, warn = dominant, note = PriceNote(e, mark, dominant),
-                            roll = RollNote(e),
-                            count = "x" .. e.count,
-                            vendor = Money(e.vendor * e.count),
-                            market = Money(ns.EntryMarket(e)),
-                        })
+                    for _, e in ipairs(group.items) do
+                        -- The column view's item line, with the list's own columns.
+                        local line = ItemLine(e, e.count, ns.EntryMarket(e), sum.market)
+                        line.indent, line.icon = cat and 36 or 24, true
+                        line.label, line.count = e.link, "x" .. e.count
+                        line.vendor, line.market = Money(e.vendor * e.count), line.value
+                        add(line)
                     end
                 end
             end
@@ -1475,12 +1565,13 @@ local function BuildLines(sum, awards, insights)
 end
 
 ----------------------------------------------------------------------
--- Footer buttons. Each has a game-styled and a flat variant; the theme
--- decides which one is visible.
+-- Buttons. Each has a game-styled and a flat variant; the theme decides
+-- which one is visible.
 ----------------------------------------------------------------------
 
--- `parent` defaults to this window; other panels pass their own and get
--- buttons that follow the theme the same way.
+-- `parent` defaults to this window, which then switches the button's
+-- variant itself. Other windows pass their own frame and call SetFlat
+-- when they apply the theme.
 local function MakeButton(text, width, onClick, parent)
     local b = CreateFrame("Frame", nil, parent or ui)
     b:SetSize(width, 22)
@@ -1538,13 +1629,20 @@ local function MakeButton(text, width, onClick, parent)
         self.flat.text:SetAlpha((selected or not self.isTab) and 1 or 0.7)
         if selected then self.tpl:LockHighlight() else self.tpl:UnlockHighlight() end
     end
-    buttons[#buttons + 1] = b
+    if not parent then buttons[#buttons + 1] = b end
     return b
 end
 
-local older = MakeButton("< Older", 70, function() viewIndex = viewIndex + 1; Render() end)
+-- Moves to an older (+1) or newer (-1) run.
+local function Step(by)
+    viewIndex = viewIndex + by
+    currentRun = nil -- a deliberate move: do not follow the run that was on show
+    Render()
+end
+
+local older = MakeButton("< Older", 70, function() Step(1) end)
 older:SetPoint("BOTTOMLEFT", 12, 10)
-local newer = MakeButton("Newer >", 70, function() viewIndex = viewIndex - 1; Render() end)
+local newer = MakeButton("Newer >", 70, function() Step(-1) end)
 newer:SetPoint("LEFT", older, "RIGHT", 4, 0)
 
 -- Pin: the run on show is never deleted, whatever clears the history.
@@ -1575,7 +1673,7 @@ local bingoBtn = MakeButton("Bingo", 70, function() ns.ToggleBingo() end)
 bingoBtn:SetPoint("LEFT", statsBtn, "RIGHT", 12, 0)
 
 local expandAll = MakeButton("Expand all", 90, function()
-    local s = Runs()[viewIndex]
+    local s = currentRun
     if not s then return end
     local anyClosed = false
     for name in pairs(s.players) do
@@ -1597,22 +1695,10 @@ runLabel:SetWordWrap(false)
 ----------------------------------------------------------------------
 
 local function ApplyTheme()
-    local name = ns.db.theme
-    if not THEMES[name] then name = "classic" end
-    currentTheme = name
-    theme = THEMES[name]
-
-    local active = skins[name] or skins.classic
-    for _, skin in pairs(skins) do skin:SetShown(skin == active) end
-
-    title:ClearAllPoints()
-    if theme.flat then
-        title:SetFontObject("GameFontHighlightLarge")
-        title:SetPoint("TOPLEFT", 14, -10)
-    else
-        title:SetFontObject("GameFontNormal")
-        title:SetPoint("TOP", 0, -5)
-    end
+    currentTheme = ThemeName()
+    theme = THEMES[currentTheme]
+    ns.ApplyWindowTheme(skins, title)
+    for _, c in ipairs(cols) do c.glowClass = nil end -- the glow is drawn afresh
 
     needBtn:ClearAllPoints()
     needBtn:SetPoint("TOPLEFT", 12, theme.toolbarY)
@@ -1635,7 +1721,7 @@ end
 function ns.SetTheme(name)
     if not THEMES[name] then return false end
     ns.db.theme = name
-    if f:IsShown() then Render() end
+    ns.Rerender()
     if ns.SyncOptions then ns.SyncOptions() end
     return true
 end
@@ -1644,15 +1730,30 @@ end
 -- Render
 ----------------------------------------------------------------------
 
-function Render()
-    if currentTheme ~= (THEMES[ns.db.theme] and ns.db.theme or "classic") then ApplyTheme() end
-    f:SetScale(ns.db.options.scale or 1)
-    headers.market:SetText(ns.db.options.valueMode == "vendor" and "Value" or "Market")
+-- Draws the list view: one row per line of BuildLines.
+local RenderList
 
+function Render()
+    local o = ns.db.options
+    drawing = true
+    wipe(drawCache)
+    if currentTheme ~= ThemeName() then ApplyTheme() end
+    f:SetScale(o.scale or 1)
+    headers.market:SetText(o.valueMode == "vendor" and "Value" or "Market")
+
+    -- The window shows a run, not a position: when the list shifts under
+    -- it (a new run starts, another is deleted) it stays on its run.
+    -- Position 1 is "the latest", and follows whatever that becomes.
     local runs = Runs()
+    if currentRun and viewIndex > 1 and runs[viewIndex] ~= currentRun then
+        for i, run in ipairs(runs) do
+            if run == currentRun then viewIndex = i end
+        end
+    end
     viewIndex = math.max(1, math.min(viewIndex, math.max(#runs, 1)))
     local s = runs[viewIndex]
     currentRun = s
+    if s ~= revealRun then CancelReveal() end
 
     needBtn:SetLabel(needOnly and "Show all loot" or "Need rolls only")
     needBtn:SetSelected(needOnly)
@@ -1664,17 +1765,17 @@ function Render()
     pinOutline:SetShown(s ~= nil and s.pinned == true)
     deleteBtn:SetOn(stored and not s.pinned)
 
-    local lines, sum
+    local sum
     if s then
         local tag = ""
         if s.example then
             tag = "  example data"
-        elseif s == ns.db.active and not s.leftAt then
+        elseif ns.InProgress(s) then
             tag = "  in progress"
         end
         title:SetText(ns.Title((s.name or "Run") .. (needOnly and "  -  Need rolls only" or "")))
         runLabel:SetText(("%s  |cff909090(%d/%d)%s|r%s"):format(
-            date("%Y-%m-%d %H:%M", s.startedAt), viewIndex, #runs, tag,
+            ns.DateText(s.startedAt), viewIndex, #runs, tag,
             s.pinned and "  |cffffd100pinned|r" or ""))
         sum = ns.Summarize(s, needOnly)
     end
@@ -1683,15 +1784,12 @@ function Render()
     -- view shows. Awards only once the run is over (or for past and
     -- example runs).
     local full = s and (needOnly and ns.Summarize(s) or sum)
-    local awards = {}
-    if s and ns.db.options.showAwards and not (s == ns.db.active and not s.leftAt) then
-        awards = ns.Awards(s, full)
-    end
+    local awards = s and ns.RunAwards(s, full) or {}
     shownAwards = awards
-    local insights = s and ns.RunInsights(s, full) or nil
+    local insights = s and o.showInsights and ns.RunInsights(s, full) or nil
     if insights then
         insights.fair = ns.Fairness(full)
-        insights.streak = ns.db.options.streak and ns.Streak(s) or nil
+        insights.streak = o.streak and ns.Streak(s) or nil
     end
 
     if not s then
@@ -1700,11 +1798,10 @@ function Render()
     end
 
     -- Small groups get one column per player; bigger ones the list.
-    local useColumns = sum ~= nil and ns.db.options.useColumns
-        and #sum.players > 0 and #sum.players <= MAX_COLUMNS
+    local useColumns = sum ~= nil and o.useColumns and #sum.players > 0 and #sum.players <= MAX_COLUMNS
     -- The list view honours the same "show" options as the columns.
-    local showVendor = ns.db.options.showVendor and ns.db.options.valueMode ~= "vendor"
-    local showShare = ns.db.options.showShare
+    local showVendor = o.showVendor and o.valueMode ~= "vendor"
+    local showShare = o.showShare
     for _, h in ipairs(headers) do h:SetShown(not useColumns) end
     headers.vendor:SetShown(not useColumns and showVendor)
     headers.share:SetShown(not useColumns and showShare)
@@ -1713,21 +1810,24 @@ function Render()
     if useColumns then
         for _, r in ipairs(rows) do r:Hide() end
         RenderColumns(sum, awards, insights)
-        return
-    end
-    ceremonyPending = false -- the reveal only exists in the column view
-    for _, c in ipairs(cols) do c:Hide() end
-    for _, fs in ipairs(footLines) do fs:Hide() end
-    if sum then
-        lines = BuildLines(sum, awards, insights)
     else
-        lines = { { indent = 4, wide = true,
-                    label = "No run recorded yet. Enter a dungeon, or type /fs start." } }
+        ceremonyPending = false -- the reveal only exists in the column view
+        for _, c in ipairs(cols) do c:Hide() end
+        for _, fs in ipairs(footLines) do fs:Hide() end
+        RenderList(sum and BuildLines(sum, awards, insights) or {
+            { indent = 4, wide = true, label = "No run recorded yet. Enter a dungeon, or type /fs start." },
+        }, showVendor, showShare)
     end
+    drawing = false
+    wipe(drawCache)
+end
 
+local PLAYER_ROW_EXTRA = 14 -- player rows are taller, to hold the picture
+
+function RenderList(lines, showVendor, showShare)
     local o = ns.db.options
     local rowH = theme.rowH
-    local playerH = rowH + 14 -- player rows are taller, to hold the picture
+    local playerH = rowH + PLAYER_ROW_EXTRA
     local width = content:GetWidth()
     local y = 0
     for i, line in ipairs(lines) do
@@ -1751,8 +1851,9 @@ function Render()
             r.ringInner:SetSize(size + 2, size + 2)
             r.ring:SetVertexColor(ClassRGB(line.p.class))
             -- No 3D models in the list: both picture modes use the portrait.
-            FillPortrait(r.portrait, line.p, o.portrait ~= "class" and UnitForName(line.p.name) or nil,
-                         o.portrait ~= "class")
+            local unit = o.portrait ~= "class" and UnitForName(line.p.name) or nil
+            if unit and not InSight(unit) then unit = nil end
+            FillPortrait(r.portrait, line.p, unit, o.portrait ~= "class")
             left = size + 18
         end
         r.portrait:SetShown(showPicture)
@@ -1808,24 +1909,36 @@ function Render()
     content:SetHeight(math.max(y, 1))
 end
 
+-- Redraws soon. Loot arrives in bursts, so several requests become one draw.
+local REFRESH_DELAY = 0.1
+
 function ns.Refresh()
     if pending or not f:IsShown() then return end
     pending = true
-    C_Timer.After(0.1, function()
+    C_Timer.After(REFRESH_DELAY, function()
         pending = false
         if f:IsShown() then Render() end
     end)
 end
 
--- Immediate redraw, used when an option changes.
+-- The other windows register a "redraw if shown" function here.
+local redraws = {}
+function ns.OnRerender(fn)
+    redraws[#redraws + 1] = fn
+end
+
+-- Immediate redraw of every window that is open: used when an option or
+-- the theme changes, and when a run is pinned or deleted. (New loot only
+-- redraws this window: see ns.Refresh.)
 function ns.Rerender()
     if f:IsShown() then Render() end
+    for _, fn in ipairs(redraws) do fn() end
 end
 
 -- ceremony: reveal the award cards one by one (used when the window
 -- opens by itself at the end of a run).
 function ns.ShowWindow(ceremony)
-    viewIndex = 1
+    viewIndex, currentRun = 1, nil
     ceremonyPending = ceremony and ns.db.options.showAwards or false
     RestoreWindow()
     f:Show()
@@ -1838,7 +1951,7 @@ end
 
 -- Opens the window on one particular run (used by the item search).
 function ns.ShowRun(s)
-    viewIndex = 1
+    viewIndex, currentRun = 1, nil
     for i, run in ipairs(Runs()) do
         if run == s then viewIndex = i end
     end
@@ -1848,10 +1961,16 @@ function ns.ShowRun(s)
     Render()
 end
 
--- The run on show in this window, or the most recent one if the window
--- has not been drawn yet.
+-- The run on show in this window; the most recent one when the window is
+-- closed, or if its run has been deleted since.
 function ns.ViewedRun()
-    return currentRun or Runs()[1]
+    local runs = Runs()
+    if f:IsShown() then
+        for _, run in ipairs(runs) do
+            if run == currentRun then return run end
+        end
+    end
+    return runs[1]
 end
 
 -- Shared with the other panels.
@@ -1859,6 +1978,9 @@ ns.MoneyPlain = function(copper) return MoneyText(copper, false) end
 ns.UnitForName = UnitForName
 ns.FillPortrait = FillPortrait
 ns.NewModel, ns.DressModel, ns.ModelLoaded = NewModel, DressModel, ModelLoaded
+ns.NewRoundPicture, ns.InSight, ns.PodiumOrder = NewRoundPicture, InSight, PodiumOrder
+ns.MEDALS = MEDALS
+ns.Signed, ns.FirstName = Signed, FirstName
 ns.PlayKit = PlayKit
 ns.AddAwardLines = AddAwardLines
 ns.AWARDS_HINT = AWARDS_HINT
