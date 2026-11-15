@@ -21,7 +21,6 @@ local TICK = 4          -- seconds between refreshes of the pictures
 
 local MEDALS = { { 1.00, 0.82, 0.00 }, { 0.78, 0.78, 0.82 }, { 0.80, 0.50, 0.20 }, { 0.45, 0.45, 0.48 } }
 local RANK_TEXT = { "1st", "2nd", "3rd", "4th", "5th" }
-local AWARD_COLORS = { ninja = "|cffff5a5a", lucky = "|cff5ad25a" }
 local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 
 -- The game's emote animations, by id. Dancing loops; the others play
@@ -161,7 +160,7 @@ end
 -- The player's award title, coloured.
 local function AwardText(a)
     if not a then return "" end
-    return (AWARD_COLORS[a.key] or "|cffffd100") .. a.title .. "|r"
+    return "|cffffd100" .. a.title .. "|r"
 end
 
 -- First place dances, the Ninja kneels, last place cries, second place

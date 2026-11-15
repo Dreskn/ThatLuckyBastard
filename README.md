@@ -14,7 +14,7 @@ Everything it shows appears on your screen only. It never sends a chat message.
 - **Need rolls:** a button at the top switches the window to show only what each player won on Need rolls. Hovering an item shows whether it was won on Need or Greed, and everyone's roll on it.
 - **Awards:** when a run ends, each player gets one light-hearted award, revealed one by one: the one that fits them best out of about twenty, such as Jackpot, Lion's Share, Fair Share, Loaded Dice, Natural 100, Window Shopper, The Farmer, The Saint or Empty Pockets. The further a player is from normal, the stronger the fit: an average roll of 51 earns nothing, an average of 95 is hard to miss. **Ninja** (most value won on Need rolls) and **Luckiest** (most value won on Greed rolls) count for more than the others, but a more striking award can take their place. Hover an award to see the rule behind it, or click it for the list of all awards.
 - **Under the breakdown:** run time, group loot per hour, a fairness score, any dungeon record the run set, how it compares with your average there, and the streak it belongs to.
-- **History:** past runs are kept and can be browsed.
+- **History:** past runs are kept and can be browsed. **Pin** a run and it is never deleted: not by the limit on runs to keep, not by `/fs clear`. **Delete** removes just the run on show, after asking.
 
 ## Run details
 
@@ -90,7 +90,9 @@ A run starts automatically when you enter a dungeon (and raids, if enabled). The
 | `/fs theme classic` / `modern` | Change the look |
 | `/fs start` | Track a run manually, outside a dungeon |
 | `/fs stop` | End the current run |
-| `/fs clear` | Delete all recorded runs |
+| `/fs pin` | Pin the run on show so that it is never deleted; again to unpin |
+| `/fs delete` | Delete the run on show (asks first; not for a pinned run) |
+| `/fs clear` | Delete all recorded runs, except pinned ones |
 | `/fs capture` | Record raw loot and roll messages, for troubleshooting |
 
 The minimap button does the same: left-click for the window, right-click for the options, drag to move it.
@@ -122,6 +124,7 @@ The minimap button does the same: left-click for the window, right-click for the
 - **Roll luck counts what the game reports.** A roll nobody won (everyone passed) is not counted, and a roll whose messages you were too far away to receive is missed.
 - **The podium shows 3D characters only for players close enough to be seen.** Anyone else gets their class icon until they come into view.
 - **Item search and the Runs page only cover the runs that are kept** (30 by default, up to 300). Dungeon figures, records, regulars, luck, drops and roles are kept separately and are not affected by that limit.
+- **Deleting runs does not change the statistics.** Dungeon figures, regulars, luck, drops and roles are added up when a run is closed, and keep what a deleted run contributed.
 - **Fastest run** only compares runs with the most boss kills seen for that dungeon, so an abandoned run cannot take the record.
 - **Auction prices are taken as they are.** A rarely traded item with an unrealistic listing can distort a run. Items valued at an auction price carry a blue dot, and an item worth more than half of the run on its own is highlighted in orange. Right-click an item to switch it to its vendor price for that run (and again to switch back).
 
@@ -149,6 +152,10 @@ python tests/luacheck.py FairShare/*.lua
 
 ```bash
 python tests/run_tests.py FairShare tests/test_ui.lua
+```
+
+```bash
+python tests/run_tests.py FairShare tests/test_pin.lua
 ```
 
 The rig proves that the code runs and computes the right figures. It cannot show what a window looks like; that still needs the game.

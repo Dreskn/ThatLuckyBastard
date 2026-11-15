@@ -147,7 +147,7 @@ PAGES.records = {
 
 PAGES.runs = {
     title = "Runs",
-    blurb = "Every run that is kept. Click one to open it.",
+    blurb = "Every run that is kept. Click one to open it; pin or delete it from the main window.",
     filter = "dungeon or player",
     cols = {
         { "Date", 120 }, { "Dungeon", 0 }, { "Time", 70, "RIGHT" }, { "Group", 95, "RIGHT" },
@@ -177,7 +177,7 @@ PAGES.runs = {
                     run = s,
                     cells = {
                         DateText(s.startedAt),
-                        s.name or "Run",
+                        (s.name or "Run") .. (s.pinned and "  |cffffd100pinned|r" or ""),
                         duration and ns.Duration(duration) or "-",
                         ns.Money(sum.market),
                         ns.Money(mine),

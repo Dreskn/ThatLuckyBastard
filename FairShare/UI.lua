@@ -404,7 +404,6 @@ local function RowOnClick(self, button)
     end
 end
 
-local AWARD_COLORS = { ninja = "|cffff5a5a", lucky = "|cff5ad25a" }
 local AWARDS_HINT = "Click for the list of all awards."
 local shownAwards = {} -- the awards of the run on show, by player name
 
@@ -415,7 +414,7 @@ local function AwardList(awards, name)
 end
 
 local function AwardTitle(award)
-    return (AWARD_COLORS[award.key] or "|cffffd100") .. award.title .. "|r"
+    return "|cffffd100" .. award.title .. "|r" -- every award in the same gold: none is a verdict
 end
 
 -- Adds one award to the tooltip being built: its name, what earned it,
@@ -439,8 +438,8 @@ local function PersonTooltip(owner, p, awards)
     elseif who and who.runs > 0 then
         GameTooltip:AddLine(("Runs together: %d"):format(who.runs), 1, 1, 1)
         GameTooltip:AddLine("Average loot per run: " .. Money(who.value / who.runs), 1, 1, 1)
-        if who.lucky > 0 then GameTooltip:AddLine(("Luckiest: %d times"):format(who.lucky), 0.35, 0.82, 0.35) end
-        if who.ninja > 0 then GameTooltip:AddLine(("Ninja: %d times"):format(who.ninja), 1, 0.35, 0.35) end
+        if who.lucky > 0 then GameTooltip:AddLine(("Luckiest: %d times"):format(who.lucky), 1, 1, 1) end
+        if who.ninja > 0 then GameTooltip:AddLine(("Ninja: %d times"):format(who.ninja), 1, 1, 1) end
     else
         GameTooltip:AddLine("No earlier runs together on record.", 0.7, 0.7, 0.7)
     end
@@ -1407,6 +1406,13 @@ older:SetPoint("BOTTOMLEFT", 12, 10)
 local newer = MakeButton("Newer >", 70, function() viewIndex = viewIndex - 1; Render() end)
 newer:SetPoint("LEFT", older, "RIGHT", 4, 0)
 
+-- Pin: the run on show is never deleted, whatever clears the history.
+-- Delete: remove just that run (asks first; not for a pinned run).
+local pinBtn = MakeButton("Pin", 60, function() ns.TogglePin(currentRun) end)
+pinBtn:SetPoint("LEFT", newer, "RIGHT", 12, 0)
+local deleteBtn = MakeButton("Delete", 60, function() ns.AskDeleteRun(currentRun) end)
+deleteBtn:SetPoint("LEFT", pinBtn, "RIGHT", 4, 0)
+
 local optionsBtn = MakeButton("Options", 80, function() ns.ToggleOptions() end)
 optionsBtn:SetPoint("BOTTOMRIGHT", -24, 10)
 
@@ -1440,7 +1446,7 @@ end)
 expandAll:SetPoint("RIGHT", optionsBtn, "LEFT", -4, 0)
 
 local runLabel = ui:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-runLabel:SetPoint("LEFT", newer, "RIGHT", 10, 0)
+runLabel:SetPoint("LEFT", deleteBtn, "RIGHT", 10, 0)
 runLabel:SetPoint("RIGHT", expandAll, "LEFT", -10, 0)
 runLabel:SetJustifyH("LEFT")
 runLabel:SetWordWrap(false)
@@ -1510,6 +1516,10 @@ function Render()
     needBtn:SetLabel(needOnly and "Show all loot" or "Need rolls only")
     older:SetOn(viewIndex < #runs)
     newer:SetOn(viewIndex > 1)
+    local stored = s ~= nil and not s.example
+    pinBtn:SetOn(stored)
+    pinBtn:SetLabel(s and s.pinned and "Unpin" or "Pin")
+    deleteBtn:SetOn(stored and not s.pinned)
 
     local lines, sum
     if s then
@@ -1520,8 +1530,9 @@ function Render()
             tag = "  in progress"
         end
         title:SetText("FairShare - " .. (s.name or "Run") .. (needOnly and " - Need rolls only" or ""))
-        runLabel:SetText(("%s  |cff808080(%d/%d)%s|r"):format(
-            date("%Y-%m-%d %H:%M", s.startedAt), viewIndex, #runs, tag))
+        runLabel:SetText(("%s  |cff808080(%d/%d)%s|r%s"):format(
+            date("%Y-%m-%d %H:%M", s.startedAt), viewIndex, #runs, tag,
+            s.pinned and "  |cffffd100pinned|r" or ""))
         sum = ns.Summarize(s, needOnly)
     end
 

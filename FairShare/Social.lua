@@ -18,8 +18,8 @@ local MAX_NOTICES = 4 -- familiar faces announced at once (a raid can hold many)
 local function PersonLine(who)
     local parts = { who.runs == 1 and "1 run together" or (who.runs .. " runs together") }
     parts[#parts + 1] = "avg " .. ns.Money(who.value / math.max(who.runs, 1))
-    if (who.ninja or 0) > 0 then parts[#parts + 1] = "|cffff5a5aNinja x" .. who.ninja .. "|r" end
-    if (who.lucky or 0) > 0 then parts[#parts + 1] = "|cff5ad25aLuckiest x" .. who.lucky .. "|r" end
+    if (who.ninja or 0) > 0 then parts[#parts + 1] = "Ninja x" .. who.ninja end
+    if (who.lucky or 0) > 0 then parts[#parts + 1] = "Luckiest x" .. who.lucky end
     return table.concat(parts, "   ")
 end
 

@@ -34,6 +34,7 @@ While you play
 
 Other
 
+- Pin a run so that it is never deleted, and delete a single run, from the main window or with `/fs pin` and `/fs delete`. `/fs clear` leaves pinned runs.
 - Quest items have their own category.
 - The Retail theme is gone; Classic and Modern remain.
 - Main window toolbar: "Need rolls only", "Run details", "Statistics" and "Bingo".

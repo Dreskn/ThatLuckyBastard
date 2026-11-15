@@ -328,8 +328,20 @@ local function HasLoot(s)
     return false
 end
 
+-- Drops the oldest runs beyond the number to keep. Pinned runs are never
+-- dropped and do not count towards that number.
 function ns.TrimHistory()
-    while #db.history > db.options.maxHistory do table.remove(db.history) end
+    local unpinned = 0
+    for _, s in ipairs(db.history) do
+        if not s.pinned then unpinned = unpinned + 1 end
+    end
+    for i = #db.history, 1, -1 do
+        if unpinned <= db.options.maxHistory then break end
+        if not db.history[i].pinned then
+            table.remove(db.history, i)
+            unpinned = unpinned - 1
+        end
+    end
 end
 
 local PrintSummary -- defined below
@@ -1408,6 +1420,95 @@ for event in pairs(handlers) do
 end
 
 ----------------------------------------------------------------------
+-- Pinning and deleting runs
+--
+-- A pinned run is never deleted: not by the limit on runs to keep, not
+-- by /fs clear, and not one at a time until it is unpinned. Deleting a
+-- run removes it from the history only: the long-term statistics have
+-- already counted it and are left as they are.
+----------------------------------------------------------------------
+
+local function IsStored(s)
+    if not s or s.example then return false end
+    if s == db.active then return true end
+    for _, run in ipairs(db.history) do
+        if run == s then return true end
+    end
+    return false
+end
+
+-- Pins or unpins a run. Returns true when it did.
+function ns.TogglePin(s)
+    if not IsStored(s) then return false end
+    s.pinned = (not s.pinned) or nil
+    ns.TrimHistory() -- an unpinned run counts towards the limit again
+    ns.Refresh()
+    return true
+end
+
+-- Deletes one run. Returns true when it did.
+function ns.DeleteRun(s)
+    if not IsStored(s) or s.pinned then return false end
+    if s == db.active then
+        db.active = nil
+        CheckZone() -- keep tracking if we are inside a dungeon
+    else
+        for i, run in ipairs(db.history) do
+            if run == s then
+                table.remove(db.history, i)
+                break
+            end
+        end
+    end
+    ns.Refresh()
+    return true
+end
+
+local deleteTarget
+StaticPopupDialogs["FAIRSHARE_DELETE_RUN"] = {
+    text = "FairShare\n\nDelete this run of %s?\n\n"
+        .. "|cff909090It cannot be brought back. Statistics already counted stay as they are.|r",
+    button1 = YES,
+    button2 = NO,
+    OnAccept = function()
+        if deleteTarget then ns.DeleteRun(deleteTarget) end
+        deleteTarget = nil
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
+
+-- Asks before deleting a run, and says why when it cannot be deleted.
+function ns.AskDeleteRun(s)
+    if not IsStored(s) then
+        Print(s and s.example and "Example runs are not saved, so there is nothing to delete." or "No run to delete.")
+    elseif s.pinned then
+        Print("This run is pinned. Unpin it first if you really want to delete it.")
+    else
+        deleteTarget = s
+        StaticPopup_Show("FAIRSHARE_DELETE_RUN", (s.name or "Run") .. ", " .. date("%Y-%m-%d %H:%M", s.startedAt))
+    end
+end
+
+-- Deletes every run that is not pinned. Returns how many were left.
+local function ClearRuns()
+    local left = 0
+    if db.active then
+        if db.active.pinned then left = left + 1 else db.active = nil end
+    end
+    for i = #db.history, 1, -1 do
+        if db.history[i].pinned then
+            left = left + 1
+        else
+            table.remove(db.history, i)
+        end
+    end
+    return left
+end
+
+----------------------------------------------------------------------
 -- Slash commands
 ----------------------------------------------------------------------
 
@@ -1460,12 +1561,24 @@ SlashCmdList.FAIRSHARE = function(msg)
         else
             Print("No run in progress.")
         end
+    elseif cmd == "pin" then
+        local s = ns.ViewedRun()
+        if ns.TogglePin(s) then
+            Print(s.pinned and "Run pinned: it will never be deleted." or "Run unpinned.")
+        else
+            Print("No saved run on show to pin.")
+        end
+    elseif cmd == "delete" then
+        ns.AskDeleteRun(ns.ViewedRun())
     elseif cmd == "clear" then
-        db.active = nil
-        wipe(db.history)
+        local left = ClearRuns()
         CheckZone() -- keep tracking if this was typed inside a dungeon
         ns.Refresh()
-        Print("All recorded runs deleted.")
+        if left > 0 then
+            Print(("Recorded runs deleted, except the %d you pinned."):format(left))
+        else
+            Print("All recorded runs deleted.")
+        end
     else
         Print("/fs - open the breakdown window")
         Print("/fs options - open the options panel")
@@ -1478,7 +1591,9 @@ SlashCmdList.FAIRSHARE = function(msg)
         Print("/fs export - the run on show as text for a spreadsheet (/fs export all: every run)")
         Print("/fs awards - what every award means")
         Print("/fs bingo - your loot bingo card")
-        Print("/fs clear - delete all recorded runs")
+        Print("/fs pin - pin the run on show, so that it is never deleted (again to unpin)")
+        Print("/fs delete - delete the run on show")
+        Print("/fs clear - delete all recorded runs, except pinned ones")
         Print("/fs capture - record raw loot and roll messages (for troubleshooting)")
     end
 end
