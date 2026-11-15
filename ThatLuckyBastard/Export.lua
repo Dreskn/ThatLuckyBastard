@@ -6,7 +6,7 @@ local _, ns = ...
 
 local WIDTH, HEIGHT = 640, 420
 
-local ex, ui, title, skins = ns.MakeWindow("FairShareExportFrame", WIDTH, HEIGHT, "FULLSCREEN_DIALOG", true)
+local ex, ui, title, skins = ns.MakeWindow("ThatLuckyBastardExportFrame", WIDTH, HEIGHT, "FULLSCREEN_DIALOG", true)
 ex:SetPoint("CENTER", 0, 10)
 
 local hint = ui:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")

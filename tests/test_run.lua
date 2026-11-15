@@ -6,10 +6,10 @@ local function check(ok, what)
 end
 local function g(c) return ("%.2fg"):format(c / 10000) end
 
-Fire("ADDON_LOADED", "FairShare")
+Fire("ADDON_LOADED", "ThatLuckyBastard")
 Fire("PLAYER_LOGIN")
 Fire("PLAYER_ENTERING_WORLD", true, false)
-local db = FairShareDB
+local db = ThatLuckyBastardDB
 print("history runs at start: " .. #db.history)
 
 -- Items: quality, sell price, classID (7 = trade goods), bindType (1 BoP, 2 BoE)

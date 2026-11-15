@@ -28,7 +28,7 @@ if saved:
     run(saved, 'SavedVariables')
 
 # Files in the order the .toc lists them.
-toc = io.open(os.path.join(addon_dir, 'FairShare.toc'), encoding='utf-8').read()
+toc = io.open(os.path.join(addon_dir, 'ThatLuckyBastard.toc'), encoding='utf-8').read()
 files = [line.strip() for line in toc.splitlines() if re.match(r'^[\w./\\-]+\.lua$', line.strip())]
 load = lua.globals().LoadAddonFile
 for f in files:

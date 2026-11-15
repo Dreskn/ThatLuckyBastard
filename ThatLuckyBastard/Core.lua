@@ -6,7 +6,7 @@ local issecret = issecretvalue or function() return false end
 local RESUME_WINDOW = 1200 -- a run can be continued for 20 minutes after leaving or logging out
 local ARRIVAL_GRACE = 10   -- seconds during which repeated arrival events count as one
 local ROLL_MATCH_WINDOW = 5 -- a roll win and its loot line arrive within this many seconds
-local CAPTURE_MAX = 600    -- lines kept by /fs capture
+local CAPTURE_MAX = 600    -- lines kept by /tlb capture
 local LOG_MAX = 3000       -- pickups kept per run for the timeline
 local LOOK_INTERVAL = 60   -- seconds between two looks at the group's gear
 local TICKER_RETRY = 1.5   -- seconds before a notice retries an item whose value was not known yet
@@ -21,8 +21,10 @@ local db
 -- colours.
 ns.ACCENT = { 0.25, 0.78, 0.72 }
 ns.ACCENT_HEX = "|cff40c7b8"
-ns.BRAND = "|cffffffffFair|r" .. ns.ACCENT_HEX .. "Share|r"
-ns.LOGO = "Interface\\AddOns\\FairShare\\Media\\logo.tga"
+ns.BRAND = "|cffffffffThat|r " .. ns.ACCENT_HEX .. "Lucky|r |cffffffffBastard|r"
+ns.NAME = "That Lucky Bastard" -- the same, where colour codes are not wanted
+ns.LOGO = "Interface\\AddOns\\ThatLuckyBastard\\Media\\logo.tga"
+ns.MARK = ("|T%s:0|t"):format(ns.LOGO) -- the mark alone, for a line in a tooltip
 
 -- The title of every window: the mark, the name, then what the window
 -- shows.
@@ -535,8 +537,8 @@ end
 -- a requeue. Until answered (or if the answer is No, or the prompt times
 -- out) the current run simply continues.
 local promptSession, promptLeftAt, promptSummarized
-StaticPopupDialogs["FAIRSHARE_NEW_RUN"] = {
-    text = "FairShare\n\nIs this a new run of %s?\n\n|cff909090No keeps adding to the previous run.|r",
+StaticPopupDialogs["THATLUCKYBASTARD_NEW_RUN"] = {
+    text = ns.NAME .. "\n\nIs this a new run of %s?\n\n|cff909090No keeps adding to the previous run.|r",
     button1 = YES,
     button2 = NO,
     OnAccept = function()
@@ -561,7 +563,7 @@ StaticPopupDialogs["FAIRSHARE_NEW_RUN"] = {
 -- been left.
 local function AskNewRun(s, leftAt, summarized)
     promptSession, promptLeftAt, promptSummarized = s, leftAt, summarized
-    StaticPopup_Show("FAIRSHARE_NEW_RUN", s.name or "this dungeon")
+    StaticPopup_Show("THATLUCKYBASTARD_NEW_RUN", s.name or "this dungeon")
 end
 
 -- Several events can report the same arrival, so only ask once per arrival.
@@ -606,7 +608,7 @@ local function CheckZone(isLogin, entered)
     -- A run recorded on another character of the account is over.
     if s and s.owner and s.owner ~= PLAYER_NAME then CloseStale() end
     if s and s.manual then
-        -- A manual run ends with /fs stop. One forgotten over a logout is
+        -- A manual run ends with /tlb stop. One forgotten over a logout is
         -- closed at a later login, or no dungeon run would ever start again.
         if not (isLogin and time() - (s.lastSeen or 0) > RESUME_WINDOW) then return end
         CloseStale()
@@ -886,7 +888,7 @@ end
 
 ----------------------------------------------------------------------
 -- Capture: records raw loot-channel lines so the message formats of
--- this client can be inspected. Toggled with /fs capture.
+-- this client can be inspected. Toggled with /tlb capture.
 ----------------------------------------------------------------------
 
 local function Capture(channel, text)
@@ -1516,8 +1518,8 @@ local handlers = {}
 
 function handlers.ADDON_LOADED(name)
     if name ~= ADDON then return end
-    FairShareDB = FairShareDB or {}
-    db = FairShareDB
+    ThatLuckyBastardDB = ThatLuckyBastardDB or {}
+    db = ThatLuckyBastardDB
     db.history = db.history or {}
     db.capture = db.capture or {}
     db.records = db.records or {} -- [instanceID] = dungeon records
@@ -1645,7 +1647,7 @@ end
 -- Pinning and deleting runs
 --
 -- A pinned run is never deleted: not by the limit on runs to keep, not
--- by /fs clear, and not one at a time until it is unpinned. Deleting a
+-- by /tlb clear, and not one at a time until it is unpinned. Deleting a
 -- run removes it from the history only: the long-term statistics have
 -- already counted it and are left as they are.
 ----------------------------------------------------------------------
@@ -1686,8 +1688,8 @@ function ns.DeleteRun(s)
 end
 
 local deleteTarget
-StaticPopupDialogs["FAIRSHARE_DELETE_RUN"] = {
-    text = "FairShare\n\nDelete this run?\n%s\n\n"
+StaticPopupDialogs["THATLUCKYBASTARD_DELETE_RUN"] = {
+    text = ns.NAME .. "\n\nDelete this run?\n%s\n\n"
         .. "|cff909090This cannot be undone. Statistics keep what the run added.|r",
     button1 = YES,
     button2 = NO,
@@ -1709,7 +1711,7 @@ function ns.AskDeleteRun(s)
         Print("This run is pinned. Unpin it first.")
     else
         deleteTarget = s
-        StaticPopup_Show("FAIRSHARE_DELETE_RUN", (s.name or "Run") .. ", " .. ns.DateText(s.startedAt))
+        StaticPopup_Show("THATLUCKYBASTARD_DELETE_RUN", (s.name or "Run") .. ", " .. ns.DateText(s.startedAt))
     end
 end
 
@@ -1733,9 +1735,9 @@ end
 -- Slash commands
 ----------------------------------------------------------------------
 
-SLASH_FAIRSHARE1 = "/fs"
-SLASH_FAIRSHARE2 = "/fairshare"
-SlashCmdList.FAIRSHARE = function(msg)
+SLASH_THATLUCKYBASTARD1 = "/tlb"
+SLASH_THATLUCKYBASTARD2 = "/lucky"
+SlashCmdList.THATLUCKYBASTARD = function(msg)
     local cmd, arg = (msg or ""):lower():match("^%s*(%S*)%s*(%S*)")
     if cmd == "" or cmd == "show" then
         ns.ToggleWindow()
@@ -1764,15 +1766,15 @@ SlashCmdList.FAIRSHARE = function(msg)
         else
             db.capturing = true
             db.capture = {}
-            Print("Capture started: loot and roll messages are being recorded. Type /fs capture again to stop.")
+            Print("Capture started: loot and roll messages are being recorded. Type /tlb capture again to stop.")
         end
     elseif cmd == "theme" then
         if not ns.SetTheme(arg) then
-            Print("Themes: classic, modern. Example: /fs theme modern")
+            Print("Themes: classic, modern. Example: /tlb theme modern")
         end
     elseif cmd == "start" then
         NewSession(GetRealZoneText() or "Manual run", nil, true)
-        Print("Manual run started. Use /fs stop to end it.")
+        Print("Manual run started. Use /tlb stop to end it.")
     elseif cmd == "stop" then
         if db.active then
             FinalizeSession()
@@ -1801,25 +1803,25 @@ SlashCmdList.FAIRSHARE = function(msg)
             Print("All runs deleted.")
         end
     else
-        Print("/fs - the breakdown window")
-        Print("/fs options")
-        Print("/fs details - the run on show: podium, front page, timeline, rolls, numbers")
-        Print("/fs stats - dungeons, records, runs, luck, regulars, drops, roles")
-        Print("/fs search <item> - find an item in past runs")
-        Print("/fs awards - what each award means")
-        Print("/fs bingo - your bingo card")
-        Print("/fs export - the run on show as text (/fs export all: every run)")
-        Print("/fs pin - pin or unpin the run on show; pinned runs are never deleted")
-        Print("/fs delete - delete the run on show")
-        Print("/fs clear - delete all runs except pinned ones")
-        Print("/fs start, /fs stop - track a run by hand, outside a dungeon")
-        Print("/fs theme classic|modern")
-        Print("/fs capture - record raw loot messages, for troubleshooting")
+        Print("/tlb - the breakdown window")
+        Print("/tlb options")
+        Print("/tlb details - the run on show: podium, front page, timeline, rolls, numbers")
+        Print("/tlb stats - dungeons, records, runs, luck, regulars, drops, roles")
+        Print("/tlb search <item> - find an item in past runs")
+        Print("/tlb awards - what each award means")
+        Print("/tlb bingo - your bingo card")
+        Print("/tlb export - the run on show as text (/tlb export all: every run)")
+        Print("/tlb pin - pin or unpin the run on show; pinned runs are never deleted")
+        Print("/tlb delete - delete the run on show")
+        Print("/tlb clear - delete all runs except pinned ones")
+        Print("/tlb start, /tlb stop - track a run by hand, outside a dungeon")
+        Print("/tlb theme classic|modern")
+        Print("/tlb capture - record raw loot messages, for troubleshooting")
     end
 end
 
 ----------------------------------------------------------------------
--- Public hook used by FairShare_Example: runs added here are shown in
+-- Public hook used by ThatLuckyBastard_Example: runs added here are shown in
 -- the window but never saved.
 ----------------------------------------------------------------------
 
@@ -1843,7 +1845,7 @@ local function AddItemByID(p, id, count)
     end)
 end
 
-FairShare = {
+ThatLuckyBastard = {
     -- run.players[name] = { class = "MAGE", loot = { { itemID, count }, ... } }
     AddExampleRun = function(run)
         run.example = true
@@ -1859,6 +1861,6 @@ FairShare = {
     end,
 }
 
-function FairShare_OnAddonCompartmentClick()
+function ThatLuckyBastard_OnAddonCompartmentClick()
     ns.ToggleWindow()
 end

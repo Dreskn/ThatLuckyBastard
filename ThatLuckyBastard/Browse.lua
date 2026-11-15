@@ -27,7 +27,7 @@ local MAX_ROWS = 300
 local MAX_COLS = 8
 local MIN_QUERY = 2 -- letters needed before the item search runs
 
-local b, ui, title, skins = ns.MakeWindow("FairShareBrowseFrame", WIDTH, HEIGHT, "DIALOG", true)
+local b, ui, title, skins = ns.MakeWindow("ThatLuckyBastardBrowseFrame", WIDTH, HEIGHT, "DIALOG", true)
 b:SetPoint("CENTER", 0, -30)
 
 local mode = "dungeons"

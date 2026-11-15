@@ -262,7 +262,7 @@ end
 -- everything interactive lives on `ui`, which sits above the skins.
 ----------------------------------------------------------------------
 
-local f = CreateFrame("Frame", "FairShareFrame", UIParent)
+local f = CreateFrame("Frame", "ThatLuckyBastardFrame", UIParent)
 f:SetSize(WIDTH, HEIGHT)
 f:SetPoint("CENTER")
 f:SetFrameStrata("HIGH")
@@ -299,7 +299,7 @@ f:SetScript("OnDragStop", function(self)
     SaveWindow()
 end)
 f:Hide()
-tinsert(UISpecialFrames, "FairShareFrame")
+tinsert(UISpecialFrames, "ThatLuckyBastardFrame")
 
 -- Builds the skins on a frame and returns them keyed by theme name.
 -- Every window of the addon uses it, so they all follow the theme.
@@ -440,7 +440,7 @@ scroll:SetScrollChild(content)
 -- A gold outline around the breakdown, shown while the run on display is
 -- pinned. It follows the scroll area, so it fits both themes and both
 -- layouts.
-local pinOutline = CreateFrame("Frame", "FairSharePinOutline", ui)
+local pinOutline = CreateFrame("Frame", "ThatLuckyBastardPinOutline", ui)
 pinOutline:SetPoint("TOPLEFT", scroll, "TOPLEFT", -5, 5)
 pinOutline:SetPoint("BOTTOMRIGHT", scroll, "BOTTOMRIGHT", 5, -5)
 pinOutline:SetFrameLevel(scroll:GetFrameLevel() + 5)
@@ -1816,7 +1816,7 @@ function Render()
         for _, c in ipairs(cols) do c:Hide() end
         for _, fs in ipairs(footLines) do fs:Hide() end
         RenderList(sum and BuildLines(sum, awards, insights) or {
-            { indent = 4, wide = true, label = "No run recorded yet. Enter a dungeon, or type /fs start." },
+            { indent = 4, wide = true, label = "No run recorded yet. Enter a dungeon, or type /tlb start." },
         }, showVendor, showShare)
     end
     drawing = false

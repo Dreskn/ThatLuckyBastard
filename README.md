@@ -1,14 +1,16 @@
-<img src="https://raw.githubusercontent.com/Dreskn/FairShare/main/media/logo.png" alt="" width="96" align="right">
+<img src="https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/media/logo.png" alt="" width="96" align="right">
 
-# FairShare
+# That Lucky Bastard
 
 A World of Warcraft addon for **WoW Forever** that shows who got what in a dungeon run, and who the lucky one was.
 
-FairShare records what every player in your group looted — boss drops, rolls, skinning, herbs, ore, cloth — puts a gold value on it, and shows who came out ahead and who came out behind. Over time it also builds up statistics about your dungeons, your luck and the people you run with.
+That Lucky Bastard records what every player in your group looted — boss drops, rolls, skinning, herbs, ore, cloth — puts a gold value on it, and shows who came out ahead and who came out behind. Over time it also builds up statistics about your dungeons, your luck and the people you run with.
 
 Everything it shows appears on your screen only. It never sends a chat message.
 
-![The breakdown window after a run of Uldaman](https://raw.githubusercontent.com/Dreskn/FairShare/main/.previews/run.png)
+Until version 0.2.2 it was called FairShare. It was renamed because another addon for WoW Forever already uses that name; see [Coming from FairShare](#coming-from-fairshare).
+
+![The breakdown window after a run of Uldaman](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/run.png)
 
 ## The breakdown window
 
@@ -18,7 +20,7 @@ Everything it shows appears on your screen only. It never sends a chat message.
 - **Need rolls:** a button at the top switches the window to show only what each player won on Need rolls. Hovering an item shows whether it was won on Need or Greed, and everyone's roll on it.
 - **Awards:** when a run ends, each player gets one light-hearted award, revealed one by one: the one that fits them best out of about twenty, such as Jackpot, Lion's Share, Fair Share, Loaded Dice, Natural 100, Window Shopper, The Farmer, The Saint or Empty Pockets. The further a player is from normal, the stronger the fit: an average roll of 51 earns nothing, an average of 95 is hard to miss. **Ninja** (most value won on Need rolls) and **Luckiest** (most value won on Greed rolls) count for more than the others, but a more striking award can take their place. Hover an award to see the rule behind it, or click it for the list of all awards.
 - **Under the breakdown:** run time, group loot per hour, a fairness score, any dungeon record the run set, how it compares with your average there, and the streak it belongs to.
-- **History:** past runs are kept and can be browsed. **Pin** a run and it is never deleted: not by the limit on runs to keep, not by `/fs clear`. **Delete** removes just the run on show, after asking.
+- **History:** past runs are kept and can be browsed. **Pin** a run and it is never deleted: not by the limit on runs to keep, not by `/tlb clear`. **Delete** removes just the run on show, after asking.
 
 ## Run details
 
@@ -73,10 +75,19 @@ Tables over everything recorded. Click a column title to sort.
 
 ## Installation
 
-1. Copy the `FairShare` folder into the Forever client's `Interface\AddOns` folder.
+1. Copy the `ThatLuckyBastard` folder into the Forever client's `Interface\AddOns` folder.
 2. Restart the game or type `/reload`.
 
-`FairShare_Example` is an optional test addon, found in the source repository rather than in the download. It adds three fake runs so the window can be tried without running a dungeon. Its runs are never saved; disable or delete it to remove them.
+### Coming from FairShare
+
+Versions up to 0.2.2 were called FairShare. To move over:
+
+1. Delete the old `FairShare` folder from `Interface\AddOns`, and install `ThatLuckyBastard`.
+2. To keep your runs, close the game first. In `WTF\Account\<account>\SavedVariables`, copy `FairShare.lua` to `ThatLuckyBastard.lua`, open the copy, and change `FairShareDB` on its first line to `ThatLuckyBastardDB`.
+
+The commands changed with the name: `/fs` is now `/tlb`.
+
+`ThatLuckyBastard_Example` is an optional test addon, found in the source repository rather than in the download. It adds three fake runs so the window can be tried without running a dungeon. Its runs are never saved; disable or delete it to remove them.
 
 ## Usage
 
@@ -84,21 +95,21 @@ A run starts automatically when you enter a dungeon (and raids, if enabled). The
 
 | Command | Effect |
 | --- | --- |
-| `/fs` or `/fairshare` | Open or close the window |
-| `/fs options` | Open the options |
-| `/fs details` | Run details for the run on show (also `/fs podium`, `paper`, `timeline`, `rolls`, `numbers`) |
-| `/fs stats` | Statistics (also `/fs dungeons`, `records`, `runs`, `luck`, `regulars`, `drops`, `roles`) |
-| `/fs search <item name>` | Find an item in past runs |
-| `/fs awards` | What every award means |
-| `/fs export` | The run on show as text for a spreadsheet; `/fs export all` for every run |
-| `/fs bingo` | Your loot bingo card |
-| `/fs theme classic` / `modern` | Change the look |
-| `/fs start` | Track a run manually, outside a dungeon |
-| `/fs stop` | End the current run |
-| `/fs pin` | Pin the run on show so that it is never deleted; again to unpin |
-| `/fs delete` | Delete the run on show (asks first; not for a pinned run) |
-| `/fs clear` | Delete all recorded runs, except pinned ones |
-| `/fs capture` | Record raw loot and roll messages, for troubleshooting |
+| `/tlb` or `/lucky` | Open or close the window |
+| `/tlb options` | Open the options |
+| `/tlb details` | Run details for the run on show (also `/tlb podium`, `paper`, `timeline`, `rolls`, `numbers`) |
+| `/tlb stats` | Statistics (also `/tlb dungeons`, `records`, `runs`, `luck`, `regulars`, `drops`, `roles`) |
+| `/tlb search <item name>` | Find an item in past runs |
+| `/tlb awards` | What every award means |
+| `/tlb export` | The run on show as text for a spreadsheet; `/tlb export all` for every run |
+| `/tlb bingo` | Your loot bingo card |
+| `/tlb theme classic` / `modern` | Change the look |
+| `/tlb start` | Track a run manually, outside a dungeon |
+| `/tlb stop` | End the current run |
+| `/tlb pin` | Pin the run on show so that it is never deleted; again to unpin |
+| `/tlb delete` | Delete the run on show (asks first; not for a pinned run) |
+| `/tlb clear` | Delete all recorded runs, except pinned ones |
+| `/tlb capture` | Record raw loot and roll messages, for troubleshooting |
 
 The minimap button does the same: left-click for the window, right-click for the options, drag to move it.
 
@@ -106,7 +117,7 @@ The minimap button does the same: left-click for the window, right-click for the
 
 - Entering a different dungeon starts a new run.
 - Running back in as a ghost after a wipe continues the same run.
-- If you come back into the same dungeon within 20 minutes without having died out of it, FairShare asks whether it is a new run. With the prompt turned off, it always starts a new run.
+- If you come back into the same dungeon within 20 minutes without having died out of it, That Lucky Bastard asks whether it is a new run. With the prompt turned off, it always starts a new run.
 - If you reset the instance yourself, the run is closed automatically.
 - A reload or a short disconnect inside the dungeon continues the run.
 
@@ -123,11 +134,11 @@ The minimap button does the same: left-click for the window, right-click for the
 
 - **Range.** The game only reports another player's loot when you are reasonably close to them. Loot picked up far away from you is missed.
 - **Not counted:** coin (it is split evenly by the game), quest rewards, trades and crafted items.
-- **Trades after the run are invisible.** If someone hands an item on, FairShare still counts it for the player who looted it.
+- **Trades after the run are invisible.** If someone hands an item on, That Lucky Bastard still counts it for the player who looted it.
 - **New figures start now.** The timeline, the roll sheet, roll luck and loot by source rely on details recorded from version 0.2.0 on. Runs recorded before have none of them.
 - **Boss loot is a rule of thumb:** whatever was picked up within 90 seconds of a boss kill, profession materials aside.
 - **Roll luck counts what the game reports.** A roll nobody won (everyone passed) is not counted, and a roll whose messages you were too far away to receive is missed.
-- **Pictures of players who have left are stand-ins.** The game cannot save a portrait or a model. FairShare saves each player's race, sex and visible gear during the run, and afterwards shows the game's picture for that race, or a model of that race wearing that gear. Their face and hair are not known. A player whose gear was never close enough to read gets a class icon, as do runs recorded before version 0.2.0.
+- **Pictures of players who have left are stand-ins.** The game cannot save a portrait or a model. That Lucky Bastard saves each player's race, sex and visible gear during the run, and afterwards shows the game's picture for that race, or a model of that race wearing that gear. Their face and hair are not known. A player whose gear was never close enough to read gets a class icon, as do runs recorded before version 0.2.0.
 - **Item search and the Runs page only cover the runs that are kept** (300 by default; any number up to unlimited). A run takes about 25 to 150 KB in the saved file. Dungeon figures, records, regulars, luck, drops and roles are kept separately and are not affected by that limit.
 - **People met once are forgotten after 90 days.** Regulars would otherwise fill up with strangers from random groups.
 - **Lowering the number of runs to keep takes effect when the next run ends,** so a misclick deletes nothing.
@@ -137,7 +148,7 @@ The minimap button does the same: left-click for the window, right-click for the
 
 ## Privacy
 
-FairShare never sends chat messages and never shares anything with other players. Everything it shows, including the awards, the notices and what it knows about the people you run with, appears only on the screen of the player who has it installed. The export is text you copy yourself; nothing is written anywhere else.
+That Lucky Bastard never sends chat messages and never shares anything with other players. Everything it shows, including the awards, the notices and what it knows about the people you run with, appears only on the screen of the player who has it installed. The export is text you copy yourself; nothing is written anywhere else.
 
 ## Compatibility
 
@@ -147,33 +158,33 @@ FairShare never sends chat messages and never shares anything with other players
 
 ## Data
 
-Runs, statistics and settings are saved account-wide in `WTF\Account\<account>\SavedVariables\FairShare.lua`. The game writes this file on logout and on `/reload`.
+Runs, statistics and settings are saved account-wide in `WTF\Account\<account>\SavedVariables\ThatLuckyBastard.lua`. The game writes this file on logout and on `/reload`.
 
 ## Development
 
 `tests/` holds a small test rig that loads the addon into a real Lua 5.1 engine with stand-ins for the game, plays a dungeon run through its event handlers, and opens every window. It needs Python with the `lupa` package.
 
 ```bash
-python tests/luacheck.py FairShare/*.lua
+python tests/luacheck.py ThatLuckyBastard/*.lua
 ```
 
 ```bash
-python tests/run_tests.py FairShare tests/test_ui.lua
+python tests/run_tests.py ThatLuckyBastard tests/test_ui.lua
 ```
 
 ```bash
-python tests/run_tests.py FairShare tests/test_pin.lua
+python tests/run_tests.py ThatLuckyBastard tests/test_pin.lua
 ```
 
 ```bash
-python tests/run_tests.py FairShare tests/test_looks.lua
+python tests/run_tests.py ThatLuckyBastard tests/test_looks.lua
 ```
 
 ```bash
-python tests/run_tests.py FairShare tests/test_audit.lua
+python tests/run_tests.py ThatLuckyBastard tests/test_audit.lua
 ```
 
-`tools/make_logo.py` draws the addon's mark (needs Pillow); the brand colours live at the top of `FairShare/Core.lua`.
+`tools/make_logo.py` draws the addon's mark (needs Pillow); the brand colours live at the top of `ThatLuckyBastard/Core.lua`.
 
 The rig proves that the code runs and computes the right figures. It cannot show what a window looks like; that still needs the game.
 

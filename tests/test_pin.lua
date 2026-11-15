@@ -2,14 +2,14 @@
 Include("test_run.lua")
 print("\n==== pinning and deleting ====")
 local ns = NS
-local db = FairShareDB
+local db = ThatLuckyBastardDB
 local function check(ok, what)
     print((ok and "  ok    " or "  FAIL  ") .. what)
     if not ok then FAILED = (FAILED or 0) + 1 end
 end
 
 function PinOutlineShown()
-    return FairSharePinOutline ~= nil and FairSharePinOutline:IsShown()
+    return ThatLuckyBastardPinOutline ~= nil and ThatLuckyBastardPinOutline:IsShown()
 end
 
 -- After the simulated runs: one run in the history, one in progress.
@@ -44,29 +44,29 @@ db.options.maxHistory = 30
 
 -- Clearing leaves pinned runs.
 table.insert(db.history, 1, newest)
-SlashCmdList.FAIRSHARE("clear")
-check(#db.history == 1 and db.history[1] == old, "/fs clear leaves the pinned run")
+SlashCmdList.THATLUCKYBASTARD("clear")
+check(#db.history == 1 and db.history[1] == old, "/tlb clear leaves the pinned run")
 
 -- The popup's Yes button deletes the run that was asked about.
 table.insert(db.history, 1, newest)
 ns.AskDeleteRun(newest)
-StaticPopupDialogs.FAIRSHARE_DELETE_RUN.OnAccept()
+StaticPopupDialogs.THATLUCKYBASTARD_DELETE_RUN.OnAccept()
 check(#db.history == 1 and db.history[1] == old, "confirming the question deletes that run only")
-StaticPopupDialogs.FAIRSHARE_DELETE_RUN.OnAccept()
+StaticPopupDialogs.THATLUCKYBASTARD_DELETE_RUN.OnAccept()
 check(#db.history == 1, "confirming twice deletes nothing more")
 
 -- Unpinning makes it deletable again; the slash commands act on the run on show.
 ns.ShowRun(old)
-SlashCmdList.FAIRSHARE("pin")
-check(old.pinned == nil, "/fs pin unpins the run on show")
-SlashCmdList.FAIRSHARE("delete")
-StaticPopupDialogs.FAIRSHARE_DELETE_RUN.OnAccept()
+SlashCmdList.THATLUCKYBASTARD("pin")
+check(old.pinned == nil, "/tlb pin unpins the run on show")
+SlashCmdList.THATLUCKYBASTARD("delete")
+StaticPopupDialogs.THATLUCKYBASTARD_DELETE_RUN.OnAccept()
 RunTimers()
-check(#db.history == 0, "/fs delete, confirmed, deletes it")
+check(#db.history == 0, "/tlb delete, confirmed, deletes it")
 check(db.records[9001] ~= nil and db.records[9001].runs == 2, "statistics keep what the deleted runs added")
 ns.ShowWindow()
-SlashCmdList.FAIRSHARE("pin")
-SlashCmdList.FAIRSHARE("delete")
+SlashCmdList.THATLUCKYBASTARD("pin")
+SlashCmdList.THATLUCKYBASTARD("delete")
 
 -- Deleting the run in progress starts a fresh one when still inside.
 WORLD.inInstance = true

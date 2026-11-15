@@ -12,7 +12,7 @@ local ROW_H = 22
 local COL2_X = 200 -- x of the second column in two-column groups
 local PAGE_W = WIDTH - SIDEBAR_W - 46 -- width of the page area
 
-local o, ui, title, skins = ns.MakeWindow("FairShareOptionsFrame", WIDTH, HEIGHT, "DIALOG", true)
+local o, ui, title, skins = ns.MakeWindow("ThatLuckyBastardOptionsFrame", WIDTH, HEIGHT, "DIALOG", true)
 o:SetPoint("CENTER")
 title:SetText(ns.Title("Options"))
 
@@ -451,7 +451,7 @@ end
 
 o:SetScript("OnShow", Sync)
 
--- Called when the theme changes from outside the panel (/fs theme ...).
+-- Called when the theme changes from outside the panel (/tlb theme ...).
 function ns.SyncOptions()
     if o:IsShown() then Sync() end
 end
@@ -461,7 +461,7 @@ function ns.ToggleOptions()
         o:Hide()
     else
         -- Open the main window too, so changes can be seen as they are made.
-        if not FairShareFrame:IsShown() then ns.ShowWindow() end
+        if not ThatLuckyBastardFrame:IsShown() then ns.ShowWindow() end
         o:Show()
     end
 end

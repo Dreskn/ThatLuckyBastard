@@ -8,7 +8,7 @@ local _, ns = ...
 local FADE_IN, HOLD, FADE_OUT = 0.25, 4, 0.6
 local MAX_QUEUE = 5
 
-local toast = CreateFrame("Frame", "FairShareToast", UIParent)
+local toast = CreateFrame("Frame", "ThatLuckyBastardToast", UIParent)
 toast:SetSize(340, 40)
 toast:SetPoint("TOP", UIParent, "TOP", 0, -150)
 toast:SetFrameStrata("HIGH")

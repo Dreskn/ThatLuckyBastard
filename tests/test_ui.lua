@@ -4,7 +4,7 @@
 Include("test_run.lua")
 print("\n==== windows ====")
 local ns = NS
-local db = FairShareDB
+local db = ThatLuckyBastardDB
 local function step(what, fn)
     TEXTLOG = {}
     local ok, err = xpcall(fn, debug.traceback)
@@ -41,7 +41,7 @@ for _, page in ipairs({ "dungeons", "records", "runs", "luck", "regulars", "drop
 end
 step("statistics via slash commands", function()
     for _, cmd in ipairs({ "stats", "runs", "luck", "drops", "roles", "dungeons", "regulars", "records", "awards", "search silk" }) do
-        SlashCmdList.FAIRSHARE(cmd)
+        SlashCmdList.THATLUCKYBASTARD(cmd)
     end
 end)
 
@@ -53,14 +53,14 @@ for _, page in ipairs({ "podium", "paper", "timeline", "rolls", "numbers" }) do
     step("run details: " .. page .. " (run in progress)", function() ns.OpenShow(cur, false, page) end)
 end
 step("run details via slash commands", function()
-    for _, cmd in ipairs({ "details", "podium", "paper", "timeline", "rolls", "numbers" }) do SlashCmdList.FAIRSHARE(cmd) end
+    for _, cmd in ipairs({ "details", "podium", "paper", "timeline", "rolls", "numbers" }) do SlashCmdList.THATLUCKYBASTARD(cmd) end
 end)
 step("run details with no run", function() ns.OpenShow(nil, false, "timeline") end)
 
 print("-- export")
 show(step("export this run", function() ns.ShowExport("run", old) end), 3)
 step("export all runs", function() ns.ShowExport("all") end)
-step("export via slash", function() SlashCmdList.FAIRSHARE("export"); SlashCmdList.FAIRSHARE("export all") end)
+step("export via slash", function() SlashCmdList.THATLUCKYBASTARD("export"); SlashCmdList.THATLUCKYBASTARD("export all") end)
 
 print("-- tooltips and notices")
 step("item tooltip line", function()
@@ -121,7 +121,7 @@ end)
 step("bingo, options, minimap", function()
     ns.ToggleBingo(); ns.ToggleBingo()
     ns.ToggleOptions(); ns.ToggleOptions()
-    SlashCmdList.FAIRSHARE("help")
+    SlashCmdList.THATLUCKYBASTARD("help")
 end)
 
 print(FAILED and (FAILED .. " check(s) FAILED") or "all checks passed")
@@ -131,7 +131,7 @@ step("streak notice", function()
     local got
     local real = NS.Notice
     NS.Notice = function(title, text) got = title .. "  /  " .. text end
-    NS.StreakNotice(FairShareDB.active or FairShareDB.history[1])
+    NS.StreakNotice(ThatLuckyBastardDB.active or ThatLuckyBastardDB.history[1])
     NS.Notice = real
     assert(got and got:find("run in a row", 1, true), "no streak notice")
     print("        " .. got:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", ""))

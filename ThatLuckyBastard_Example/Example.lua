@@ -1,12 +1,12 @@
--- Fake runs for testing the FairShare window. Only WHO looted WHAT is made
--- up: every item is given as an item ID and a count, and FairShare values it
+-- Fake runs for testing the That Lucky Bastard window. Only WHO looted WHAT is
+-- made up: every item is given as an item ID and a count, and the addon values it
 -- exactly like real loot (vendor price and category from the game client,
 -- auction price from Auctionator / TSM). Item IDs that do not exist on this
 -- client are skipped.
 --
 -- The runs live in memory only: remove this addon and they are gone.
 
-if not FairShare or not FairShare.AddExampleRun then return end
+if not ThatLuckyBastard or not ThatLuckyBastard.AddExampleRun then return end
 
 local me = (GetUnitName and GetUnitName("player", true)) or UnitName("player") or "You"
 local myClass = select(2, UnitClass("player"))
@@ -16,7 +16,7 @@ local myClass = select(2, UnitClass("player"))
 -- the epic BoE.
 ----------------------------------------------------------------------
 
-FairShare.AddExampleRun({
+ThatLuckyBastard.AddExampleRun({
     name = "The Deadmines",
     startedAt = time() - 3600,
     players = {
@@ -59,7 +59,7 @@ FairShare.AddExampleRun({
 -- Run 2: a fairly even dungeon, with one player who looted nothing.
 ----------------------------------------------------------------------
 
-FairShare.AddExampleRun({
+ThatLuckyBastard.AddExampleRun({
     name = "Scarlet Monastery",
     startedAt = time() - 2 * 86400,
     players = {
@@ -130,11 +130,11 @@ do
         end
         players[who[1]] = { class = who[2], loot = loot }
     end
-    FairShare.AddExampleRun({
+    ThatLuckyBastard.AddExampleRun({
         name = "Molten Core",
         startedAt = time() - 5 * 86400,
         players = players,
     })
 end
 
-print("|cff33ff99FairShare|r: example data loaded - type /fs to view it.")
+print("|cff33ff99That Lucky Bastard|r: example data loaded - type /tlb to view it.")

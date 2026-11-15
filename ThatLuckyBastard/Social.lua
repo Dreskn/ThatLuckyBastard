@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- What FairShare knows about the people and items you come across,
+-- What the addon knows about the people and items you come across,
 -- surfaced where you meet them. All of it is shown to you alone.
 --   * Familiar faces: a notice when someone you have run with joins your
 --     group.
@@ -95,7 +95,7 @@ local function PlayerTip(tooltip)
     if not name or issecret(name) then return end
     local who = ns.db.people[name]
     if who and who.runs > 0 then
-        tooltip:AddLine(ns.BRAND .. "  " .. PersonLine(who), 1, 1, 1)
+        tooltip:AddLine(ns.MARK .. " " .. PersonLine(who), 1, 1, 1)
     end
 end
 
@@ -106,8 +106,8 @@ local function ItemTip(tooltip, data)
     if not id or issecret(id) or type(id) ~= "number" then return end
     local runs, by = ns.ItemSeen(id)
     if runs then
-        tooltip:AddLine(("%s  seen in %d %s%s"):format(
-            ns.BRAND, runs, runs == 1 and "run" or "runs", by and (", last to " .. ns.DisplayName(by)) or ""), 1, 1, 1)
+        tooltip:AddLine(("%s Seen in %d %s%s"):format(
+            ns.MARK, runs, runs == 1 and "run" or "runs", by and (", last to " .. ns.DisplayName(by)) or ""), 1, 1, 1)
     end
 end
 

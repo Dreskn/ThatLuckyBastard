@@ -17,10 +17,10 @@ local function leave()
     Fire("PLAYER_ENTERING_WORLD", false, false)
 end
 
-Fire("ADDON_LOADED", "FairShare")
+Fire("ADDON_LOADED", "ThatLuckyBastard")
 Fire("PLAYER_LOGIN")
 Fire("PLAYER_ENTERING_WORLD", true, false)
-local db = FairShareDB
+local db = ThatLuckyBastardDB
 db.options.ticker = false
 
 ITEMS[100] = { 2, 1500, 4, 2 }   -- green BoE
@@ -36,7 +36,7 @@ print("==== run boundaries ====")
 enter(1, "Keep")
 local first = db.active
 leave()
-check(not FairShareFrame:IsShown() and not FairShareShowFrame:IsShown(), "stepping in and out with no loot opens nothing")
+check(not ThatLuckyBastardFrame:IsShown() and not ThatLuckyBastardShowFrame:IsShown(), "stepping in and out with no loot opens nothing")
 NOW = NOW + 30
 enter(1, "Keep")
 check(db.active == first, "coming straight back continues the run")
@@ -82,18 +82,18 @@ print("==== answering 'new run?' late ====")
 NOW = NOW + 600
 leave()
 local leftAt = NOW
-check(FairShareFrame:IsShown(), "leaving with loot opens the window")
+check(ThatLuckyBastardFrame:IsShown(), "leaving with loot opens the window")
 NOW = NOW + 900
 enter(1, "Keep")
-StaticPopupDialogs.FAIRSHARE_NEW_RUN.OnAccept()
+StaticPopupDialogs.THATLUCKYBASTARD_NEW_RUN.OnAccept()
 check(db.active ~= first and db.history[1] == first, "answering Yes starts a new run")
 check(first.endedAt == leftAt, "the old run ended when it was left, not when the question was answered")
 check(first.rolls == nil and first.lastSeen == nil and select(2, next(mine.items)).lastAt == nil,
       "working data is dropped from a closed run")
 
-print("==== /fs stop inside a dungeon ====")
+print("==== /tlb stop inside a dungeon ====")
 local second = db.active
-SlashCmdList.FAIRSHARE("stop")
+SlashCmdList.THATLUCKYBASTARD("stop")
 check(db.active ~= nil and db.active ~= second, "tracking goes on with a new run")
 
 print("==== logging back in the next day, still inside ====")
@@ -131,7 +131,7 @@ WORLD.me = "Mira Vale"
 Fire("PLAYER_LOGIN")
 
 print("==== a manual run forgotten over a logout ====")
-SlashCmdList.FAIRSHARE("start")
+SlashCmdList.THATLUCKYBASTARD("start")
 Loot(("You receive loot: %s."):format(junk))
 Fire("PLAYER_LOGOUT")
 NOW = NOW + 7 * 86400
@@ -161,7 +161,7 @@ check(ns.ViewedRun() == first, "showing an old run")
 enter(2, "Other Place")
 ns.Rerender()
 check(ns.ViewedRun() == first, "it is still on show after a new run started")
-FairShareFrame:Hide()
+ThatLuckyBastardFrame:Hide()
 check(ns.ViewedRun() == db.active, "with the window closed, 'the run on show' is the latest")
 
 -- Lowering the number of runs to keep does not delete anything at once.

@@ -5,7 +5,7 @@ local _, ns = ...
 --           playing an emote that fits how they did
 --   paper   a mock newspaper front page written from the run's awards
 -- and other files add more with ns.AddShowPage (see RunPages.lua).
--- Opened from the main window, by /fs details and the page names, and
+-- Opened from the main window, by /tlb details and the page names, and
 -- (if the option is on) by itself when a run ends, revealing the podium
 -- last place first.
 
@@ -25,7 +25,7 @@ local MEDALS = ns.MEDALS -- gold, silver, bronze, then grey
 -- once and are replayed on every tick.
 local ANIM = { dance = 69, applaud = 80, wave = 67, cry = 77, kneel = 75 }
 
-local show, ui, title, skins = ns.MakeWindow("FairShareShowFrame", WIDTH, HEIGHT, "DIALOG", true)
+local show, ui, title, skins = ns.MakeWindow("ThatLuckyBastardShowFrame", WIDTH, HEIGHT, "DIALOG", true)
 show:SetPoint("CENTER", 0, 20)
 
 local page = "podium"

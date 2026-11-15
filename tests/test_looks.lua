@@ -3,7 +3,7 @@
 Include("test_run.lua")
 print("\n==== looks, quest order, unlimited ====")
 local ns = NS
-local db = FairShareDB
+local db = ThatLuckyBastardDB
 local function check(ok, what)
     print((ok and "  ok    " or "  FAIL  ") .. what)
     if not ok then FAILED = (FAILED or 0) + 1 end
@@ -57,7 +57,7 @@ end
 
 -- The podium uses the same stand-ins. It opened by itself when the run
 -- ended, so close it first: models are set up afresh each time it opens.
-FairShareShowFrame:Hide()
+ThatLuckyBastardShowFrame:Hide()
 reset()
 ns.OpenShow(old, false, "podium")
 check(#CUSTOM_RACES == 4, "podium: four look-alikes, and my own live model (" .. #CUSTOM_RACES .. ")")

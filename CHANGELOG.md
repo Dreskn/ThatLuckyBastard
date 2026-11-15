@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.0
+
+- The addon is now called **That Lucky Bastard**. It was FairShare until now. Another addon for WoW Forever already uses that name, with the same folder and the same saved-data name, so the two could not be installed side by side.
+- The commands are `/tlb` and `/lucky`. `/fs` and `/fairshare` are gone.
+- Tooltip lines start with the die instead of the addon's name.
+- Coming from FairShare: delete the old `FairShare` folder. To keep your runs, close the game, copy `SavedVariables\FairShare.lua` to `ThatLuckyBastard.lua` in the same folder, and change `FairShareDB` on the copy's first line to `ThatLuckyBastardDB`.
+
 ## 0.2.2
 
 - No change to the addon. This release carries the screenshot and logo used by the addon listings.

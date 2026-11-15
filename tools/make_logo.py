@@ -1,9 +1,9 @@
-"""Draws the FairShare mark: a gold die showing five, with one lucky pip.
+"""Draws the mark of That Lucky Bastard: a gold die showing five, with one lucky pip.
 
 Five pips for the five players of a dungeon group; the one in the middle,
 in the addon's accent colour, is the one who got lucky.
 
-Writes  FairShare/Media/logo.tga  (64x64, what the game loads)
+Writes  ThatLuckyBastard/Media/logo.tga  (64x64, what the game loads)
         media/logo.png            (512x512, for the README and listings)
         media/logo-sizes.png      (the mark at the sizes the game shows it)
         media/social-preview.png  (1280x640: the mark, the name and a line
@@ -13,7 +13,7 @@ Writes  FairShare/Media/logo.tga  (64x64, what the game loads)
     python tools/make_logo.py
 
 Needs Pillow. The teal is the addon's accent colour; change it here and in
-FairShare/Core.lua (ns.ACCENT, ns.ACCENT_HEX) together.
+ThatLuckyBastard/Core.lua (ns.ACCENT, ns.ACCENT_HEX) together.
 """
 import os
 
@@ -80,14 +80,22 @@ def social():
     mark = 300
     img.alpha_composite(draw(mark), ((W - mark) // 2, 40))
 
-    name = font(104, bold=True)
-    fair, share = d.textlength("Fair", font=name), d.textlength("Share", font=name)
-    x = (W - fair - share) / 2
-    d.text((x, 340), "Fair", font=name, fill=(255, 255, 255))
-    d.text((x + fair, 340), "Share", font=name, fill=TEAL)
+    # The name, as large as the middle 640 pixels allow, "Lucky" in the accent.
+    words = (("That ", (255, 255, 255)), ("Lucky", TEAL), (" Bastard", (255, 255, 255)))
+    size = 104
+    while True:
+        name = font(size, bold=True)
+        widths = [d.textlength(word, font=name) for word, _ in words]
+        if sum(widths) <= 600 or size <= 20:
+            break
+        size -= 2
+    x = (W - sum(widths)) / 2
+    for (word, fill), width in zip(words, widths):
+        d.text((x, 362), word, font=name, fill=fill)
+        x += width
 
-    for text, size, y, fill in (("Who got what, and who got lucky", 38, 482, (200, 204, 210)),
-                                ("A loot addon for WoW Forever", 28, 540, (140, 146, 154))):
+    for text, size, y, fill in (("Who got what, and who got lucky", 38, 468, (200, 204, 210)),
+                                ("A loot addon for WoW Forever", 28, 530, (140, 146, 154))):
         f = font(size)
         d.text(((W - d.textlength(text, font=f)) / 2, y), text, font=f, fill=fill)
     return img
@@ -95,7 +103,7 @@ def social():
 
 def main():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-    game = os.path.join(root, "FairShare", "Media")
+    game = os.path.join(root, "ThatLuckyBastard", "Media")
     docs = os.path.join(root, "media")
     os.makedirs(game, exist_ok=True)
     os.makedirs(docs, exist_ok=True)

@@ -1,0 +1,8 @@
+## Interface: 16001
+## Title: That Lucky Bastard - Example data
+## Notes: Adds fake runs to That Lucky Bastard for testing. Nothing is saved; disable or delete this addon to remove them.
+## Author: Dreskn
+## Version: 0.3.0
+## Dependencies: ThatLuckyBastard
+
+Example.lua

@@ -233,7 +233,7 @@ NS = {}
 function LoadAddonFile(path, source)
     local chunk, err = loadstring(source, "@" .. path)
     if not chunk then error(err, 0) end
-    chunk("FairShare", NS)
+    chunk("ThatLuckyBastard", NS)
 end
 
 -- Sends an event to every frame that registered for it.

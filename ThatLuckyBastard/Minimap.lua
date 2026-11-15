@@ -4,7 +4,7 @@ local _, ns = ...
 -- drag moves it around the minimap. Shown or hidden by the showMinimap
 -- option; its position is saved as an angle.
 
-local b = CreateFrame("Button", "FairShareMinimapButton", Minimap)
+local b = CreateFrame("Button", "ThatLuckyBastardMinimapButton", Minimap)
 b:SetSize(32, 32)
 b:SetFrameStrata("MEDIUM")
 b:SetFrameLevel(8)
