@@ -78,12 +78,12 @@ check(s.rollStats["Kett Longstride"].passes == 1, "Kett's pass counted once")
 
 print("-- derived")
 local sum = ns.Summarize(s)
-local dam, riqqi
+local kett, sela
 for _, p in ipairs(sum.players) do
-    if p.name == "Kett Longstride" then dam = p elseif p.name == "Sela Marrow" then riqqi = p end
+    if p.name == "Kett Longstride" then kett = p elseif p.name == "Sela Marrow" then sela = p end
 end
-check(dam.needWins == 1 and dam.needValue == 9000, "Kett's Need win tagged (9000c)")
-check(riqqi.greedWins == 1, "Sela's Greed win tagged")
+check(kett.needWins == 1 and kett.needValue == 9000, "Kett's Need win tagged (9000c)")
+check(sela.greedWins == 1, "Sela's Greed win tagged")
 local rolls = ns.RunRolls(s)
 check(#rolls == 2 and rolls[1].winner == "Sela Marrow" and rolls[2].method == "need", "roll sheet decodes")
 for _, roll in ipairs(rolls) do
