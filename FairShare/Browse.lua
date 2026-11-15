@@ -75,7 +75,7 @@ local PAGES = {}
 -- width 0 = takes whatever is left
 PAGES.dungeons = {
     title = "Dungeons",
-    blurb = "Averages per dungeon. Click a column title to sort: \"Group / hour\" is the one to pick a dungeon by.",
+    blurb = "Averages per dungeon. Click a column title to sort.",
     cols = {
         { "Dungeon", 0 }, { "Runs", 50, "RIGHT" }, { "Avg group", 100, "RIGHT" }, { "Avg yours", 100, "RIGHT" },
         { "Avg time", 75, "RIGHT" }, { "Group / hour", 100, "RIGHT" }, { "Yours / hour", 100, "RIGHT" },
@@ -107,7 +107,7 @@ PAGES.dungeons = {
             }
         end
         if #rows == 0 then
-            return { { note = "Nothing yet. Dungeons appear here once a run in them is over." } }
+            return { { note = "No dungeon run finished yet." } }
         end
         return rows
     end,
@@ -115,7 +115,7 @@ PAGES.dungeons = {
 
 PAGES.records = {
     title = "Records",
-    blurb = "Your best figures per dungeon. Fastest only compares runs with the most boss kills seen there.",
+    blurb = "Your best per dungeon. Fastest counts the fullest clears only.",
     cols = {
         { "Dungeon", 0 }, { "Runs", 50, "RIGHT" }, { "Richest run", 100, "RIGHT" },
         { "Your best", 100, "RIGHT" }, { "Biggest item", 250 }, { "Fastest", 80, "RIGHT" },
@@ -124,7 +124,7 @@ PAGES.records = {
         local list = {}
         for _, rec in pairs(ns.db.records) do list[#list + 1] = rec end
         if #list == 0 then
-            return { { note = "No records yet. They are set when a dungeon run is over." } }
+            return { { note = "No records yet." } }
         end
         table.sort(list, function(x, y) return (x.name or "") < (y.name or "") end)
         local rows = {}
@@ -148,7 +148,7 @@ PAGES.records = {
 
 PAGES.runs = {
     title = "Runs",
-    blurb = "Every run that is kept. Click one to open it; pin or delete it from the main window.",
+    blurb = "Click a run to open it.",
     filter = "dungeon or player",
     cols = {
         { "Date", 120 }, { "Dungeon", 0 }, { "Time", 70, "RIGHT" }, { "Group", 95, "RIGHT" },
@@ -200,12 +200,11 @@ PAGES.runs = {
 
 PAGES.luck = {
     title = "Luck",
-    blurb = "Expected wins: each roll entered counts as one in the number of players who could win it. "
-        .. "Counted from now on.",
+    blurb = "Expected: each roll entered counts as one in the number of players who could win it.",
     cols = {
-        { "Player", 0 }, { "Rolls entered", 100, "RIGHT" }, { "Expected wins", 110, "RIGHT" },
-        { "Wins", 60, "RIGHT" }, { "Difference", 90, "RIGHT" }, { "Average roll", 100, "RIGHT" },
-        { "Numbers seen", 100, "RIGHT" },
+        { "Player", 0 }, { "Rolls", 80, "RIGHT" }, { "Expected", 90, "RIGHT" },
+        { "Wins", 60, "RIGHT" }, { "Difference", 90, "RIGHT" }, { "Avg roll", 90, "RIGHT" },
+        { "Out of", 80, "RIGHT" },
     },
     rows = function()
         local rows = {}
@@ -232,7 +231,7 @@ PAGES.luck = {
             add(ns.ClassColored(ns.DisplayName(name), who.class), who, name)
         end
         if #rows == 0 then
-            return { { note = "Nothing yet. This fills up from the next run in which loot is rolled for." } }
+            return { { note = "Nothing yet. Fills up as loot is rolled for." } }
         end
         return rows
     end,
@@ -240,9 +239,9 @@ PAGES.luck = {
 
 PAGES.regulars = {
     title = "Regulars",
-    blurb = "People you have run with. Only you can see this.",
+    blurb = "People you have run with.",
     cols = {
-        { "Player", 0 }, { "Runs together", 110, "RIGHT" }, { "Avg loot / run", 120, "RIGHT" },
+        { "Player", 0 }, { "Runs", 70, "RIGHT" }, { "Avg loot", 110, "RIGHT" },
         { "Luckiest", 80, "RIGHT" }, { "Ninja", 70, "RIGHT" }, { "Last run", 130, "RIGHT" },
     },
     defaultSort = 2,
@@ -263,7 +262,7 @@ PAGES.regulars = {
             }
         end
         if #rows == 0 then
-            return { { note = "Nobody yet. People appear here once a run with them is over." } }
+            return { { note = "Nobody yet." } }
         end
         return rows
     end,
@@ -271,10 +270,10 @@ PAGES.regulars = {
 
 PAGES.drops = {
     title = "Drops",
-    blurb = "What dropped in your runs, and in how many of them.",
+    blurb = "What dropped in your runs, and how often.",
     filter = "dungeon or item",
     cols = {
-        { "Dungeon", 150 }, { "Item", 0 }, { "Seen in", 100, "RIGHT" }, { "Of runs", 60, "RIGHT" },
+        { "Dungeon", 150 }, { "Item", 0 }, { "Seen in", 100, "RIGHT" }, { "Rate", 60, "RIGHT" },
         { "Count", 60, "RIGHT" }, { "Avg value", 95, "RIGHT" }, { "Last to", 140 },
     },
     defaultSort = 4,
@@ -308,7 +307,7 @@ PAGES.drops = {
             end
         end
         if #rows == 0 then
-            return { { note = query == "" and "Nothing yet. Items appear here once a dungeon run is over."
+            return { { note = query == "" and "Nothing yet."
                                            or "Nothing matches." } }
         end
         return rows
@@ -319,15 +318,15 @@ local ROLE_NAMES = { { "TANK", "Tank" }, { "HEALER", "Healer" }, { "DAMAGER", "D
 
 PAGES.roles = {
     title = "Roles",
-    blurb = "How loot shares turn out by role and class, against an equal share (100%). Groups of 3 or more.",
-    cols = { { "", 220 }, { "Players counted", 130, "RIGHT" }, { "Average share", 0 } },
+    blurb = "Average share by role and class. 100% is an equal share. Groups of 3 or more.",
+    cols = { { "Role / class", 0 }, { "Players", 90, "RIGHT" }, { "Average share", 130, "RIGHT" } },
     rows = function()
         local rows = {}
         local function add(label, row)
             local avg = row.rel / row.n * 100
             local colour = avg >= 105 and "|cff40d040" or (avg <= 95 and "|cffe05050" or "|cffffffff")
             rows[#rows + 1] = { cells = {
-                label, tostring(row.n), ("    %s%d%%|r of an equal share"):format(colour, avg + 0.5),
+                label, tostring(row.n), ("%s%d%%|r"):format(colour, avg + 0.5),
             } }
         end
         for _, role in ipairs(ROLE_NAMES) do
@@ -335,7 +334,7 @@ PAGES.roles = {
             if row and row.n > 0 then add(role[2], row) end
         end
         if #rows == 0 then
-            return { { note = "Nothing yet. This fills up as runs are completed." } }
+            return { { note = "Nothing yet." } }
         end
         rows[#rows + 1] = { note = "" }
         local classes = {}
@@ -365,7 +364,7 @@ PAGES.search = {
     rows = function(query)
         query = (query or ""):lower()
         if #query < MIN_QUERY then
-            return { { note = "Type at least two letters of an item's name." } }
+            return { { note = "Type at least two letters." } }
         end
         local rows = {}
         for _, s in ipairs(ns.AllRuns()) do -- newest first already
@@ -388,7 +387,7 @@ PAGES.search = {
             end
         end
         if #rows == 0 then
-            return { { note = "Nothing found in the runs that are kept." } }
+            return { { note = "Not found in the runs that are kept." } }
         end
         return rows
     end,
@@ -396,12 +395,11 @@ PAGES.search = {
 
 PAGES.awards = {
     title = "Awards",
-    blurb = "Every player gets one award: the one that fits them best. The further from normal, the stronger the fit.",
-    cols = { { "Award", 150 }, { "Goes to the player who...", 0 } },
+    blurb = "Each player gets the award that fits them best: the further from normal, the stronger the fit.",
+    cols = { { "Award", 150 }, { "Rule", 0 } },
     rows = function()
         local rows = {
-            { note = "An award goes to one player only, so the others get their next best. "
-                  .. "Ninja and Luckiest count for more." },
+            { note = "One award per player, one player per award. Ninja and Luckiest weigh more." },
         }
         for _, award in ipairs(ns.AwardGuide()) do
             rows[#rows + 1] = { cells = {
@@ -427,6 +425,7 @@ for i, key in ipairs(PAGE_ORDER) do
         Refresh()
     end, ui)
     if i > 1 then tab:SetPoint("LEFT", tabs[i - 1], "RIGHT", 4, 0) end
+    tab.isTab = true
     tabs[i] = tab
 end
 
@@ -469,6 +468,9 @@ for i = 1, MAX_COLS do
     headerButtons[i] = hb
 end
 
+local headerLine = ui:CreateTexture(nil, "ARTWORK")
+headerLine:SetHeight(1)
+
 local rows = {}
 
 local function RowOnEnter(self)
@@ -493,6 +495,9 @@ local function GetRow(i)
     local hl = r:CreateTexture(nil, "HIGHLIGHT")
     hl:SetAllPoints()
     hl:SetColorTexture(1, 1, 1, 0.07)
+    r.stripe = r:CreateTexture(nil, "BACKGROUND")
+    r.stripe:SetAllPoints()
+    r.stripe:SetColorTexture(1, 1, 1, 0.035)
     r.cells = {}
     for k = 1, MAX_COLS do
         local fs = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -563,6 +568,10 @@ local function ApplyTheme()
     scroll:ClearAllPoints()
     scroll:SetPoint("TOPLEFT", 12, top - 72)
     scroll:SetPoint("BOTTOMRIGHT", -32, 12)
+    headerLine:ClearAllPoints()
+    headerLine:SetPoint("BOTTOMLEFT", scroll, "TOPLEFT", 0, 1)
+    headerLine:SetPoint("BOTTOMRIGHT", scroll, "TOPRIGHT", 0, 1)
+    if flat then headerLine:SetColorTexture(1, 1, 1, 0.14) else headerLine:SetColorTexture(1, 0.82, 0, 0.30) end
 
     for _, h in ipairs(headers) do
         if flat then h:SetTextColor(0.60, 0.63, 0.68) else h:SetTextColor(1, 0.82, 0) end
@@ -625,7 +634,7 @@ function Refresh()
     end
     if #data > MAX_ROWS then
         for i = #data, MAX_ROWS + 1, -1 do data[i] = nil end
-        data[#data + 1] = { note = ("Showing the first %d rows. Use the filter to narrow it down."):format(MAX_ROWS) }
+        data[#data + 1] = { note = ("First %d rows shown. Use the filter to narrow down."):format(MAX_ROWS) }
     end
 
     -- Column positions: fixed widths, and one column that takes the rest.
@@ -671,6 +680,7 @@ function Refresh()
         local r = GetRow(i)
         r.link, r.run = row.link, row.run
         for _, edge in ipairs(r.outline) do edge:SetShown(row.pinned == true) end
+        r.stripe:SetShown(i % 2 == 0 and not row.note)
         for k = 1, MAX_COLS do
             local fs, col = r.cells[k], page.cols[k]
             if row.note then

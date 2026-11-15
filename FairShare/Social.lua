@@ -53,7 +53,7 @@ local function CheckGroup(quiet)
                 local who = db.people[name]
                 if who and who.runs > 0 and not quiet and db.options.familiar and shown < MAX_NOTICES then
                     shown = shown + 1
-                    ns.Notice(ns.ClassColored(ns.DisplayName(name), who.class) .. " |cffb0b0b0- you have met before|r",
+                    ns.Notice(ns.ClassColored(ns.DisplayName(name), who.class) .. " |cffb0b0b0- met before|r",
                               PersonLine(who), FACE_ICON)
                 end
             end

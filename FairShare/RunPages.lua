@@ -79,7 +79,7 @@ local caption = timeline:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall"
 caption:SetPoint("TOPLEFT", chart, "BOTTOMLEFT", 0, -22)
 caption:SetWidth(PAGE_W - 80)
 caption:SetJustifyH("LEFT")
-caption:SetText("Each line is a player's running total. Vertical lines mark boss kills.")
+caption:SetText("Running totals. Vertical lines are boss kills.")
 
 -- Axis texts: value at the top and middle of the chart, time along it.
 local function AxisText(point, relPoint, x, y, justify)
@@ -164,8 +164,8 @@ local function DrawTimeline(s)
     timelineNote:SetShown(not has)
     if not has then
         timelineNote:SetText(s.example and "Example runs have no timeline."
-            or "No timeline for this run.\n\nThe time of each pickup is recorded from this version on, "
-            .. "so it will be there for your next run.")
+            or (s.log and "Nothing was picked up in this run."
+                or "No timeline: this run was recorded before pickup times were kept."))
         return
     end
 
@@ -227,7 +227,7 @@ end
 ----------------------------------------------------------------------
 
 local ROLL_ROW_H = 20
-local ROLL_COLS = { { "Time", 4, 46 }, { "Item", 54, 200 }, { "Won by", 262, 190 }, { "The others", 460, 206 } }
+local ROLL_COLS = { { "Time", 4, 46 }, { "Item", 54, 200 }, { "Won by", 262, 190 }, { "Others", 460, 206 } }
 
 local rollsPage = CreateFrame("Frame", nil, parent)
 
@@ -280,6 +280,11 @@ local function GetRollRow(i)
     local hl = r:CreateTexture(nil, "HIGHLIGHT")
     hl:SetAllPoints()
     hl:SetColorTexture(1, 1, 1, 0.07)
+    if i % 2 == 0 then -- every other row lightly shaded
+        local stripe = r:CreateTexture(nil, "BACKGROUND")
+        stripe:SetAllPoints()
+        stripe:SetColorTexture(1, 1, 1, 0.035)
+    end
     r.cells = {}
     for k, col in ipairs(ROLL_COLS) do
         local fs = r:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -303,10 +308,10 @@ local function DrawRolls(s)
         if roll.method == "need" then need = need + 1 end
     end
     if #rolls == 0 then
-        rollsSummary:SetText("|cff909090No roll sheet for this run. Every roll is recorded in full from this "
-            .. "version on, so it will be there for your next run with rolled loot.|r")
+        rollsSummary:SetText("|cff909090" .. ((s.log or s.example) and "Nothing was rolled for in this run."
+            or "No roll sheet: this run was recorded before rolls were kept in full.") .. "|r")
     else
-        rollsSummary:SetText(("%d rolls won: %d on Need, %d on Greed.   |cff909090Hover a line for every roll.|r")
+        rollsSummary:SetText(("%d rolls: %d Need, %d Greed.   |cff909090Hover a line for every roll.|r")
             :format(#rolls, need, #rolls - need))
     end
 
@@ -358,7 +363,7 @@ end, numbersPage)
 exportBtn:SetPoint("BOTTOMLEFT", 0, 0)
 local exportHint = numbersPage:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 exportHint:SetPoint("LEFT", exportBtn, "RIGHT", 10, 0)
-exportHint:SetText("Every item of this run as text, to paste into a spreadsheet.")
+exportHint:SetText("As text, for a spreadsheet.")
 
 local numberTexts = {}
 
@@ -379,44 +384,44 @@ local function NumberLines(s)
     local fair = ns.Fairness(sum)
     if fair then
         head("Fairness")
-        local text = ("%d out of 100."):format(fair)
+        local text = ("%d / 100."):format(fair)
         local rec = s.instanceID and ns.db.records[s.instanceID]
         if rec and (rec.fairRuns or 0) >= 2 then
-            text = text .. ("  Your average in this dungeon is %d, over %d runs."):format(
+            text = text .. ("  Your average here: %d, over %d runs."):format(
                 rec.fairSum / rec.fairRuns + 0.5, rec.fairRuns)
         end
         line(text)
-        note("100 means everyone got the same; 0 means one player took everything.")
+        note("100: everyone got the same. 0: one player took everything.")
     end
 
     local src = ns.Sources(s)
     if src and src.total > 0 then
-        head("Where the loot came from")
+        head("Loot by source")
         line(("After a boss kill:  %s  (%d%%)"):format(ns.Money(src.boss), Percent(src.boss, src.total)))
         line(("Profession materials:  %s  (%d%%)"):format(ns.Money(src.mats), Percent(src.mats, src.total)))
         line(("Trash and the rest:  %s  (%d%%)"):format(ns.Money(src.trash), Percent(src.trash, src.total)))
-        note("Boss loot is whatever was picked up within 90 seconds of a kill: a rule of thumb, not a fact.")
+        note("Boss loot: anything picked up within 90 seconds of a kill.")
     end
 
     local luck = ns.RunLuck(s)
     if next(luck) then
-        head("Roll luck in this run")
+        head("Roll luck")
         for _, p in ipairs(sum.players) do
             local l = luck[p.name]
             if l then
                 local diff = l.wins - l.expected
                 local colour = diff > 0.05 and "|cff40d040" or (diff < -0.05 and "|cffe05050" or "|cffffffff")
-                local text = ("%s:  entered %d, could expect %.1f wins, won %d  (%s%+.1f|r)"):format(
-                    Colored(s, p.name), l.rolls, l.expected, l.wins, colour, diff)
+                local signed = math.abs(diff) < 0.05 and "0.0" or ("%+.1f"):format(diff)
+                local text = ("%s:  %d %s, %.1f expected, %d won  (%s%s|r)"):format(
+                    Colored(s, p.name), l.rolls, l.rolls == 1 and "roll" or "rolls", l.expected, l.wins, colour, signed)
                 local st = s.rollStats and s.rollStats[p.name]
                 if st and (st.n or 0) > 0 then
-                    text = text .. ("   |cff909090average roll %d|r"):format(st.sum / st.n + 0.5)
+                    text = text .. ("   |cff909090avg roll %d|r"):format(st.sum / st.n + 0.5)
                 end
                 line(text)
             end
         end
-        note("Each roll entered counts as one in the number of players who could win it: "
-            .. "those who chose Need when anyone did, everyone who chose Greed otherwise.")
+        note("Expected: each roll entered counts as one in the number of players who could win it.")
     end
 
     local streak = ns.Streak(s)
@@ -433,15 +438,14 @@ local function NumberLines(s)
             line(("%d.  %s   %s   %d%%%s"):format(i, ns.ClassColored(ns.DisplayName(row.name), row.class),
                 ns.Money(row.value), Percent(row.value, streak.total), part))
         end
-        note("Runs count as in a row when each starts within half an hour of the one before, "
-            .. "with mostly the same group or in the same dungeon.")
+        note("In a row: started within 30 minutes of the last, with the same group or in the same dungeon.")
     end
 
     local price = over and ns.Reprice(s) or nil
     if price and price.was > 0 then
         head("At today's prices")
         local change = (price.now - price.was) / price.was * 100
-        local text = ("Worth %s today, against %s when it was looted"):format(ns.Money(price.now), ns.Money(price.was))
+        local text = ("%s today, %s when looted"):format(ns.Money(price.now), ns.Money(price.was))
         if math.abs(change) >= 1 then
             text = text .. ("  (%s%+d%%|r)"):format(change > 0 and "|cff40d040" or "|cffe05050", change)
         end
@@ -466,13 +470,12 @@ local function NumberLines(s)
                     awards[p.name] and awards[p.name].title or "-",
                     #parts > 0 and ("fits: " .. table.concat(parts, ", ")) or "nothing fitted"))
             end
-            note("A fit of 0.3 just qualifies, 1 is remarkable, 2 extraordinary. The best fits are served "
-                .. "first, and an award goes to one player only.")
+            note("0.3 just qualifies, 1 is remarkable, 2 extraordinary.")
         end
     end
 
     if #lines == 0 then
-        note("Nothing to work out for this run yet.")
+        note("Nothing to show for this run yet.")
     end
     return lines
 end

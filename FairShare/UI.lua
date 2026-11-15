@@ -72,7 +72,7 @@ end
 
 local function Money(c)
     local text = MoneyText(c, true)
-    if text == "-" then return "|cff808080-|r" end
+    if text == "-" then return "|cff909090-|r" end
     return text
 end
 
@@ -115,8 +115,8 @@ local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 --                   this item to its vendor price (right-click)
 local MARK_COLORS = { ah = { 0.35, 0.70, 1.00 }, noah = { 1.00, 0.55, 0.15 }, off = { 0.55, 0.55, 0.55 } }
 local LEGEND = "|cff59b3ffBlue dot|r: auction price    "
-    .. "|cffff8c26Orange|r: none known, vendor price used    "
-    .. "|cff8c8c8cGrey|r: auction price switched off (right-click an item)"
+    .. "|cffff8c26Orange|r: no auction price, vendor used    "
+    .. "|cff8c8c8cGrey|r: auction price off (right-click)"
 
 local function PriceMark(e)
     if ns.db.options.valueMode == "vendor" or e.cat == "bop" or e.cat == "quest" then return end
@@ -128,15 +128,14 @@ end
 local function PriceNote(e, mark, dominant)
     local note
     if mark == "ah" then
-        note = "Auction price: " .. Money(e.ah) .. " each\nRight-click to use the vendor price instead."
+        note = "Auction price: " .. Money(e.ah) .. " each\nRight-click for the vendor price."
     elseif mark == "off" then
-        note = "Auction price (" .. Money(e.ah) .. " each) switched off. Vendor price used.\n"
-            .. "Right-click to use the auction price again."
+        note = "Auction price (" .. Money(e.ah) .. " each) is off.\nRight-click to use it again."
     elseif mark == "noah" then
-        note = "No auction price known. Vendor price used."
+        note = "No auction price known: vendor price used."
     end
     if note and dominant then
-        note = note .. "\n|cffff8c26This one item is more than half of the run's value.|r"
+        note = note .. "\n|cffff8c26More than half of the run's value on its own.|r"
     end
     return note
 end
@@ -436,7 +435,7 @@ local function RowOnClick(self, button)
     end
 end
 
-local AWARDS_HINT = "Click for the list of all awards."
+local AWARDS_HINT = "Click for all awards."
 local shownAwards = {} -- the awards of the run on show, by player name
 
 -- A player's awards as a list. There is one per player today (none when
@@ -456,7 +455,9 @@ local function AddAwardLines(award)
     if award.text then GameTooltip:AddLine(award.text, 1, 1, 1, true) end
     if award.link then GameTooltip:AddLine(award.link) end
     if award.amount then GameTooltip:AddLine(Money(award.amount), 1, 1, 1) end
-    if award.how then GameTooltip:AddLine(award.how, 0.7, 0.7, 0.7, true) end
+    if award.how and award.how:gsub("%.$", "") ~= award.text then
+        GameTooltip:AddLine(award.how, 0.7, 0.7, 0.7, true)
+    end
 end
 
 -- Tooltip for a player: what is known about them from earlier runs, and
@@ -469,11 +470,11 @@ local function PersonTooltip(owner, p, awards)
         GameTooltip:AddLine("That's you.", 0.7, 0.7, 0.7)
     elseif who and who.runs > 0 then
         GameTooltip:AddLine(("Runs together: %d"):format(who.runs), 1, 1, 1)
-        GameTooltip:AddLine("Average loot per run: " .. Money(who.value / who.runs), 1, 1, 1)
-        if who.lucky > 0 then GameTooltip:AddLine(("Luckiest: %d times"):format(who.lucky), 1, 1, 1) end
-        if who.ninja > 0 then GameTooltip:AddLine(("Ninja: %d times"):format(who.ninja), 1, 1, 1) end
+        GameTooltip:AddLine("Average loot: " .. Money(who.value / who.runs), 1, 1, 1)
+        if who.lucky > 0 then GameTooltip:AddLine(("Luckiest x%d"):format(who.lucky), 1, 1, 1) end
+        if who.ninja > 0 then GameTooltip:AddLine(("Ninja x%d"):format(who.ninja), 1, 1, 1) end
     else
-        GameTooltip:AddLine("No earlier runs together on record.", 0.7, 0.7, 0.7)
+        GameTooltip:AddLine("No earlier runs together.", 0.7, 0.7, 0.7)
     end
     for _, award in ipairs(awards or {}) do
         GameTooltip:AddLine(" ")
@@ -950,10 +951,10 @@ local RECORD_LABELS = {
     { "jackpot", "biggest single item" }, { "fastest", "fastest run" },
 }
 
--- "40% above" / "12% below" / "about the same as"
+-- "40% higher" / "12% lower" / "about the same"
 local function Versus(pct)
-    if math.abs(pct) < 5 then return "about the same as" end
-    return ("%d%% %s"):format(math.abs(pct) + 0.5, pct > 0 and "|cff40d040above|r" or "|cffe05050below|r")
+    if math.abs(pct) < 5 then return "about the same" end
+    return ("%d%% %s"):format(math.abs(pct) + 0.5, pct > 0 and "|cff40d040higher|r" or "|cffe05050lower|r")
 end
 
 -- includeTotals: the list view shows its totals as rows of its own.
@@ -978,7 +979,7 @@ local function FooterTexts(sum, insights, includeTotals)
         if insights.duration then
             parts[#parts + 1] = "|cff909090Run time|r  " .. Duration(insights.duration)
             if insights.perHour then
-                parts[#parts + 1] = "|cff909090Group loot per hour|r  " .. Money(insights.perHour)
+                parts[#parts + 1] = "|cff909090Group per hour|r  " .. Money(insights.perHour)
             end
         end
         if insights.fair then
@@ -996,15 +997,15 @@ local function FooterTexts(sum, insights, includeTotals)
                 if insights.records[label[1]] then names[#names + 1] = label[2] end
             end
             if #names > 0 then
-                texts[#texts + 1] = "|cffffd100Record for this dungeon:|r  " .. table.concat(names, ", ")
+                texts[#texts + 1] = "|cffffd100New record here:|r  " .. table.concat(names, ", ")
             end
         end
         if insights.groupPct then
-            local text = ("Group loot is %s your average for this dungeon"):format(Versus(insights.groupPct))
+            local text = ("|cff909090Against your average here|r  group loot %s"):format(Versus(insights.groupPct))
             if insights.minePct then
-                text = text .. ("; your own is %s yours"):format(Versus(insights.minePct))
+                text = text .. (",  your own %s"):format(Versus(insights.minePct))
             end
-            texts[#texts + 1] = text .. (" |cff909090(%d earlier runs)|r"):format(insights.priorRuns)
+            texts[#texts + 1] = text .. ("  |cff909090(%d earlier runs)|r"):format(insights.priorRuns)
         end
     end
 
@@ -1127,7 +1128,7 @@ local function BuildColumnLines(sum, o)
     if not o.alignItems then
         for i, p in ipairs(sum.players) do
             if p.count == 0 then
-                add(i, { label = sum.needOnly and "|cff808080No Need wins|r" or "|cff808080No loot seen|r" })
+                add(i, { label = sum.needOnly and "|cff909090No Need wins|r" or "|cff909090No loot seen|r" })
             end
         end
     end
@@ -1427,7 +1428,7 @@ local function BuildLines(sum, awards, insights)
         if open then
             if p.count == 0 then
                 add({ indent = 24, wide = true,
-                      label = sum.needOnly and "|cff808080No Need wins|r" or "|cff808080No loot seen|r" })
+                      label = sum.needOnly and "|cff909090No Need wins|r" or "|cff909090No loot seen|r" })
             end
             for _, cat in ipairs(o.groupByCategory and CATS or { false }) do
                 local c = GroupOf(p, cat)
@@ -1534,7 +1535,7 @@ local function MakeButton(text, width, onClick, parent)
         self.tpl.mark:SetShown(selected)
         self.flat.mark:SetShown(selected)
         self.flat.bg:SetColorTexture(1, 1, 1, selected and 0.16 or 0.08)
-        self.flat.text:SetAlpha(selected and 1 or 0.7)
+        self.flat.text:SetAlpha((selected or not self.isTab) and 1 or 0.7)
         if selected then self.tpl:LockHighlight() else self.tpl:UnlockHighlight() end
     end
     buttons[#buttons + 1] = b
@@ -1672,7 +1673,7 @@ function Render()
             tag = "  in progress"
         end
         title:SetText(ns.Title((s.name or "Run") .. (needOnly and "  -  Need rolls only" or "")))
-        runLabel:SetText(("%s  |cff808080(%d/%d)%s|r%s"):format(
+        runLabel:SetText(("%s  |cff909090(%d/%d)%s|r%s"):format(
             date("%Y-%m-%d %H:%M", s.startedAt), viewIndex, #runs, tag,
             s.pinned and "  |cffffd100pinned|r" or ""))
         sum = ns.Summarize(s, needOnly)

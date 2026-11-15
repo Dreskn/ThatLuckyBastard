@@ -56,6 +56,7 @@ local Draw
 local podiumTab = ns.MakeButton("Podium", 100, function() page = "podium"; Draw() end, ui)
 local paperTab = ns.MakeButton("Front page", 100, function() page = "paper"; Draw() end, ui)
 paperTab:SetPoint("LEFT", podiumTab, "RIGHT", 4, 0)
+podiumTab.isTab, paperTab.isTab = true, true
 
 -- Pages added by other files: [key] = { frame, draw, tab }. A page is a
 -- frame (a child of ns.ShowParent, placed by this window) and a function
@@ -67,6 +68,7 @@ ns.ShowParent = ui
 function ns.AddShowPage(key, label, frame, draw)
     local tab = ns.MakeButton(label, 100, function() page = key; Draw() end, ui)
     tab:SetPoint("LEFT", lastTab, "RIGHT", 4, 0)
+    tab.isTab = true
     lastTab = tab
     extra[key] = { frame = frame, draw = draw, tab = tab }
     extraList[#extraList + 1] = extra[key]

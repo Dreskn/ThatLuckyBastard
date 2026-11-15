@@ -196,7 +196,7 @@ do
     Choices(p, "portrait", {
         { "3D model", "3d" }, { "2D portrait", "2d" }, { "Class icon", "class" }, { "None", "none" },
     }, 2)
-    Hint(p, "Live pictures need the player in your group. Afterwards a stand-in is built from their race and gear.")
+    Hint(p, "Players who have left the group get a stand-in built from their race and gear.")
 
     Section(p, "Size")
     scaleLabel = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -232,22 +232,22 @@ end
 ----------------------------------------------------------------------
 
 do
-    local p = NewPage("Layout", "How a run is laid out and which details appear.")
+    local p = NewPage("Layout", "How a run is laid out, and what it shows.")
 
     Section(p, "Arrangement")
     Toggles(p, {
         { "One column per player for groups of 5 or fewer", "useColumns" },
         { "Group items by category", "groupByCategory" },
-        { "Align the same item across players, to compare line by line", "alignItems" },
+        { "Align the same item across players", "alignItems" },
     })
 
     Section(p, "Details to show")
     Toggles(p, {
         { "Vendor value", "showVendor" },
         { "Item icons", "showIcons" },
-        { "Share and over/under equal split", "showShare" },
-        { "Share bar (Modern theme, column view)", "showBar" },
-        { "Total and equal split line", "showTotals" },
+        { "Share, and gap to an equal split", "showShare" },
+        { "Share bar (Modern theme)", "showBar" },
+        { "Total and equal split", "showTotals" },
     })
 end
 
@@ -272,8 +272,8 @@ do
         }
     end
     Group(p, defs, 2)
-    Hint(p, "An unticked category is hidden and left out of every total and share.")
-    Toggles(p, { { "Hide unticked categories but still count them", "countHidden" } })
+    Hint(p, "Unticked categories are hidden and not counted.")
+    Toggles(p, { { "Count hidden categories anyway", "countHidden" } })
 
     Section(p, "Price")
     Choices(p, "valueMode", {
@@ -294,18 +294,18 @@ do
 
     Section(p, "Order players by")
     Choices(p, "sortPlayers", {
-        { "Role: tank, healer, then damage", "role" },
-        { "Podium: top looter in the middle, columns stepped by rank", "podium" },
-        { "Loot value, highest first", "value" },
+        { "Role (tank, healer, damage)", "role" },
+        { "Podium (top looter in the middle)", "podium" },
+        { "Loot value", "value" },
         { "Name", "name" },
     })
     p.y = p.y - 6
-    Toggles(p, { { "Always show me first (not in podium order)", "selfFirst" } })
+    Toggles(p, { { "Always show me first (except podium)", "selfFirst" } })
 
     Section(p, "Names")
     Choices(p, "nameStyle", {
-        { "Follow the game's \"My Secondary Name\" setting", "game" },
-        { "First and second name", "full" },
+        { "Follow the game's name setting", "game" },
+        { "Full name", "full" },
         { "First name only", "first" },
     })
 end
@@ -315,18 +315,18 @@ end
 ----------------------------------------------------------------------
 
 do
-    local p = NewPage("Behaviour", "When FairShare tracks and when it speaks up.")
+    local p = NewPage("Behaviour", "What is tracked, and when the window opens.")
 
     Section(p, "Open the window automatically")
     Toggles(p, {
-        { "When I leave the instance alive", "popupLeave" },
+        { "When I leave a dungeon alive", "popupLeave" },
     })
 
     Section(p, "Tracking")
     Toggles(p, {
-        { "Track raids as well as dungeons", "trackRaids" },
-        { "Ask if it is a new run when I come back into the same dungeon", "askNewRun" },
-        { "Print a one-line summary in chat when a run ends", "chatSummary" },
+        { "Track raids too", "trackRaids" },
+        { "Ask whether re-entering a dungeon is a new run", "askNewRun" },
+        { "One-line summary in my chat window when a run ends", "chatSummary" },
     })
 
     Section(p, "Runs to keep")
@@ -345,27 +345,27 @@ end
 ----------------------------------------------------------------------
 
 do
-    local p = NewPage("Extras", "The fun parts. Everything here stays on your screen only.")
+    local p = NewPage("Extras", "Everything here is shown to you alone.")
 
     Section(p, "End of run")
     Toggles(p, {
-        { "Open the podium scene when a run ends", "podiumOnLeave" },
-        { "Awards (Ninja, Luckiest, Jackpot and the rest)", "showAwards" },
-        { "Play sounds while the awards are revealed", "ceremonySound" },
-        { "Take a screenshot once all awards are shown", "ceremonyScreenshot" },
-        { "Run time, dungeon records and comparison with my average", "showInsights" },
+        { "Open the podium when a run ends", "podiumOnLeave" },
+        { "Awards", "showAwards" },
+        { "Sounds during the reveal", "ceremonySound" },
+        { "Screenshot after the reveal", "ceremonyScreenshot" },
+        { "Run time, records and averages under the breakdown", "showInsights" },
     })
 
     Section(p, "During the run")
     Toggles(p, {
-        { "Loot bingo: deal a card each run and announce my lines", "bingo" },
-        { "Show a notice when someone I have run with joins my group", "familiar" },
-        { "Recap when I chain runs with the same group or dungeon", "streak" },
-        { "Tooltips: a line about players I have run with", "tipPlayers" },
-        { "Tooltips: a line about items seen in my runs", "tipItems" },
-        { "Show a notice when someone loots something valuable", "ticker" },
+        { "Loot bingo", "bingo" },
+        { "Notice when a familiar player joins my group", "familiar" },
+        { "Streak recap after back-to-back runs", "streak" },
+        { "Player tooltips: our runs together", "tipPlayers" },
+        { "Item tooltips: seen in my runs", "tipItems" },
+        { "Notice for valuable loot", "ticker" },
     })
-    Hint(p, "A notice appears for a pickup worth at least:")
+    Hint(p, "Worth at least:")
     p.y = p.y + 10
     Choices(p, "tickerMin", {
         { "1 gold", 10000 }, { "5 gold", 50000 }, { "25 gold", 250000 }, { "100 gold", 1000000 },

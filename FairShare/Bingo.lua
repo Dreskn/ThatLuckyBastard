@@ -318,7 +318,7 @@ local function Evaluate()
         for _ in pairs(card.done) do ticked = ticked + 1 end
         local text
         if ticked >= SIZE * SIZE then
-            text = "Full card! Every square is ticked."
+            text = "Full card!"
         elseif lines == 1 then
             text = "You completed a line."
         else

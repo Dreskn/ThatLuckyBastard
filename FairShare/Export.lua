@@ -80,7 +80,7 @@ function ns.ShowExport(kind, s)
         return
     end
     local _, lines = text:gsub("\n", "\n")
-    hint:SetText(("%d lines, selected. Press |cffffd100Ctrl+C|r to copy, then paste into a spreadsheet."):format(lines + 1))
+    hint:SetText(("%d lines selected. |cffffd100Ctrl+C|r to copy."):format(lines + 1))
     ApplyTheme()
     ex:Show()
     ex:Raise()

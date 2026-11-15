@@ -88,7 +88,7 @@ show(step("familiar faces when a group forms", function()
     Fire("GROUP_ROSTER_UPDATE"); RunTimers()
     local met = 0
     for _, text in ipairs(TEXTLOG) do
-        if text:find("you have met before", 1, true) then met = met + 1 end
+        if text:find("met before", 1, true) then met = met + 1 end
     end
     assert(met >= 1, "expected at least one familiar-face notice, got " .. met)
     print("        notices queued for people met before; first shown: " .. TEXTLOG[1] .. "  /  " .. tostring(TEXTLOG[2]))

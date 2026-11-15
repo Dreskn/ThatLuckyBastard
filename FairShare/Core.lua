@@ -950,14 +950,14 @@ local AWARDS = {
     -- Bound gear counts at vendor price, so Ninja mostly reflects needing
     -- things that can be sold.
     { key = "ninja", title = "Ninja", icon = "Ability_Stealth", weight = 1.5,
-      how = "Won the most value on Need rolls: at least 1g, and a tenth of the run's loot.",
+      how = "Won the most value on Need rolls: at least 1g and a tenth of the run's loot.",
       fit = function(p, _, g)
           if p.needValue < g.need or p.needValue < NINJA_MIN then return end
           return Fit(p.needValue / g.total, 0.1, 0.3)
       end,
       detail = function(p) return { text = "Most value won on Need rolls", amount = p.needValue } end },
     { key = "lucky", title = "Luckiest", icon = "INV_Misc_Coin_02", weight = 1.5,
-      how = "Won the most on Greed rolls, clearly more than an even split of what was rolled for.",
+      how = "Won the most on Greed rolls, clearly more than an even split of the rolled loot.",
       fit = function(p, _, g)
           if p.greedValue <= 0 or p.greedValue < g.greed then return end
           -- What they won beyond an even split of the Greed loot, measured
@@ -966,14 +966,14 @@ local AWARDS = {
       end,
       detail = function(p) return { text = "Most value won on Greed rolls", amount = p.greedValue } end },
     { key = "jackpot", title = "Jackpot", icon = "INV_Misc_Gem_Diamond_02",
-      how = "Got the most valuable single item of the run, worth 1g or more.",
+      how = "Got the most valuable single item, worth 1g or more.",
       fit = function(p, _, g)
           if p.bestValue < g.best or p.bestValue < JACKPOT_MIN then return end
           return Fit(p.bestValue / g.total, 0, 0.3)
       end,
       detail = function(p) return { text = "Best single item of the run", link = p.bestLink, amount = p.bestValue } end },
     { key = "lionshare", title = "Lion's Share", icon = "Ability_Druid_CatForm", minPlayers = 3,
-      how = "Top looter with far more than an equal share: 36% of the loot or more in a group of five.",
+      how = "Topped the loot, far above an equal share: 36% or more in a group of five.",
       -- Where their share sits between an equal one (0) and everything (1).
       fit = function(p, _, g)
           if p.rank ~= 1 then return end
@@ -983,7 +983,7 @@ local AWARDS = {
           return { text = ("Took %d%% of the run's loot"):format(Percent(p.market / g.total)), amount = p.market }
       end },
     { key = "fairshare", title = "Fair Share", icon = "INV_Misc_Coin_05", minPlayers = 3,
-      how = "Ended within a tenth of a perfectly equal share. Groups of 3 or more.",
+      how = "Ended within a tenth of an equal share. Groups of 3 or more.",
       fit = function(p, _, g) return Fit(1 - math.abs(p.market - g.equal) / g.equal, 0.9, 1) end,
       detail = function(p, _, g)
           return { text = ("%d%% of the loot, in a group of %d"):format(Percent(p.market / g.total), g.n),
@@ -997,7 +997,7 @@ local AWARDS = {
       end,
       detail = function(p) return { text = "Least loot of the group", amount = p.market } end },
     { key = "onehit", title = "One-Hit Wonder", icon = "INV_Misc_Gem_Ruby_01",
-      how = "One item makes up 70% or more of everything they got (3 items or more).",
+      how = "Got 70% or more of their loot from a single item (3 items or more).",
       fit = function(p)
           if p.count < 3 or p.market <= 0 then return end
           return Fit(p.bestValue / p.market, 0.7, 1)
@@ -1007,17 +1007,17 @@ local AWARDS = {
                    link = p.bestLink, amount = p.bestValue }
       end },
     { key = "purple", title = "Purple Rain", icon = "INV_Misc_Gem_Amethyst_02",
-      how = "Looted an epic item.",
+      how = "Looted an epic.",
       fit = function(p) return p.bestQuality >= 4 and 1 or nil end,
       detail = function(p)
           local best
           for _, e in ipairs(p.all.items) do
               if (e.quality or 0) >= 4 and (not best or e.vendor > best.vendor) then best = e end
           end
-          return { text = "Looted an epic item", link = best and best.link }
+          return { text = "Looted an epic", link = best and best.link }
       end },
     { key = "farmer", title = "The Farmer", icon = "INV_Misc_Pelt_Wolf_01",
-      how = "Took a large part of the run's profession materials: skins, herbs, ore, cloth.",
+      how = "Took a large part of the run's profession materials.",
       fit = function(p, _, g)
           local prof = p.cats.prof and p.cats.prof.market or 0
           if prof < FARMER_MIN then return end
@@ -1029,14 +1029,14 @@ local AWARDS = {
           return { text = ("%d%% of the run's profession materials"):format(Percent(prof / g.prof)), amount = prof }
       end },
     { key = "packmule", title = "Pack Mule", icon = "INV_Misc_Bag_07",
-      how = "Picked up the most items, well above the group's average, yet ended below an equal share.",
+      how = "Picked up the most items, well above average, yet ended below an equal share.",
       fit = function(p, _, g)
           if p.count < 10 or p.count < g.count or p.market >= g.equal then return end
           return Fit(p.count / (g.items / g.n), 1.3, 2.5)
       end,
       detail = function(p) return { text = ("%d items, and still below an equal share"):format(p.count) } end },
     { key = "hoarder", title = "Hoarder", icon = "INV_Misc_Bag_10",
-      how = "Picked up 5 or more pieces of junk, at least half again as many as the group's average.",
+      how = "Picked up 5 or more pieces of junk, 1.5 times the group's average or more.",
       fit = function(p, _, g)
           local junk = p.cats.junk and p.cats.junk.count or 0
           if junk < 5 then return end
@@ -1044,7 +1044,7 @@ local AWARDS = {
       end,
       detail = function(p) return { text = ("Picked up %d pieces of junk"):format(p.cats.junk.count) } end },
     { key = "vendor", title = "Vendor's Friend", icon = "INV_Misc_Coin_06",
-      how = "Got nothing worth auctioning (4 items or more), in a run where the others did.",
+      how = "Got nothing worth auctioning, in a run where others did (4 items or more).",
       fit = function(p, _, g)
           if db.options.valueMode == "vendor" or not ns.HasPriceSource() then return end
           if p.count < 4 or p.market <= 0 or p.vendor < p.market * 0.95 then return end
@@ -1053,7 +1053,7 @@ local AWARDS = {
       end,
       detail = function(p) return { text = "Nothing worth putting up for auction", amount = p.market } end },
     { key = "errand", title = "Errand Runner", icon = "INV_Misc_Note_01",
-      how = "Picked up 3 or more quest items, at least half again as many as the group's average.",
+      how = "Picked up 3 or more quest items, 1.5 times the group's average or more.",
       fit = function(p, _, g)
           local quest = p.cats.quest and p.cats.quest.count or 0
           if quest < 3 then return end
@@ -1069,15 +1069,15 @@ local AWARDS = {
       fit = function(_, x) return x.low == 1 and 0.75 or nil end,
       detail = function() return { text = "Rolled a 1" } end },
     { key = "hotdice", title = "Loaded Dice", icon = "INV_Misc_Dice_02",
-      how = "Average roll well above 50: about 60 over 15 rolls, or 68 over 5.",
+      how = "Rolled well above average: about 60 over 15 rolls, or 68 over 5.",
       fit = function(_, x) return x.rolls >= DICE_MIN_ROLLS and Fit(x.luck, 1.3, 2.6) or nil end,
       detail = function(_, x) return { text = ("Average roll of %d over %d rolls"):format(x.avgRoll, x.rolls) } end },
     { key = "colddice", title = "Cursed Dice", icon = "INV_Misc_Dice_01",
-      how = "Average roll well below 50: about 41 over 15 rolls, or 33 over 5.",
+      how = "Rolled well below average: about 41 over 15 rolls, or 33 over 5.",
       fit = function(_, x) return x.rolls >= DICE_MIN_ROLLS and Fit(-x.luck, 1.3, 2.6) or nil end,
       detail = function(_, x) return { text = ("Average roll of %d over %d rolls"):format(x.avgRoll, x.rolls) } end },
     { key = "window", title = "Window Shopper", icon = "INV_Misc_Spyglass_02",
-      how = "Rolled on 4 or more items and won none of them.",
+      how = "Rolled on 4 or more items and won none.",
       fit = function(p, x)
           if p.needWins + p.greedWins > 0 then return end
           return Fit(x.rolls, 4, 15)
@@ -1090,7 +1090,7 @@ local AWARDS = {
 }
 
 local TOURIST = { key = "tourist", title = "Tourist", icon = "INV_Misc_Map_01",
-                  how = "No other award fitted. Nobody leaves empty-handed." }
+                  how = "Fitted nothing else." }
 
 -- Every award there is: a list of { key, title, icon, how }.
 function ns.AwardGuide()
@@ -1520,8 +1520,8 @@ end
 
 local deleteTarget
 StaticPopupDialogs["FAIRSHARE_DELETE_RUN"] = {
-    text = "FairShare\n\nDelete this run of %s?\n\n"
-        .. "|cff909090It cannot be brought back. Statistics already counted stay as they are.|r",
+    text = "FairShare\n\nDelete this run?\n%s\n\n"
+        .. "|cff909090This cannot be undone. Statistics keep what the run added.|r",
     button1 = YES,
     button2 = NO,
     OnAccept = function()
@@ -1537,9 +1537,9 @@ StaticPopupDialogs["FAIRSHARE_DELETE_RUN"] = {
 -- Asks before deleting a run, and says why when it cannot be deleted.
 function ns.AskDeleteRun(s)
     if not IsStored(s) then
-        Print(s and s.example and "Example runs are not saved, so there is nothing to delete." or "No run to delete.")
+        Print(s and s.example and "Example runs are not saved." or "No run to delete.")
     elseif s.pinned then
-        Print("This run is pinned. Unpin it first if you really want to delete it.")
+        Print("This run is pinned. Unpin it first.")
     else
         deleteTarget = s
         StaticPopup_Show("FAIRSHARE_DELETE_RUN", (s.name or "Run") .. ", " .. date("%Y-%m-%d %H:%M", s.startedAt))
@@ -1618,9 +1618,9 @@ SlashCmdList.FAIRSHARE = function(msg)
     elseif cmd == "pin" then
         local s = ns.ViewedRun()
         if ns.TogglePin(s) then
-            Print(s.pinned and "Run pinned: it will never be deleted." or "Run unpinned.")
+            Print(s.pinned and "Run pinned." or "Run unpinned.")
         else
-            Print("No saved run on show to pin.")
+            Print("No saved run on show.")
         end
     elseif cmd == "delete" then
         ns.AskDeleteRun(ns.ViewedRun())
@@ -1629,26 +1629,25 @@ SlashCmdList.FAIRSHARE = function(msg)
         CheckZone() -- keep tracking if this was typed inside a dungeon
         ns.Refresh()
         if left > 0 then
-            Print(("Recorded runs deleted, except the %d you pinned."):format(left))
+            Print(("Runs deleted, except %d pinned."):format(left))
         else
-            Print("All recorded runs deleted.")
+            Print("All runs deleted.")
         end
     else
-        Print("/fs - open the breakdown window")
-        Print("/fs options - open the options panel")
-        Print("/fs theme classic|modern - change the look")
-        Print("/fs start - track a run manually (outside a dungeon)")
-        Print("/fs stop - end the current run")
-        Print("/fs search <item name> - find an item in past runs")
-        Print("/fs stats - statistics: dungeons, runs, luck, regulars, drops, roles, records")
+        Print("/fs - the breakdown window")
+        Print("/fs options")
         Print("/fs details - the run on show: podium, front page, timeline, rolls, numbers")
-        Print("/fs export - the run on show as text for a spreadsheet (/fs export all: every run)")
-        Print("/fs awards - what every award means")
-        Print("/fs bingo - your loot bingo card")
-        Print("/fs pin - pin the run on show, so that it is never deleted (again to unpin)")
+        Print("/fs stats - dungeons, records, runs, luck, regulars, drops, roles")
+        Print("/fs search <item> - find an item in past runs")
+        Print("/fs awards - what each award means")
+        Print("/fs bingo - your bingo card")
+        Print("/fs export - the run on show as text (/fs export all: every run)")
+        Print("/fs pin - pin or unpin the run on show; pinned runs are never deleted")
         Print("/fs delete - delete the run on show")
-        Print("/fs clear - delete all recorded runs, except pinned ones")
-        Print("/fs capture - record raw loot and roll messages (for troubleshooting)")
+        Print("/fs clear - delete all runs except pinned ones")
+        Print("/fs start, /fs stop - track a run by hand, outside a dungeon")
+        Print("/fs theme classic|modern")
+        Print("/fs capture - record raw loot messages, for troubleshooting")
     end
 end
 
