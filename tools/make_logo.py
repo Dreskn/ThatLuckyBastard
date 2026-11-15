@@ -4,8 +4,11 @@ Five pips for the five players of a dungeon group; the one in the middle,
 in the addon's accent colour, is the one who got lucky.
 
 Writes  FairShare/Media/logo.tga  (64x64, what the game loads)
-        media/logo.png            (256x256, for the README and listings)
+        media/logo.png            (512x512, for the README and listings)
         media/logo-sizes.png      (the mark at the sizes the game shows it)
+        media/social-preview.png  (1280x640: the mark, the name and a line
+                                   about it, for the repository's social
+                                   preview, which the WowUp Hub uses as icon)
 
     python tools/make_logo.py
 
@@ -14,7 +17,7 @@ FairShare/Core.lua (ns.ACCENT, ns.ACCENT_HEX) together.
 """
 import os
 
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 GOLD, RIM, LIGHT, SHADE = (255, 209, 0), (170, 118, 0), (255, 236, 140), (120, 80, 0)
 TEAL, TEAL_DARK = (64, 199, 184), (20, 120, 110)
@@ -51,6 +54,45 @@ def draw(size):
     return die.resize((size, size), Image.LANCZOS)
 
 
+PANEL = (19, 22, 27)  # the dark background of the Modern theme
+
+
+def font(size, bold=False):
+    """A plain sans-serif at `size`: Segoe UI or Arial where they exist."""
+    for name in (("segoeuib.ttf", "arialbd.ttf") if bold else ("segoeui.ttf", "arial.ttf")):
+        try:
+            return ImageFont.truetype(name, size)
+        except OSError:
+            pass
+    return ImageFont.load_default()
+
+
+def social():
+    """The mark, the name in its two tones, and what the addon is.
+
+    Everything sits in the middle 640 pixels, so that a site which crops
+    the image to a square for an icon still shows all of it."""
+    W, H = 1280, 640
+    img = Image.new("RGBA", (W, H), PANEL + (255,))
+    d = ImageDraw.Draw(img)
+    d.rectangle([0, H - 10, W, H], fill=TEAL)
+
+    mark = 300
+    img.alpha_composite(draw(mark), ((W - mark) // 2, 40))
+
+    name = font(104, bold=True)
+    fair, share = d.textlength("Fair", font=name), d.textlength("Share", font=name)
+    x = (W - fair - share) / 2
+    d.text((x, 340), "Fair", font=name, fill=(255, 255, 255))
+    d.text((x + fair, 340), "Share", font=name, fill=TEAL)
+
+    for text, size, y, fill in (("Who got what, and who got lucky", 38, 482, (200, 204, 210)),
+                                ("A loot addon for WoW Forever", 28, 540, (140, 146, 154))):
+        f = font(size)
+        d.text(((W - d.textlength(text, font=f)) / 2, y), text, font=f, fill=fill)
+    return img
+
+
 def main():
     root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     game = os.path.join(root, "FairShare", "Media")
@@ -66,7 +108,8 @@ def main():
     assert header[2] == 2 and header[16] == 32, "not an uncompressed 32-bit TGA"
     assert header[12] | header[13] << 8 == 64 and header[14] | header[15] << 8 == 64
 
-    draw(256).save(os.path.join(docs, "logo.png"))
+    draw(512).save(os.path.join(docs, "logo.png"))
+    social().save(os.path.join(docs, "social-preview.png"))
 
     # What it looks like at the sizes the game shows it, on a dark panel.
     sheet = Image.new("RGBA", (420, 150), (19, 22, 27, 255))
