@@ -7,6 +7,7 @@
 ## OptionalDeps: Auctionator, TradeSkillMaster
 ## AddonCompartmentFunc: FairShare_OnAddonCompartmentClick
 ## IconTexture: Interface\AddOns\FairShare\Media\logo.tga
+## X-Wago-ID: jK8WBb6y
 
 Core.lua
 Data.lua

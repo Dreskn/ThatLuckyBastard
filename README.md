@@ -1,4 +1,4 @@
-<img src="media/logo.png" alt="" width="96" align="right">
+<img src="https://raw.githubusercontent.com/Dreskn/FairShare/main/media/logo.png" alt="" width="96" align="right">
 
 # FairShare
 
@@ -8,7 +8,7 @@ FairShare records what every player in your group looted — boss drops, rolls, 
 
 Everything it shows appears on your screen only. It never sends a chat message.
 
-![The breakdown window after a run of Uldaman](.previews/run.png)
+![The breakdown window after a run of Uldaman](https://raw.githubusercontent.com/Dreskn/FairShare/main/.previews/run.png)
 
 ## The breakdown window
 
