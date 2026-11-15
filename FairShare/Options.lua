@@ -183,7 +183,7 @@ do
 
     Section(p, "Theme")
     local defs = {}
-    for i, t in ipairs({ { "Classic", "classic" }, { "Retail", "retail" }, { "Modern", "modern" } }) do
+    for i, t in ipairs({ { "Classic", "classic" }, { "Modern", "modern" } }) do
         defs[i] = {
             t[1],
             function() return (ns.db.theme or "classic") == t[2] end,
@@ -245,7 +245,7 @@ do
     Section(p, "Details to show")
     Toggles(p, {
         { "Vendor value", "showVendor" },
-        { "Item icons (column view)", "showIcons" },
+        { "Item icons", "showIcons" },
         { "Share and over/under equal split", "showShare" },
         { "Share bar (Modern theme, column view)", "showBar" },
         { "Total and equal split line", "showTotals" },
@@ -302,6 +302,13 @@ do
     })
     p.y = p.y - 6
     Toggles(p, { { "Always show me first (not in podium order)", "selfFirst" } })
+
+    Section(p, "Names")
+    Choices(p, "nameStyle", {
+        { "Follow the game's \"My Secondary Name\" setting", "game" },
+        { "First and second name", "full" },
+        { "First name only", "first" },
+    })
 end
 
 ----------------------------------------------------------------------
@@ -313,22 +320,53 @@ do
 
     Section(p, "Open the window automatically")
     Toggles(p, {
-        { "About 45 seconds after the last boss", "popupBoss" },
-        { "When leaving the instance", "popupLeave" },
+        { "When I leave the instance alive", "popupLeave" },
     })
 
     Section(p, "Tracking")
     Toggles(p, {
         { "Track raids as well as dungeons", "trackRaids" },
-        { "Ask if it is a new run when I walk back into a dungeon", "askNewRun" },
+        { "Ask if it is a new run when I come back into the same dungeon", "askNewRun" },
         { "Print a one-line summary in chat when a run ends", "chatSummary" },
     })
 
     Section(p, "Runs to keep")
-    Choices(p, "maxHistory", { { "10", 10 }, { "30", 30 }, { "100", 100 } }, 2)
+    Choices(p, "maxHistory", { { "10", 10 }, { "30", 30 }, { "100", 100 }, { "300", 300 } }, 2)
 
     Section(p, "Minimap")
     Toggles(p, { { "Show the minimap button", "showMinimap" } })
+end
+
+----------------------------------------------------------------------
+-- Page 6: Extras
+----------------------------------------------------------------------
+
+do
+    local p = NewPage("Extras", "The fun parts. Everything here stays on your screen only.")
+
+    Section(p, "End of run")
+    Toggles(p, {
+        { "Open the podium scene when a run ends", "podiumOnLeave" },
+        { "Awards (Ninja, Luckiest, Jackpot and the rest)", "showAwards" },
+        { "Play sounds while the awards are revealed", "ceremonySound" },
+        { "Take a screenshot once all awards are shown", "ceremonyScreenshot" },
+        { "Run time, dungeon records and comparison with my average", "showInsights" },
+    })
+
+    Section(p, "During the run")
+    Toggles(p, {
+        { "Loot bingo: deal a card each run and announce my lines", "bingo" },
+        { "Show a notice when someone I have run with joins my group", "familiar" },
+        { "Recap when I chain runs with the same group or dungeon", "streak" },
+        { "Tooltips: a line about players I have run with", "tipPlayers" },
+        { "Tooltips: a line about items seen in my runs", "tipItems" },
+        { "Show a notice when someone loots something valuable", "ticker" },
+    })
+    Hint(p, "A notice appears for a pickup worth at least:")
+    p.y = p.y + 10
+    Choices(p, "tickerMin", {
+        { "1 gold", 10000 }, { "5 gold", 50000 }, { "25 gold", 250000 }, { "100 gold", 1000000 },
+    }, 2)
 end
 
 ----------------------------------------------------------------------
@@ -366,7 +404,7 @@ end
 
 local function ApplyTheme()
     local name = ns.db.theme
-    if name ~= "retail" and name ~= "modern" then name = "classic" end
+    if name ~= "modern" then name = "classic" end
     flat = (name == "modern")
     local hue = flat and ACCENT or GOLD
 

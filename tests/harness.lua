@@ -1,0 +1,234 @@
+-- Stand-ins for the game, so the addon's files can be loaded and driven
+-- outside it. Widgets accept any method; the few whose results the code
+-- computes with return plausible values.
+
+NOW = 1800000000          -- the clock, moved by the tests
+function time() return NOW end
+function GetTime() return NOW end
+date = os.date
+tinsert, tremove, wipe = table.insert, table.remove, function(t) for k in pairs(t) do t[k] = nil end return t end
+format, strsplit = string.format, nil
+unpack = unpack or table.unpack
+
+----------------------------------------------------------------------
+-- Widgets
+----------------------------------------------------------------------
+local Widget = {}
+local known = {}
+
+local function NewWidget(kind, name)
+    local w = { __kind = kind, __name = name, __scripts = {}, __shown = true, __text = "" }
+    return setmetatable(w, Widget)
+end
+
+-- What a call to an unknown method returns, going by its name.
+local function Default(key)
+    if key:match("^Create") then return function() return NewWidget(key) end end
+    if key:match("^Get") then return function() return 100 end end
+    if key:match("^Is") or key:match("^Has") or key:match("^Can") then return function() return false end end
+    return function() end
+end
+
+Widget.__index = function(self, key)
+    if known[key] then return known[key] end
+    if type(key) ~= "string" or not key:match("^[A-Z]") then return nil end
+    -- Unknown capitalised member: usable both as a method and as a child
+    -- widget (template parts such as CloseButton or ScrollBar).
+    local member = NewWidget("member:" .. key)
+    member.__call = Default(key)
+    rawset(self, key, member)
+    return member
+end
+Widget.__call = function(self, ...)
+    local fn = rawget(self, "__call")
+    if fn then return fn(...) end
+    error("called a widget that is not a method: " .. tostring(self.__kind))
+end
+
+function known.SetScript(self, name, fn) self.__scripts[name] = fn end
+function known.GetScript(self, name) return self.__scripts[name] end
+function known.HookScript(self, name, fn) self.__scripts[name] = fn end
+function known.Show(self)
+    local was = self.__shown
+    self.__shown = true
+    if not was and self.__scripts.OnShow then self.__scripts.OnShow(self) end
+end
+function known.Hide(self)
+    local was = self.__shown
+    self.__shown = false
+    if was and self.__scripts.OnHide then self.__scripts.OnHide(self) end
+end
+function known.SetShown(self, on) if on then self:Show() else self:Hide() end end
+function known.IsShown(self) return self.__shown end
+function known.IsVisible(self) return self.__shown end
+function known.SetText(self, text)
+    self.__text = text == nil and "" or tostring(text)
+    if TEXTLOG and self.__text ~= "" then TEXTLOG[#TEXTLOG + 1] = self.__text end
+end
+function known.GetText(self) return self.__text end
+function known.SetWidth(self, w) self.__w = w end
+function known.SetHeight(self, h) self.__h = h end
+function known.SetSize(self, w, h) self.__w, self.__h = w, h end
+function known.GetWidth(self) return self.__w or 700 end
+function known.GetHeight(self) return self.__h or 400 end
+function known.GetSize(self) return self.__w or 700, self.__h or 400 end
+function known.GetStringHeight() return 12 end
+function known.GetStringWidth(self) return #(self.__text or "") * 6 end
+function known.GetFrameLevel() return 1 end
+function known.GetScale() return 1 end
+function known.GetEffectiveScale() return 1 end
+function known.GetFont() return "font", 12, "" end
+function known.GetName(self) return self.__name end
+function known.GetParent() return UIParent end
+function known.GetCenter() return 500, 400 end
+function known.GetLeft() return 100 end
+function known.GetTop() return 600 end
+function known.GetPoint() return "CENTER", UIParent, "CENTER", 0, 0 end
+function known.GetNumPoints() return 1 end
+function known.GetValue() return 1 end
+function known.GetChecked() return false end
+function known.GetUnit() return nil end
+function known.GetItem() return nil end
+function known.RegisterEvent(self, event) self.__events = self.__events or {}; self.__events[event] = true end
+function known.CreateFontString() return NewWidget("FontString") end
+function known.CreateTexture() return NewWidget("Texture") end
+function known.CreateLine() return NewWidget("Line") end
+function known.CreateMaskTexture() return NewWidget("Mask") end
+function known.GetThumbTexture() return NewWidget("Texture") end
+function known.GetFontString() return NewWidget("FontString") end
+function known.GetHighlightTexture() return NewWidget("Texture") end
+function known.GetNormalTexture() return NewWidget("Texture") end
+function known.GetPushedTexture() return NewWidget("Texture") end
+
+FRAMES = {}
+function CreateFrame(kind, name, parent, template)
+    local w = NewWidget(kind, name)
+    w.__template = template
+    FRAMES[#FRAMES + 1] = w
+    if name then _G[name] = w end
+    return w
+end
+
+UIParent = NewWidget("UIParent")
+GameTooltip = NewWidget("GameTooltip")
+ItemRefTooltip = NewWidget("GameTooltip")
+Minimap = NewWidget("Minimap")
+TIP = {}   -- lines added to the tooltip since it was last cleared
+function GameTooltip:AddLine(text) TIP[#TIP + 1] = tostring(text) end
+function GameTooltip:AddDoubleLine(a, b) TIP[#TIP + 1] = tostring(a) .. " | " .. tostring(b) end
+function GameTooltip:SetOwner() TIP = {} end
+function GameTooltip:SetHyperlink(link) TIP[#TIP + 1] = "<" .. tostring(link) .. ">" end
+function GameTooltip_Hide() end
+
+UISpecialFrames = {}
+StaticPopupDialogs = {}
+SlashCmdList = {}
+function StaticPopup_Show() end
+STANDARD_TEXT_FONT = "Fonts\\FRIZQT__.TTF"
+YES, NO, UNKNOWNOBJECT = "Yes", "No", "Unknown"
+RAID_CLASS_COLORS = setmetatable({}, { __index = function() return { r = 1, g = 1, b = 1, colorStr = "ffffffff" } end })
+ITEM_QUALITY_COLORS = setmetatable({}, { __index = function() return { r = 1, g = 1, b = 1, hex = "|cffffffff" } end })
+SOUNDKIT = {}
+function PlaySound() end
+function Screenshot() end
+function IsModifiedClick() return false end
+function GetCursorPosition() return 0, 0 end
+function UIFrameFadeIn() end
+function GetCoinTextureString(c) return tostring(c) .. "c" end
+function GetCVar() return "1" end
+function GetCVarBool() return true end
+function SetPortraitTexture() end
+function GetRealZoneText() return "Somewhere" end
+
+TIMERS = {}
+C_Timer = { After = function(delay, fn) TIMERS[#TIMERS + 1] = fn end }
+function RunTimers()
+    for round = 1, 20 do
+        if #TIMERS == 0 then return end
+        local batch = TIMERS
+        TIMERS = {}
+        for _, fn in ipairs(batch) do fn() end
+    end
+end
+
+-- The tooltip hooks: remember what the addon registers.
+Enum = { TooltipDataType = { Item = 0, Unit = 2 } }
+TOOLTIP_HOOKS = {}
+TooltipDataProcessor = { AddTooltipPostCall = function(kind, fn) TOOLTIP_HOOKS[kind] = fn end }
+
+----------------------------------------------------------------------
+-- The world: who we are, where we are, who is with us
+----------------------------------------------------------------------
+WORLD = { inInstance = false, instance = "Test Keep", instanceID = 9001, dead = false,
+          me = "Mira Vale", party = {} } -- party: { { name, class, role }, ... }
+
+local function PartyMember(unit)
+    local i = tonumber(unit:match("^party(%d+)$"))
+    return i and WORLD.party[i]
+end
+function UnitName(unit) if unit == "player" then return "Mira", "Vale" end local m = PartyMember(unit) return m and m[1] end
+function GetUnitName(unit) if unit == "player" then return WORLD.me end local m = PartyMember(unit) return m and m[1] end
+function UnitClass(unit) if unit == "player" then return "Shaman", "SHAMAN" end local m = PartyMember(unit) return m and m[2], m and m[2] end
+function UnitExists(unit) return unit == "player" or PartyMember(unit) ~= nil end
+function UnitIsUnit(a, b) return a == b end
+function UnitIsPlayer() return true end
+function UnitGUID(unit) return 'Player-1-' .. tostring(unit) end
+function UnitIsVisible() return false end
+function UnitIsDeadOrGhost() return WORLD.dead end
+function UnitGroupRolesAssigned(unit) if unit == "player" then return "HEALER" end local m = PartyMember(unit) return m and m[3] or "NONE" end
+function GetNumGroupMembers() return #WORLD.party end
+function IsInRaid() return false end
+function IsInGroup() return #WORLD.party > 0 end
+function IsInInstance() return WORLD.inInstance, WORLD.inInstance and "party" or "none" end
+function GetInstanceInfo() return WORLD.instance, "party", 1, "Normal", 5, 0, false, WORLD.instanceID end
+
+-- Items: [id] = { quality, sell price, classID, bindType }
+ITEMS = {}
+function GetItemInfo(link)
+    local id = tonumber(tostring(link):match("item:(%d+)"))
+    local it = id and ITEMS[id]
+    if not it then return end
+    return "Item " .. id, link, it[1], 30, 25, "Type", "Sub", 1, "", 134400, it[2], it[3], 0, it[4]
+end
+function ItemLink(id, name, quality)
+    return ("|cnIQ%d:|Hitem:%d::::::::38:1489:::::::::|h[%s]|h|r"):format(quality or 1, id, name)
+end
+
+-- The modern client's wording for loot and roll messages.
+LOOT_ITEM = "%s receives loot: %s."
+LOOT_ITEM_MULTIPLE = "%s receives loot: %sx%d."
+LOOT_ITEM_SELF = "You receive loot: %s."
+LOOT_ITEM_SELF_MULTIPLE = "You receive loot: %sx%d."
+INSTANCE_RESET_SUCCESS = "%s has been reset."
+local H = "|HlootHistory:%d|h[Loot]|h: "
+LOOT_ROLL_NEED = H .. "%s has selected Need for: %s"
+LOOT_ROLL_NEED_SELF = H .. "You have selected Need for: %s"
+LOOT_ROLL_GREED = H .. "%s has selected Greed for: %s"
+LOOT_ROLL_GREED_SELF = H .. "You have selected Greed for: %s"
+LOOT_ROLL_PASSED = H .. "%s passed on: %s"
+LOOT_ROLL_PASSED_SELF = H .. "You passed on: %s"
+LOOT_ROLL_ROLLED_NEED = H .. "Need Roll - %d for %s by %s"
+LOOT_ROLL_ROLLED_GREED = H .. "Greed Roll - %d for %s by %s"
+LOOT_ROLL_WON = H .. "%s won: %s"
+LOOT_ROLL_YOU_WON = H .. "You won: %s"
+
+----------------------------------------------------------------------
+-- Loading and driving the addon
+----------------------------------------------------------------------
+NS = {}
+function LoadAddonFile(path, source)
+    local chunk, err = loadstring(source, "@" .. path)
+    if not chunk then error(err, 0) end
+    chunk("FairShare", NS)
+end
+
+-- Sends an event to every frame that registered for it.
+function Fire(event, ...)
+    for _, w in ipairs(FRAMES) do
+        if w.__events and w.__events[event] and w.__scripts.OnEvent then
+            w.__scripts.OnEvent(w, event, ...)
+        end
+    end
+end
+
+function Loot(text) Fire("CHAT_MSG_LOOT", text) end
