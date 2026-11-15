@@ -2,3 +2,5 @@
 *.lua text
 *.toc text
 *.md text
+*.tga binary
+*.png binary

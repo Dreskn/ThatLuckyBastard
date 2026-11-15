@@ -254,7 +254,7 @@ local function Draw()
 
     local s = CardRun()
     local card = s and s.bingo
-    title:SetText("Loot bingo")
+    title:SetText(ns.Title("Loot bingo"))
     if not card then
         status:SetText("No card yet. One is dealt when a run starts.")
         grid:Hide()

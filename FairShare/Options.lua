@@ -4,7 +4,7 @@ local _, ns = ...
 -- right. It uses the same three skins as the main window and restyles its
 -- own controls to match.
 
-local ACCENT = { 0.25, 0.78, 0.72 }
+local ACCENT = ns.ACCENT
 local GOLD = { 1.00, 0.82, 0.00 }
 local WIDTH, HEIGHT = 590, 460
 local SIDEBAR_W = 140
@@ -32,7 +32,7 @@ ui:SetAllPoints()
 ui:SetFrameLevel(o:GetFrameLevel() + 10)
 
 local title = ui:CreateFontString(nil, "OVERLAY", "GameFontNormal")
-title:SetText("FairShare options")
+title:SetText(ns.Title("Options"))
 
 local sidebar = CreateFrame("Frame", nil, ui)
 local sidebarBg = sidebar:CreateTexture(nil, "BACKGROUND")
@@ -196,7 +196,7 @@ do
     Choices(p, "portrait", {
         { "3D model", "3d" }, { "2D portrait", "2d" }, { "Class icon", "class" }, { "None", "none" },
     }, 2)
-    Hint(p, "Models and portraits need the player in your group right now; otherwise the class icon is shown.")
+    Hint(p, "Live pictures need the player in your group. Afterwards a stand-in is built from their race and gear.")
 
     Section(p, "Size")
     scaleLabel = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -225,7 +225,6 @@ do
     end)
     scaleSlider = s
     p.y = p.y - 26
-    Toggles(p, { { "Compact rows", "compact" } })
 end
 
 ----------------------------------------------------------------------
@@ -331,7 +330,11 @@ do
     })
 
     Section(p, "Runs to keep")
-    Choices(p, "maxHistory", { { "10", 10 }, { "30", 30 }, { "100", 100 }, { "300", 300 } }, 2)
+    Choices(p, "maxHistory", {
+        { "10", 10 }, { "30", 30 }, { "100", 100 }, { "300", 300 }, { "Unlimited", 99999 },
+    }, 2)
+    Hint(p, "About 25 to 150 KB per run in the saved file. Pinned runs come on top.")
+    p.y = p.y - 4
 
     Section(p, "Minimap")
     Toggles(p, { { "Show the minimap button", "showMinimap" } })

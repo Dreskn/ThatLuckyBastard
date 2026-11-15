@@ -71,13 +71,13 @@ toast:SetScript("OnUpdate", function(self, dt)
     end
 end)
 
--- A two-line notice with an icon. r, g, b colour its left edge (gold by
--- default). Dropped when too many are already waiting.
+-- A two-line notice with an icon. r, g, b colour its left edge (the
+-- addon's accent colour by default). Dropped when too many are waiting.
 function ns.Notice(title, text, iconTexture, r, g, b)
     if #queue >= MAX_QUEUE then return end
     queue[#queue + 1] = {
         title = title, text = text, icon = iconTexture,
-        r = r or 1, g = g or 0.82, b = b or 0,
+        r = r or ns.ACCENT[1], g = g or ns.ACCENT[2], b = b or ns.ACCENT[3],
     }
     if not toast:IsShown() then ShowNext() end
 end

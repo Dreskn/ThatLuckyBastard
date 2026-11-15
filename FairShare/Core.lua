@@ -12,6 +12,22 @@ local LOG_MAX = 3000       -- pickups kept per run for the timeline
 local PLAYER_NAME, PLAYER_CLASS
 local db
 
+-- The addon's look, in one place: its name in two tones, its accent
+-- colour and its mark. tools/make_logo.py draws the mark in the same
+-- colours.
+ns.ACCENT = { 0.25, 0.78, 0.72 }
+ns.ACCENT_HEX = "|cff40c7b8"
+ns.BRAND = "|cffffffffFair|r" .. ns.ACCENT_HEX .. "Share|r"
+ns.LOGO = "Interface\\AddOns\\FairShare\\Media\\logo.tga"
+
+-- The title of every window: the mark, the name, then what the window
+-- shows.
+function ns.Title(sub)
+    local text = ("|T%s:16:16:0:0|t %s"):format(ns.LOGO, ns.BRAND)
+    if sub and sub ~= "" then text = text .. "  |cff707070/|r  " .. sub end
+    return text
+end
+
 ns.OPTION_DEFAULTS = {
     portrait = "2d",     -- "3d", "2d", "class" or "none"
     showVendor = true,   -- vendor value under each player
@@ -29,7 +45,6 @@ ns.OPTION_DEFAULTS = {
     tickerMin = 50000,   -- copper: smallest pickup worth a notice
     alignItems = false,  -- put the same item on the same line in every column
     useColumns = true,   -- one column per player for groups of 5 or fewer
-    compact = false,     -- tighter rows
     scale = 1,           -- window scale
     -- Categories that are switched off are hidden, and left out of every
     -- total unless countHidden is on.
@@ -61,7 +76,7 @@ ns.OPTION_DEFAULTS = {
 }
 
 local function Print(msg)
-    print("|cff33ff99FairShare|r: " .. msg)
+    print(ns.BRAND .. ": " .. msg)
 end
 
 ----------------------------------------------------------------------
@@ -302,10 +317,36 @@ local function SetRole(p, unit)
     if role and role ~= "NONE" and not issecret(role) then p.role = role end
 end
 
+-- What a player looks like, saved while they are around so that their
+-- picture can be rebuilt once the group is gone: race, sex and the gear
+-- that shows. The game does not tell us faces or hair. Other players'
+-- gear is only readable when they are close by, so a slot keeps the last
+-- thing seen in it.
+local LOOK_SLOTS = { 1, 3, 15, 5, 4, 19, 9, 10, 6, 7, 8, 16, 17 } -- head to feet, then weapons
+
+local function SaveLook(p, unit)
+    local _, raceFile, raceID = UnitRace(unit)
+    if type(raceFile) == "string" and not issecret(raceFile) and not issecret(raceID) then
+        p.race, p.raceID = raceFile, raceID
+    end
+    local sex = UnitSex(unit)
+    if type(sex) == "number" and not issecret(sex) and sex > 1 then p.sex = sex end -- 2 male, 3 female
+    if not GetInventoryItemID then return end
+    for _, slot in ipairs(LOOK_SLOTS) do
+        local id = GetInventoryItemID(unit, slot)
+        if type(id) == "number" and not issecret(id) then
+            p.gear = p.gear or {}
+            p.gear[slot] = id
+        end
+    end
+end
+
 local function UpdateRoster()
     local s = db.active
     if not Tracking(s) or not PLAYER_NAME then return end
-    SetRole(AddPlayer(s, PLAYER_NAME, PLAYER_CLASS), "player")
+    local me = AddPlayer(s, PLAYER_NAME, PLAYER_CLASS)
+    SetRole(me, "player")
+    SaveLook(me, "player")
     local raid = IsInRaid()
     for i = 1, GetNumGroupMembers() do
         local unit = (raid and "raid" or "party") .. i
@@ -314,7 +355,9 @@ local function UpdateRoster()
             if name and not issecret(name) and name ~= UNKNOWNOBJECT then
                 local _, class = UnitClass(unit)
                 if issecret(class) then class = nil end
-                SetRole(AddPlayer(s, name, class), unit)
+                local p = AddPlayer(s, name, class)
+                SetRole(p, unit)
+                SaveLook(p, unit)
             end
         end
     end
@@ -591,6 +634,11 @@ local function RecordLoot(name, rawLink, count)
     end
     AnnounceLoot(s, name, e, count)
     s.lastSeen = time()
+    -- Looting happens next to the others: a good moment to note their gear.
+    if time() - (s.lookedAt or 0) >= 60 then
+        s.lookedAt = time()
+        UpdateRoster()
+    end
     ns.Refresh()
     if ns.BingoCheck then ns.BingoCheck() end
 end
@@ -752,6 +800,8 @@ function ns.Summarize(s, needOnly)
     local out = { players = {}, count = 0, vendor = 0, market = 0, needOnly = needOnly }
     for name, p in pairs(s.players) do
         local ps = { name = name, class = p.class, role = p.role, count = 0, vendor = 0, market = 0, cats = {},
+                     -- the saved look, for pictures once the group is gone
+                     race = p.race, raceID = p.raceID, sex = p.sex, gear = p.gear,
                      -- for the awards: value won on Need / Greed rolls, and the best single item
                      needValue = 0, greedValue = 0, bestValue = 0,
                      -- also used by the bingo card: rolls won, and the best item quality
@@ -792,6 +842,9 @@ function ns.Summarize(s, needOnly)
         end
         do
             local function ItemOrder(a, b)
+                -- Quest items go last however the rest is ordered.
+                local qa, qb = a.cat == "quest", b.cat == "quest"
+                if qa ~= qb then return qb end
                 if o.sortItems == "name" then
                     local na, nb = ItemName(a), ItemName(b)
                     if na ~= nb then return na < nb end
@@ -1314,6 +1367,7 @@ function handlers.ADDON_LOADED(name)
     db.roles = db.roles or {}     -- [role] and
     db.classes = db.classes or {} -- [class] = how loot shares turn out
     db.options = db.options or {}
+    db.options.compact = nil -- an option that no longer exists: rows are always compact
     for key, value in pairs(ns.OPTION_DEFAULTS) do
         if type(value) == "table" then
             if type(db.options[key]) ~= "table" then db.options[key] = {} end

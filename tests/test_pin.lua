@@ -8,6 +8,10 @@ local function check(ok, what)
     if not ok then FAILED = (FAILED or 0) + 1 end
 end
 
+function PinOutlineShown()
+    return FairSharePinOutline ~= nil and FairSharePinOutline:IsShown()
+end
+
 -- After the simulated runs: one run in the history, one in progress.
 local old, cur = db.history[1], db.active
 check(old ~= nil and cur ~= nil, "one finished run and one in progress")
@@ -21,6 +25,11 @@ check(db.active == nil and #db.history == 2, "second run closed: 2 in the histor
 local newest = db.history[1]
 
 check(ns.TogglePin(old) and old.pinned == true, "pin the older run")
+ns.ShowRun(old)
+check(PinOutlineShown(), "main window shows the gold outline for a pinned run")
+ns.ShowRun(newest)
+check(not PinOutlineShown(), "and no outline for a run that is not pinned")
+ns.ShowBrowse("runs")
 check(not ns.DeleteRun(old) and #db.history == 2, "a pinned run cannot be deleted")
 ns.AskDeleteRun(old) -- only prints why
 

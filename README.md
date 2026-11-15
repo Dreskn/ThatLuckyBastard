@@ -1,3 +1,5 @@
+<img src="media/logo.png" alt="" width="96" align="right">
+
 # FairShare
 
 A World of Warcraft addon for **WoW Forever** that shows who got what in a dungeon run, and who the lucky one was.
@@ -107,7 +109,7 @@ The minimap button does the same: left-click for the window, right-click for the
 
 ## Options
 
-- **Appearance:** two themes (Classic and Modern), player picture (3D model, 2D portrait, class icon or none), window scale, compact rows.
+- **Appearance:** two themes (Classic and Modern), player picture (3D model, 2D portrait, class icon or none), window scale.
 - **Layout:** columns or list, group items by category, align the same item across players to compare line by line, and which details to show.
 - **Items and values:** switch categories on or off, auction or vendor-only pricing, show or hide silver and copper, item order.
 - **Players:** order by role (tank, healer, damage), podium (top looter in the middle), value or name; optionally always show yourself first. Names follow the game's "My Secondary Name" setting, or can be forced to full or first name only.
@@ -122,8 +124,8 @@ The minimap button does the same: left-click for the window, right-click for the
 - **New figures start now.** The timeline, the roll sheet, roll luck and loot by source rely on details recorded from version 0.2.0 on. Runs recorded before have none of them.
 - **Boss loot is a rule of thumb:** whatever was picked up within 90 seconds of a boss kill, profession materials aside.
 - **Roll luck counts what the game reports.** A roll nobody won (everyone passed) is not counted, and a roll whose messages you were too far away to receive is missed.
-- **The podium shows 3D characters only for players close enough to be seen.** Anyone else gets their class icon until they come into view.
-- **Item search and the Runs page only cover the runs that are kept** (30 by default, up to 300). Dungeon figures, records, regulars, luck, drops and roles are kept separately and are not affected by that limit.
+- **Pictures of players who have left are stand-ins.** The game cannot save a portrait or a model. FairShare saves each player's race, sex and visible gear during the run, and afterwards shows the game's picture for that race, or a model of that race wearing that gear. Their face and hair are not known. A player whose gear was never close enough to read gets a class icon, as do runs recorded before version 0.2.0.
+- **Item search and the Runs page only cover the runs that are kept** (30 by default; any number up to unlimited). A run takes about 25 to 150 KB in the saved file. Dungeon figures, records, regulars, luck, drops and roles are kept separately and are not affected by that limit.
 - **Deleting runs does not change the statistics.** Dungeon figures, regulars, luck, drops and roles are added up when a run is closed, and keep what a deleted run contributed.
 - **Fastest run** only compares runs with the most boss kills seen for that dungeon, so an abandoned run cannot take the record.
 - **Auction prices are taken as they are.** A rarely traded item with an unrealistic listing can distort a run. Items valued at an auction price carry a blue dot, and an item worth more than half of the run on its own is highlighted in orange. Right-click an item to switch it to its vendor price for that run (and again to switch back).
@@ -157,6 +159,12 @@ python tests/run_tests.py FairShare tests/test_ui.lua
 ```bash
 python tests/run_tests.py FairShare tests/test_pin.lua
 ```
+
+```bash
+python tests/run_tests.py FairShare tests/test_looks.lua
+```
+
+`tools/make_logo.py` draws the addon's mark (needs Pillow); the brand colours live at the top of `FairShare/Core.lua`.
 
 The rig proves that the code runs and computes the right figures. It cannot show what a window looks like; that still needs the game.
 

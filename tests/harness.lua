@@ -88,6 +88,11 @@ function known.GetNumPoints() return 1 end
 function known.GetValue() return 1 end
 function known.GetChecked() return false end
 function known.GetUnit() return nil end
+ATLASES, TRYONS, CUSTOM_RACES = {}, {}, {}   -- what the pictures were built from
+function known.SetAtlas(self, atlas) ATLASES[#ATLASES + 1] = atlas end
+function known.TryOn(self, link) TRYONS[#TRYONS + 1] = link end
+function known.SetCustomRace(self, race, sex) CUSTOM_RACES[#CUSTOM_RACES + 1] = race .. ":" .. sex end
+function known.Undress() end
 function known.GetItem() return nil end
 function known.RegisterEvent(self, event) self.__events = self.__events or {}; self.__events[event] = true end
 function known.CreateFontString() return NewWidget("FontString") end
@@ -130,6 +135,7 @@ RAID_CLASS_COLORS = setmetatable({}, { __index = function() return { r = 1, g = 
 ITEM_QUALITY_COLORS = setmetatable({}, { __index = function() return { r = 1, g = 1, b = 1, hex = "|cffffffff" } end })
 SOUNDKIT = {}
 function PlaySound() end
+function CreateColor(r, g, b, a) return { r = r, g = g, b = b, a = a } end
 function Screenshot() end
 function IsModifiedClick() return false end
 function GetCursorPosition() return 0, 0 end
@@ -172,6 +178,10 @@ function UnitClass(unit) if unit == "player" then return "Shaman", "SHAMAN" end 
 function UnitExists(unit) return unit == "player" or PartyMember(unit) ~= nil end
 function UnitIsUnit(a, b) return a == b end
 function UnitIsPlayer() return true end
+function UnitRace(unit) return "Orc", "Orc", 2 end
+function UnitSex(unit) return unit == "player" and 3 or 2 end
+function GetInventoryItemID(unit, slot) return WORLD.gearVisible ~= false and (5000 + slot) or nil end
+C_Texture = { GetAtlasInfo = function(atlas) return atlas:find("^raceicon128%-") and {} or nil end }
 function UnitGUID(unit) return 'Player-1-' .. tostring(unit) end
 function UnitIsVisible() return false end
 function UnitIsDeadOrGhost() return WORLD.dead end

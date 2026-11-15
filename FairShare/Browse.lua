@@ -15,7 +15,8 @@ local _, ns = ...
 -- function returning rows. A row is
 --   { cells = { text, ... },      what is shown
 --     keys = { value, ... },      what each column sorts by (optional)
---     link = item link for the tooltip, run = run to open on click }
+--     link = item link for the tooltip, run = run to open on click,
+--     pinned = true for a gold outline (a pinned run) }
 -- or { note = text } for a message. Pages whose rows have keys can be
 -- sorted by clicking a column title.
 
@@ -174,7 +175,7 @@ PAGES.runs = {
                 local fair = ns.Fairness(sum)
                 local share = sum.market > 0 and mine / sum.market * 100 or 0
                 rows[#rows + 1] = {
-                    run = s,
+                    run = s, pinned = s.pinned,
                     cells = {
                         DateText(s.startedAt),
                         (s.name or "Run") .. (s.pinned and "  |cffffd100pinned|r" or ""),
@@ -498,6 +499,21 @@ local function GetRow(i)
         fs:SetWordWrap(false)
         r.cells[k] = fs
     end
+    -- Gold outline, for rows that stand for a pinned run.
+    r.outline = {}
+    local function Edge(point1, point2, width, height)
+        local t = r:CreateTexture(nil, "OVERLAY")
+        t:SetColorTexture(1, 0.82, 0, 0.8)
+        t:SetPoint(point1)
+        t:SetPoint(point2)
+        if width then t:SetWidth(width) else t:SetHeight(height) end
+        t:Hide()
+        r.outline[#r.outline + 1] = t
+    end
+    Edge("TOPLEFT", "TOPRIGHT", nil, 1)
+    Edge("BOTTOMLEFT", "BOTTOMRIGHT", nil, 1)
+    Edge("TOPLEFT", "BOTTOMLEFT", 1, nil)
+    Edge("TOPRIGHT", "BOTTOMRIGHT", 1, nil)
     r:SetScript("OnEnter", RowOnEnter)
     r:SetScript("OnLeave", GameTooltip_Hide)
     r:SetScript("OnClick", function(self)
@@ -581,8 +597,8 @@ end
 function Refresh()
     ApplyTheme()
     local page = PAGES[mode]
-    title:SetText("FairShare - Statistics - " .. page.title)
-    for i, key in ipairs(PAGE_ORDER) do tabs[i]:SetOn(key ~= mode) end
+    title:SetText(ns.Title("Statistics"))
+    for i, key in ipairs(PAGE_ORDER) do tabs[i]:SetSelected(key == mode) end
 
     -- Second line: the filter box with a hint beside it, or the description.
     search:SetShown(page.filter ~= nil)
@@ -654,6 +670,7 @@ function Refresh()
     for i, row in ipairs(data) do
         local r = GetRow(i)
         r.link, r.run = row.link, row.run
+        for _, edge in ipairs(r.outline) do edge:SetShown(row.pinned == true) end
         for k = 1, MAX_COLS do
             local fs, col = r.cells[k], page.cols[k]
             if row.note then

@@ -35,7 +35,10 @@ While you play
 Other
 
 - Pin a run so that it is never deleted, and delete a single run, from the main window or with `/fs pin` and `/fs delete`. `/fs clear` leaves pinned runs.
-- Quest items have their own category.
+- A look of its own: a mark (a gold die showing five, with one lucky pip), the name in two tones in every window title, an accent colour, and tabs that show which page is open.
+- Players keep a picture after the group is gone: their race, sex and gear are saved during the run, and a stand-in portrait or model is built from them.
+- Quest items have their own category, always shown last.
+- The number of runs to keep can be unlimited.
 - The Retail theme is gone; Classic and Modern remain.
 - Main window toolbar: "Need rolls only", "Run details", "Statistics" and "Bingo".
 - A test rig in `tests/`.

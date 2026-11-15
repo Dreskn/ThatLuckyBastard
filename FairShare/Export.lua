@@ -72,10 +72,10 @@ function ns.ShowExport(kind, s)
     local text
     if kind == "all" then
         text = ns.ExportAll()
-        title:SetText("FairShare - Export - all runs")
+        title:SetText(ns.Title("Export  -  all runs"))
     elseif s then
         text = ns.ExportRun(s)
-        title:SetText("FairShare - Export - " .. (s.name or "Run"))
+        title:SetText(ns.Title("Export  -  " .. (s.name or "Run")))
     else
         return
     end

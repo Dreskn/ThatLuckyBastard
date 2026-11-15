@@ -108,10 +108,11 @@ local function GetSlot(i)
     slot.rank:SetShadowColor(0, 0, 0, 0)
 
     -- The character, standing on the block.
-    slot.model = CreateFrame("PlayerModel", nil, slot)
+    slot.model = ns.NewModel(slot)
     slot.model:SetSize(SLOT_W, MODEL_H)
     slot.model:SetPoint("BOTTOM", slot.block, "TOP", 0, -6)
     slot.model:SetScript("OnModelLoaded", function(self)
+        ns.ModelLoaded(self)
         if slot.anim then self:SetAnimation(slot.anim) end
     end)
 
@@ -181,14 +182,22 @@ local function SetupPicture(slot)
     local p = slot.p
     local unit = ns.UnitForName(p.name)
     local visible = unit and (UnitIsUnit(unit, "player") or UnitIsVisible(unit))
-    if visible then
+    -- Out of sight, or gone from the group: a look-alike rebuilt from what
+    -- was saved of them, where there is enough of it.
+    local lookKey = "look:" .. p.name
+    local rebuilt = not visible and (slot.modelFor == lookKey or ns.DressModel(slot.model, p))
+    if visible or rebuilt then
+        local key = visible and p.name or lookKey
         slot.portrait:Hide()
         slot.ring:Hide()
         slot.ringInner:Hide()
         slot.model:Show()
-        if slot.modelFor ~= p.name then
-            slot.modelFor = p.name
-            slot.model:SetUnit(unit)
+        if slot.modelFor ~= key then
+            slot.modelFor = key
+            if visible then
+                slot.model.look = nil
+                slot.model:SetUnit(unit)
+            end
             slot.model:SetAnimation(slot.anim)
         elseif slot.anim ~= ANIM.dance then
             slot.model:SetAnimation(slot.anim) -- replay the one-shot emotes
@@ -198,7 +207,7 @@ local function SetupPicture(slot)
         slot.model:Hide()
         local c = p.class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[p.class]
         if c then slot.ring:SetVertexColor(c.r, c.g, c.b) else slot.ring:SetVertexColor(1, 0.82, 0) end
-        ns.FillPortrait(slot.portrait, p, nil)
+        ns.FillPortrait(slot.portrait, p, nil, true)
         slot.portrait:Show()
         slot.ring:Show()
         slot.ringInner:Show()
@@ -648,15 +657,15 @@ end
 function Draw(ceremony)
     drawToken = drawToken + 1 -- cancels any reveal still in progress
     ApplyTheme()
-    podiumTab:SetOn(page ~= "podium")
-    paperTab:SetOn(page ~= "paper")
+    podiumTab:SetSelected(page == "podium")
+    paperTab:SetSelected(page == "paper")
     for _, x in ipairs(extraList) do
-        x.tab:SetOn(extra[page] ~= x)
+        x.tab:SetSelected(extra[page] == x)
         x.frame:Hide()
     end
 
     if not run then
-        title:SetText("FairShare")
+        title:SetText(ns.Title("Run details"))
         paperScroll:Hide()
         stage:Show()
         for _, slot in ipairs(slots) do
@@ -668,7 +677,7 @@ function Draw(ceremony)
         return
     end
 
-    title:SetText("FairShare - " .. (run.name or "Run"))
+    title:SetText(ns.Title(run.name or "Run"))
     if extra[page] then
         stage:Hide()
         paperScroll:Hide()

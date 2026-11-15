@@ -5,13 +5,13 @@ local issecret = issecretvalue or function() return false end
 local WIDTH, HEIGHT = 780, 540
 local MAX_COLUMNS = 5     -- groups up to this size get one column per player
 local COL_GAP = 6
-local ACCENT = { 0.25, 0.78, 0.72 }
+local ACCENT = ns.ACCENT
 
 local THEMES = {
     -- toolbarY: top of the button row under the title. scrollTop leaves
     -- room for that row and for the list view's column headers.
-    classic = { rowH = 18, font = "GameFontHighlightSmall", toolbarY = -28, scrollTop = -78, scrollRight = -32 },
-    modern  = { rowH = 24, font = "GameFontHighlight",      toolbarY = -44, scrollTop = -92, scrollRight = -14,
+    classic = { rowH = 14, font = "GameFontHighlightSmall", toolbarY = -28, scrollTop = -78, scrollRight = -32 },
+    modern  = { rowH = 20, font = "GameFontHighlight",      toolbarY = -44, scrollTop = -92, scrollRight = -14,
                 flat = true },
 }
 
@@ -20,10 +20,11 @@ local CATS = {
     { key = "rare",     label = "Blue BoE",                      short = "Blue BoE",    color = { 0.20, 0.55, 1.00 } },
     { key = "uncommon", label = "Green BoE",                     short = "Green BoE",   color = { 0.12, 1.00, 0.00 } },
     { key = "bop",      label = "Bind on Pickup (vendor value)", short = "BoP",         color = { 1.00, 0.50, 0.00 } },
-    { key = "quest",    label = "Quest items (vendor value)",    short = "Quest",       color = { 1.00, 1.00, 0.45 } },
     { key = "prof",     label = "Profession materials",          short = "Professions", color = { 1.00, 0.82, 0.00 } },
     { key = "other",    label = "Other",                         short = "Other",       color = { 0.85, 0.85, 0.85 } },
     { key = "junk",     label = "Junk",                          short = "Junk",        color = { 0.62, 0.62, 0.62 } },
+    -- Always last: quest items are worth nothing to anyone else.
+    { key = "quest",    label = "Quest items (vendor value)",    short = "Quest",       color = { 1.00, 1.00, 0.45 } },
 }
 local cols = {}
 
@@ -288,11 +289,20 @@ local function BuildSkins(frame, onClose)
         bar:SetPoint("TOPRIGHT")
         bar:SetHeight(36)
         bar:SetColorTexture(1, 1, 1, 0.04)
+        -- The header carries the accent colour, strongest on the left
+        -- where the name is. Plain where the client cannot do gradients.
+        if bar.SetGradient and CreateColor then
+            bar:SetColorTexture(1, 1, 1, 1)
+            local ok = pcall(bar.SetGradient, bar, "HORIZONTAL",
+                             CreateColor(ACCENT[1], ACCENT[2], ACCENT[3], 0.26),
+                             CreateColor(ACCENT[1], ACCENT[2], ACCENT[3], 0.03))
+            if not ok then bar:SetColorTexture(1, 1, 1, 0.04) end
+        end
         local line = s:CreateTexture(nil, "ARTWORK")
         line:SetPoint("TOPLEFT", 0, -36)
         line:SetPoint("TOPRIGHT", 0, -36)
-        line:SetHeight(1)
-        line:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 0.7)
+        line:SetHeight(2)
+        line:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 0.9)
         local function Edge(p1, p2, w, h)
             local t = s:CreateTexture(nil, "OVERLAY")
             t:SetPoint(p1)
@@ -344,6 +354,28 @@ local scroll = CreateFrame("ScrollFrame", nil, ui, "UIPanelScrollFrameTemplate")
 local content = CreateFrame("Frame", nil, scroll)
 content:SetSize(WIDTH - 44, 1)
 scroll:SetScrollChild(content)
+
+-- A gold outline around the breakdown, shown while the run on display is
+-- pinned. It follows the scroll area, so it fits both themes and both
+-- layouts.
+local pinOutline = CreateFrame("Frame", "FairSharePinOutline", ui)
+pinOutline:SetPoint("TOPLEFT", scroll, "TOPLEFT", -5, 5)
+pinOutline:SetPoint("BOTTOMRIGHT", scroll, "BOTTOMRIGHT", 5, -5)
+pinOutline:SetFrameLevel(scroll:GetFrameLevel() + 5)
+pinOutline:Hide()
+do
+    local function Edge(point1, point2, width, height)
+        local t = pinOutline:CreateTexture(nil, "OVERLAY")
+        t:SetColorTexture(1, 0.82, 0, 0.9)
+        t:SetPoint(point1)
+        t:SetPoint(point2)
+        if width then t:SetWidth(width) else t:SetHeight(height) end
+    end
+    Edge("TOPLEFT", "TOPRIGHT", nil, 2)
+    Edge("BOTTOMLEFT", "BOTTOMRIGHT", nil, 2)
+    Edge("TOPLEFT", "BOTTOMLEFT", 2, nil)
+    Edge("TOPRIGHT", "BOTTOMRIGHT", 2, nil)
+end
 scroll:SetScript("OnSizeChanged", function(_, w)
     content:SetWidth(w)
     if ns.Refresh then ns.Refresh() end -- defined at the end of this file
@@ -566,13 +598,83 @@ local function UnitForName(name)
     end
 end
 
--- Draws a player's flat picture: their live portrait when `unit` is given,
--- otherwise their class icon.
-local function FillPortrait(tex, p, unit)
+-- Pictures of players who are no longer around. The game cannot save a
+-- portrait or a model, so two stand-ins are built from what was saved of
+-- the player during the run (see SaveLook in Core.lua): the game's own
+-- picture for their race and sex, and a model of that race and sex
+-- wearing their gear. Neither has their face or hair.
+
+-- The game's round picture for a race and sex, when this client has one.
+local RACE_ART = { Scourge = "undead" } -- where the art is not named like the race's file
+local function RaceAtlas(p)
+    if not (p.race and p.sex and C_Texture and C_Texture.GetAtlasInfo) then return end
+    local race = RACE_ART[p.race] or p.race:lower()
+    local sex = p.sex == 3 and "female" or "male"
+    for _, pattern in ipairs({ "raceicon128-%s-%s", "raceicon-%s-%s" }) do
+        local atlas = pattern:format(race, sex)
+        if C_Texture.GetAtlasInfo(atlas) then return atlas end
+    end
+end
+
+local LOOK_SLOTS = { 1, 3, 15, 5, 4, 19, 9, 10, 6, 7, 8, 16, 17 } -- head to feet, then weapons
+local MIN_LOOK = 4 -- pieces of gear needed: a body in its underwear is no likeness
+
+local function HasLook(p)
+    if not (p.raceID and p.sex and p.gear) then return false end
+    local n = 0
+    for _ in pairs(p.gear) do n = n + 1 end
+    return n >= MIN_LOOK
+end
+
+local function WearLook(model, p)
+    model:Undress()
+    for _, slot in ipairs(LOOK_SLOTS) do
+        if p.gear[slot] then model:TryOn("item:" .. p.gear[slot]) end
+    end
+end
+
+-- A model frame that can be dressed; a plain one where the client has none.
+local function NewModel(parent)
+    local ok, model = pcall(CreateFrame, "DressUpModel", nil, parent)
+    if not ok or not model then model = CreateFrame("PlayerModel", nil, parent) end
+    return model
+end
+
+-- Rebuilds a player on a model frame from their saved look. Returns true
+-- when there was enough saved and the client could do it.
+local function DressModel(model, p)
+    if not (HasLook(p) and model.SetCustomRace and model.TryOn and model.Undress) then return false end
+    local ok = pcall(function()
+        model:SetUnit("player")                  -- a body to start from
+        model:SetCustomRace(p.raceID, p.sex - 2) -- 0 male, 1 female
+        WearLook(model, p)
+    end)
+    -- The new body loads a moment later and may come up bare: the gear is
+    -- put on once more when it has (see ModelLoaded).
+    model.look = ok and p or nil
+    return ok
+end
+
+-- For a model's OnModelLoaded script.
+local function ModelLoaded(model)
+    local p = model.look
+    if p then
+        model.look = nil
+        pcall(WearLook, model, p)
+    end
+end
+
+-- Draws a player's flat picture: their live portrait when `unit` is given;
+-- otherwise the picture of their race and sex (if `raceOK`, and where it
+-- was saved and the client has it), or else their class icon.
+local function FillPortrait(tex, p, unit, raceOK)
     local coords = p.class and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[p.class]
+    local atlas = not unit and raceOK and tex.SetAtlas and RaceAtlas(p) or nil
     if unit then
         SetPortraitTexture(tex, unit)
         tex:SetTexCoord(0, 1, 0, 1)
+    elseif atlas then
+        tex:SetAtlas(atlas)
     elseif coords then
         tex:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
         tex:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
@@ -582,8 +684,9 @@ local function FillPortrait(tex, p, unit)
     end
 end
 
--- mode: "3d" model, "2d" portrait, "class" icon or "none". Models and
--- portraits need the player in the group right now; otherwise the class
+-- mode: "3d" model, "2d" portrait, "class" icon or "none". A live model
+-- or portrait needs the player in the group right now; otherwise a
+-- stand-in is built from their saved look, and failing that the class
 -- icon is used.
 --
 -- Pictures are framed in the player's class colour: a ring around the
@@ -592,7 +695,12 @@ end
 local function SetPortrait(c, p, mode)
     local tex, model = c.portrait, c.model
     local unit = (mode == "2d" or mode == "3d") and UnitForName(p.name) or nil
-    local useModel = mode == "3d" and unit ~= nil
+    local lookKey = "look:" .. p.name
+    local rebuilt = false
+    if mode == "3d" and not unit then
+        rebuilt = c.modelGUID == lookKey or DressModel(model, p)
+    end
+    local useModel = (mode == "3d" and unit ~= nil) or rebuilt
     local useTexture = mode ~= "none" and not useModel
 
     local r, g, b = ClassRGB(p.class)
@@ -605,7 +713,15 @@ local function SetPortrait(c, p, mode)
     tex:SetShown(useTexture)
     model:SetShown(useModel)
 
+    if rebuilt then
+        if c.modelGUID ~= lookKey then
+            if model.SetPortraitZoom then model:SetPortraitZoom(1) end
+            c.modelGUID = lookKey
+        end
+        return
+    end
     if useModel then
+        model.look = nil
         -- Reloading the model on every redraw makes it flicker.
         local guid = UnitGUID(unit)
         if issecret(guid) or c.modelGUID ~= guid then
@@ -616,7 +732,7 @@ local function SetPortrait(c, p, mode)
         return
     end
     c.modelGUID = nil
-    if useTexture then FillPortrait(tex, p, unit) end
+    if useTexture then FillPortrait(tex, p, unit, mode ~= "class") end
 end
 
 local function GetCol(i)
@@ -628,7 +744,8 @@ local function GetCol(i)
     c.portrait = c:CreateTexture(nil, "ARTWORK")
     c.portrait:SetSize(48, 48)
     c.portrait:SetPoint("TOP", 0, -8)
-    c.model = CreateFrame("PlayerModel", nil, c)
+    c.model = NewModel(c)
+    c.model:SetScript("OnModelLoaded", ModelLoaded)
     c.model:SetSize(52, 52)
     c.model:SetPoint("TOP", 0, -6)
     c.model:Hide()
@@ -963,7 +1080,7 @@ local function BuildColumnLines(sum, o)
                 local k = ItemKey(e)
                 local u = union[k]
                 if not u then
-                    u = { key = k, name = ns.ItemName(e), total = 0 }
+                    u = { key = k, name = ns.ItemName(e), total = 0, quest = e.cat == "quest" }
                     union[k] = u
                     order[#order + 1] = u
                 end
@@ -972,6 +1089,7 @@ local function BuildColumnLines(sum, o)
         end
         if #order == 0 then return end
         table.sort(order, function(a, b)
+            if a.quest ~= b.quest then return b.quest end -- quest items last
             if o.sortItems == "name" and a.name ~= b.name then return a.name < b.name end
             if a.total ~= b.total then return a.total > b.total end
             return a.key < b.key
@@ -1019,7 +1137,7 @@ end
 local function RenderColumns(sum, awards, insights)
     local n = #sum.players
     local colW = (content:GetWidth() - COL_GAP * (n - 1)) / n
-    local rowH = theme.rowH - (ns.db.options.compact and 4 or 0)
+    local rowH = theme.rowH
     local equal = sum.market / n
     local maxH = 0
 
@@ -1376,6 +1494,19 @@ local function MakeButton(text, width, onClick, parent)
     local bg = b.flat:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
     bg:SetColorTexture(1, 1, 1, 0.08)
+    b.flat.bg = bg
+
+    -- A line in the accent colour under the button, for the selected state.
+    local function Mark(owner)
+        local t = owner:CreateTexture(nil, "OVERLAY")
+        t:SetPoint("BOTTOMLEFT", 3, 1)
+        t:SetPoint("BOTTOMRIGHT", -3, 1)
+        t:SetHeight(2)
+        t:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 1)
+        t:Hide()
+        return t
+    end
+    b.tpl.mark, b.flat.mark = Mark(b.tpl), Mark(b.flat)
     local hl = b.flat:CreateTexture(nil, "HIGHLIGHT")
     hl:SetAllPoints()
     hl:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 0.30)
@@ -1396,6 +1527,15 @@ local function MakeButton(text, width, onClick, parent)
     function b:SetFlat(flat)
         self.tpl:SetShown(not flat)
         self.flat:SetShown(flat)
+    end
+    -- For tabs and toggles: marks the button as the current choice. The
+    -- other buttons of the set stay fully readable.
+    function b:SetSelected(selected)
+        self.tpl.mark:SetShown(selected)
+        self.flat.mark:SetShown(selected)
+        self.flat.bg:SetColorTexture(1, 1, 1, selected and 0.16 or 0.08)
+        self.flat.text:SetAlpha(selected and 1 or 0.7)
+        if selected then self.tpl:LockHighlight() else self.tpl:UnlockHighlight() end
     end
     buttons[#buttons + 1] = b
     return b
@@ -1514,11 +1654,13 @@ function Render()
     currentRun = s
 
     needBtn:SetLabel(needOnly and "Show all loot" or "Need rolls only")
+    needBtn:SetSelected(needOnly)
     older:SetOn(viewIndex < #runs)
     newer:SetOn(viewIndex > 1)
     local stored = s ~= nil and not s.example
     pinBtn:SetOn(stored)
     pinBtn:SetLabel(s and s.pinned and "Unpin" or "Pin")
+    pinOutline:SetShown(s ~= nil and s.pinned == true)
     deleteBtn:SetOn(stored and not s.pinned)
 
     local lines, sum
@@ -1529,7 +1671,7 @@ function Render()
         elseif s == ns.db.active and not s.leftAt then
             tag = "  in progress"
         end
-        title:SetText("FairShare - " .. (s.name or "Run") .. (needOnly and " - Need rolls only" or ""))
+        title:SetText(ns.Title((s.name or "Run") .. (needOnly and "  -  Need rolls only" or "")))
         runLabel:SetText(("%s  |cff808080(%d/%d)%s|r%s"):format(
             date("%Y-%m-%d %H:%M", s.startedAt), viewIndex, #runs, tag,
             s.pinned and "  |cffffd100pinned|r" or ""))
@@ -1552,7 +1694,7 @@ function Render()
     end
 
     if not s then
-        title:SetText("FairShare")
+        title:SetText(ns.Title())
         runLabel:SetText("")
     end
 
@@ -1583,7 +1725,7 @@ function Render()
     end
 
     local o = ns.db.options
-    local rowH = theme.rowH - (o.compact and 4 or 0)
+    local rowH = theme.rowH
     local playerH = rowH + 14 -- player rows are taller, to hold the picture
     local width = content:GetWidth()
     local y = 0
@@ -1608,7 +1750,8 @@ function Render()
             r.ringInner:SetSize(size + 2, size + 2)
             r.ring:SetVertexColor(ClassRGB(line.p.class))
             -- No 3D models in the list: both picture modes use the portrait.
-            FillPortrait(r.portrait, line.p, o.portrait ~= "class" and UnitForName(line.p.name) or nil)
+            FillPortrait(r.portrait, line.p, o.portrait ~= "class" and UnitForName(line.p.name) or nil,
+                         o.portrait ~= "class")
             left = size + 18
         end
         r.portrait:SetShown(showPicture)
@@ -1714,6 +1857,7 @@ end
 ns.MoneyPlain = function(copper) return MoneyText(copper, false) end
 ns.UnitForName = UnitForName
 ns.FillPortrait = FillPortrait
+ns.NewModel, ns.DressModel, ns.ModelLoaded = NewModel, DressModel, ModelLoaded
 ns.PlayKit = PlayKit
 ns.AddAwardLines = AddAwardLines
 ns.AWARDS_HINT = AWARDS_HINT
