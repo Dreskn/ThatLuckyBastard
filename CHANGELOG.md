@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.2
+
+- No change to the addon. The Wago listing was set up again, so its ID changed once more.
+
 ## 0.3.1
 
 - No change to the addon. It carries the ID of its new Wago listing, so addon managers match it to the right page.
