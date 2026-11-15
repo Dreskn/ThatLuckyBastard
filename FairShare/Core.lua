@@ -145,13 +145,35 @@ local function ItemKey(e)
 end
 ns.ItemKey = ItemKey
 
--- Notes on an item entry whether its auction price is switched off for
--- this run (see ToggleAuctionPrice). EntryMarket reads the note, so it
--- has to be set before an entry is valued.
-local function MarkVendorOnly(s, e)
-    e.noAH = (s.vendorOnly and s.vendorOnly[ItemKey(e)]) or nil
+-- How an item is priced, by category.
+--   never at auction    bound and quest items cannot be sold to other
+--                       players, so no auction price is recorded for them
+--   vendor by default   nobody buys junk, so a stray listing for a grey
+--                       item means nothing; its auction price is still
+--                       recorded, and the player can switch to it
+-- Everything else is valued at its auction price when one is known.
+local NO_AUCTION = { bop = true, quest = true }
+local VENDOR_BY_DEFAULT = { junk = true }
+
+function ns.CanAuction(e)
+    return not NO_AUCTION[e.cat]
 end
-ns.MarkVendorOnly = MarkVendorOnly
+
+function ns.VendorByDefault(e)
+    return VENDOR_BY_DEFAULT[e.cat] == true
+end
+
+-- Notes on an item entry whether it is valued at its vendor price in this
+-- run although an auction price is known (e.noAH): because that is the
+-- default for its category, or because the player switched it away from
+-- the default (see ToggleAuctionPrice). EntryMarket reads the note, so it
+-- has to be set before an entry is valued.
+local function MarkPrice(s, e)
+    local switched = s.priceSwitched or s.vendorOnly -- vendorOnly: its name before junk had its own default
+    local flipped = switched ~= nil and switched[ItemKey(e)] == true
+    e.noAH = (ns.VendorByDefault(e) ~= flipped) or nil
+end
+ns.MarkPrice = MarkPrice
 
 -- An item's quality, also for entries saved before it was stored: the
 -- colour code of a link names it ("|cnIQ3:").
@@ -328,8 +350,7 @@ local function FillItem(e)
     e.quality = quality
     e.vendor = sellPrice or 0
     e.cat = Categorize(quality, classID, bindType)
-    -- Bound and quest items cannot be sold on the auction house.
-    e.ah = (e.cat ~= "bop" and e.cat ~= "quest") and AuctionPrice(e.link) or nil
+    e.ah = ns.CanAuction(e) and AuctionPrice(e.link) or nil
     e.resolved = true
     return true
 end
@@ -666,7 +687,7 @@ local function AnnounceLoot(s, name, e, count)
     if not db.options.ticker or not ns.Toast then return end
     local function show()
         if not e.resolved or e.count <= 0 then return end
-        MarkVendorOnly(s, e)
+        MarkPrice(s, e)
         local value = ns.EntryMarket(e) / e.count * count
         if value >= db.options.tickerMin then
             local p = s.players[name]
@@ -878,7 +899,7 @@ end
 ----------------------------------------------------------------------
 
 -- The value used for totals, shares and sorting. `e.noAH` (see
--- MarkVendorOnly) says the player switched this item to its vendor price.
+-- MarkPrice) says this item is valued at its vendor price in this run.
 local function EntryMarket(e)
     if db.options.valueMode == "vendor" or e.noAH then return e.vendor * e.count end
     return (e.ah or e.vendor) * e.count
@@ -887,11 +908,13 @@ ns.EntryMarket = EntryMarket
 
 -- Switches an item between its auction and vendor price for one run. It
 -- applies to every copy of the item in that run, whoever looted it.
+-- s.priceSwitched holds the items switched away from their category's
+-- default.
 function ns.ToggleAuctionPrice(s, e)
     if not e.ah then return false end
     local key = ItemKey(e)
-    s.vendorOnly = s.vendorOnly or {}
-    s.vendorOnly[key] = (not s.vendorOnly[key]) or nil
+    s.priceSwitched, s.vendorOnly = s.priceSwitched or s.vendorOnly or {}, nil
+    s.priceSwitched[key] = (not s.priceSwitched[key]) or nil
     return true
 end
 
@@ -918,7 +941,7 @@ function ns.Summarize(s, needOnly)
                      all = { items = {} } }
         for _, real in pairs(p.items) do
             if not real.resolved then FillItem(real) end
-            MarkVendorOnly(s, real)
+            MarkPrice(s, real)
             if real.count > 0 and o.cats[real.cat] ~= false then
                 local unit = EntryMarket(real) / real.count
                 ps.needValue = ps.needValue + unit * (real.need or 0)

@@ -220,4 +220,28 @@ for _, key in ipairs(solo and solo.keys or {}) do
 end
 check(solo ~= nil and #solo.keys == 16 and groupOnly == 0, "a solo card has 16 squares, none of which needs a group")
 
+print("==== junk: vendor price by default, auction on a right-click ====")
+Auctionator = { API = { v1 = { GetAuctionPriceByItemLink = function() return 5000 end } } }
+ITEMS[110] = { 0, 40, 15, 0 }   -- a grey item nobody has looted yet
+ITEMS[111] = { 2, 900, 4, 2 }   -- a green BoE, likewise
+Loot(("You receive loot: %s."):format(ItemLink(110, "Chipped Tooth", 0)))
+Loot(("You receive loot: %s."):format(ItemLink(111, "Green Belt", 2)))
+local grey, greenBelt
+for _, e in pairs(db.active.players["Mira Vale"].items) do
+    if ns.ItemKey(e) == "110" then grey = e elseif ns.ItemKey(e) == "111" then greenBelt = e end
+end
+local function value(e)
+    ns.Summarize(db.active) -- works out which price each item uses
+    return ns.EntryMarket(e)
+end
+check(grey and grey.cat == "junk" and grey.ah == 5000, "a grey item's auction price is recorded")
+check(value(grey) == 40, "but it is worth its vendor price by default")
+check(greenBelt and value(greenBelt) == 5000, "a green BoE is worth its auction price by default")
+check(ns.ToggleAuctionPrice(db.active, grey) and value(grey) == 5000, "a right-click switches the grey to its auction price")
+check(ns.ToggleAuctionPrice(db.active, greenBelt) and value(greenBelt) == 900, "and the green to its vendor price")
+ns.ToggleAuctionPrice(db.active, grey)
+ns.ToggleAuctionPrice(db.active, greenBelt)
+check(value(grey) == 40 and value(greenBelt) == 5000, "another right-click on each puts them back")
+Auctionator = nil
+
 print(FAILED and (FAILED .. " check(s) FAILED") or "all checks passed (audit regressions)")

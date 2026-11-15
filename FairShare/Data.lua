@@ -72,7 +72,7 @@ local function Pickups(s)
         local e = name and byId[name] and byId[name][tonumber(id)]
         if e and Counted(e) then
             count = tonumber(count)
-            ns.MarkVendorOnly(s, e)
+            ns.MarkPrice(s, e)
             out[#out + 1] = { t = tonumber(t), name = name, e = e, count = count,
                               value = ns.EntryMarket(e) / e.count * count }
         end
@@ -253,10 +253,10 @@ function ns.Reprice(s)
     for _, p in pairs(s.players) do
         for _, e in pairs(p.items) do
             if Counted(e) then
-                ns.MarkVendorOnly(s, e)
+                ns.MarkPrice(s, e)
                 local was = ns.EntryMarket(e)
                 local unit = e.vendor
-                if e.cat ~= "bop" and e.cat ~= "quest" and not e.noAH then
+                if ns.CanAuction(e) and not e.noAH then
                     -- No price today says nothing: the recorded one stands.
                     unit = ns.AuctionPrice(e.link) or e.ah or e.vendor
                 end
@@ -441,8 +441,8 @@ function ns.CommitStats(s, sum)
 
     -- Drops per dungeon: in how many runs an item was seen, how many of
     -- it, what it was worth, and who got it last. The worth is the price
-    -- recorded at the time (auction if known, else vendor), whatever the
-    -- pricing options say today: it is kept for good.
+    -- recorded at the time (auction if known, else vendor; vendor for
+    -- junk), whatever the pricing options say today: it is kept for good.
     if s.instanceID then
         local drops = db.drops[s.instanceID]
         if not drops then
@@ -465,7 +465,8 @@ function ns.CommitStats(s, sum)
                         d.n = d.n + 1
                     end
                     d.c = d.c + e.count
-                    d.v = d.v + (e.ah or e.vendor or 0) * e.count
+                    local unit = ns.VendorByDefault(e) and e.vendor or e.ah or e.vendor or 0
+                    d.v = d.v + unit * e.count
                     d.name, d.q = ns.ItemName(e), ns.Quality(e)
                     local at = e.lastAt or s.startedAt or 0
                     if not d.at or at >= d.at then d.at, d.by = at, name end

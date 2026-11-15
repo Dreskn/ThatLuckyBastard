@@ -118,22 +118,23 @@ end
 --   "ah"   (blue)   the value is an auction price
 --   "noah" (orange) the item could be auctioned but no price is known,
 --                   so the vendor price was used
---   "off"  (grey)   an auction price is known but the player switched
---                   this item to its vendor price (right-click)
--- Items that cannot be auctioned, and everything in vendor-only mode,
--- get no marker.
+--   "off"  (grey)   an auction price is known but the vendor price is
+--                   used: the default for junk, or the player's choice
+--                   for anything else (right-click switches)
+-- Items that are never priced at auction (bound and quest items), junk
+-- with no auction price, and everything in vendor-only mode get no marker.
 ----------------------------------------------------------------------
 
 local CIRCLE = "Interface\\CharacterFrame\\TempPortraitAlphaMask"
 local MARK_COLORS = { ah = { 0.35, 0.70, 1.00 }, noah = { 1.00, 0.55, 0.15 }, off = { 0.55, 0.55, 0.55 } }
 local LEGEND = "|cff59b3ffBlue dot|r: auction price    "
     .. "|cffff8c26Orange|r: no auction price, vendor used    "
-    .. "|cff8c8c8cGrey|r: auction price off (right-click)"
+    .. "|cff8c8c8cGrey|r: auction price not used (right-click)"
 
 local function PriceMark(e)
-    if ns.db.options.valueMode == "vendor" or e.cat == "bop" or e.cat == "quest" then return end
+    if ns.db.options.valueMode == "vendor" then return end
     if e.ah then return e.noAH and "off" or "ah" end
-    if ns.HasPriceSource() then return "noah" end
+    if ns.CanAuction(e) and not ns.VendorByDefault(e) and ns.HasPriceSource() then return "noah" end
 end
 
 -- `dominant`: this one item is more than half of the run's value.
@@ -142,7 +143,7 @@ local function PriceNote(e, mark, dominant)
     if mark == "ah" then
         note = "Auction price: " .. Money(e.ah) .. " each\nRight-click for the vendor price."
     elseif mark == "off" then
-        note = "Auction price (" .. Money(e.ah) .. " each) is off.\nRight-click to use it again."
+        note = "Auction price (" .. Money(e.ah) .. " each) not used.\nRight-click to use it."
     elseif mark == "noah" then
         note = "No auction price known: vendor price used."
     end

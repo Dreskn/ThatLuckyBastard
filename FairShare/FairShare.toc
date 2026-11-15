@@ -2,7 +2,7 @@
 ## Title: |cffffffffFair|r|cff40c7b8Share|r
 ## Notes: Who got what in your dungeon runs: loot values, awards and statistics. Shown to you alone.
 ## Author: Dreskn
-## Version: 0.2.0
+## Version: 0.2.1
 ## SavedVariables: FairShareDB
 ## OptionalDeps: Auctionator, TradeSkillMaster
 ## AddonCompartmentFunc: FairShare_OnAddonCompartmentClick

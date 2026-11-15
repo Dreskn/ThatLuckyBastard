@@ -64,6 +64,7 @@ Tables over everything recorded. Click a column title to sort.
 - **Auction price** comes from [Auctionator](https://www.curseforge.com/wow/addons/auctionator) if installed, with TradeSkillMaster as a fallback. Without either, only vendor prices are used.
 - **Market value** is the auction price when one is known, and the vendor price otherwise.
 - **Bind on Pickup and quest items** count at vendor price, since they cannot be sold to other players.
+- **Junk** (grey items) counts at vendor price by default, since a stray auction listing for a grey means little. Right-click one to use its auction price instead.
 - All loot counts the same, whether it came from a boss, a roll or a profession.
 - A **blue dot** next to a value means it is an auction price. An **orange dot** means the item could be auctioned but no price is known, so its vendor price was used. Hover the item for details.
 - Prices are recorded when the item is looted and do not change afterwards.

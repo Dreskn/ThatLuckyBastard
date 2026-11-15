@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.1
+
+- Junk (grey items) is valued at its vendor price by default; a right-click switches it to its auction price.
+
 ## 0.2.0
 
 Recording
