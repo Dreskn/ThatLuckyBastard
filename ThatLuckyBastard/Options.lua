@@ -178,7 +178,7 @@ do
     Choices(p, "portrait", {
         { "3D model", "3d" }, { "2D portrait", "2d" }, { "Class icon", "class" }, { "None", "none" },
     }, 2)
-    Hint(p, "Players who have left the group get a stand-in built from their race and gear.")
+    Hint(p, "Players out of sight or gone from the group show their class icon.")
 
     Section(p, "Size")
     scaleLabel = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")

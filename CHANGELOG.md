@@ -1,5 +1,15 @@
 # Changelog
 
+## Unreleased
+
+- Players who are out of sight or gone from the group show their class icon. The stand-ins built from their race and gear looked wrong, and their saved looks are removed from your saved data.
+- Going straight from one dungeon into another (a queue that pops inside) now ends the first run like walking out: window, podium and streak notice.
+- A roll win whose item never arrived no longer marks a later copy of that item as won.
+- A run opened from Statistics comes to the front, and Run details and Statistics close on a second click.
+- Item search shows grey and right-clicked items at the price they have in their run.
+- The streak notice shows once per run, not each time you step out. Two runs in a row with the same partner count as a streak.
+- Switching an item's price updates every open window. Switching to the list view stops the award reveal, sounds and screenshot included.
+
 ## 0.3.2
 
 - No change to the addon. The Wago listing was set up again, so its ID changed once more.

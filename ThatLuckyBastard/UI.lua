@@ -265,7 +265,8 @@ end
 local f = CreateFrame("Frame", "ThatLuckyBastardFrame", UIParent)
 f:SetSize(WIDTH, HEIGHT)
 f:SetPoint("CENTER")
-f:SetFrameStrata("HIGH")
+f:SetFrameStrata("HIGH") -- shared with the run details and statistics (see ns.MakeWindow)
+f:SetToplevel(true)
 f:SetMovable(true)
 f:SetResizable(true)
 if f.SetResizeBounds then
@@ -377,10 +378,15 @@ end
 -- the frame, the frame its content goes on (above the skins), its title
 -- text and its skins. `closeOnEscape` puts it among the windows Escape
 -- closes. The caller places it on the screen.
+--
+-- The main window, the run details and the statistics share the HIGH
+-- level: each comes to the front when it opens or is clicked. The options
+-- sit above them, on DIALOG.
 function ns.MakeWindow(name, width, height, strata, closeOnEscape)
     local w = CreateFrame("Frame", name, UIParent)
     w:SetSize(width, height)
     w:SetFrameStrata(strata)
+    w:SetToplevel(true)
     w:SetMovable(true)
     w:EnableMouse(true)
     w:SetClampedToScreen(true)
@@ -505,7 +511,7 @@ local function RowOnClick(self, button)
         -- Switch this item between its auction and vendor price.
         if line.e and currentRun and ns.ToggleAuctionPrice(currentRun, line.e) then
             GameTooltip:Hide()
-            Render()
+            ns.Rerender() -- the run details and statistics show its value too
         end
         return
     end
@@ -694,83 +700,14 @@ local function InSight(unit)
     return UnitIsUnit(unit, "player") or UnitIsVisible(unit)
 end
 
--- Pictures of players who are no longer around. The game cannot save a
--- portrait or a model, so two stand-ins are built from what was saved of
--- the player during the run (see SaveLook in Core.lua): the game's own
--- picture for their race and sex, and a model of that race and sex
--- wearing their gear. Neither has their face or hair.
-
--- The game's round picture for a race and sex, when this client has one.
-local RACE_ART = { Scourge = "undead" } -- where the art is not named like the race's file
-local RACE_ATLASES = { "raceicon128-%s-%s", "raceicon-%s-%s" } -- large, then small
-local function RaceAtlas(p)
-    if not (p.race and p.sex and C_Texture and C_Texture.GetAtlasInfo) then return end
-    local race = RACE_ART[p.race] or p.race:lower()
-    local sex = p.sex == 3 and "female" or "male"
-    for _, pattern in ipairs(RACE_ATLASES) do
-        local atlas = pattern:format(race, sex)
-        if C_Texture.GetAtlasInfo(atlas) then return atlas end
-    end
-end
-
-local MIN_LOOK = 4 -- pieces of gear needed: a body in its underwear is no likeness
-
-local function HasLook(p)
-    if not (p.raceID and p.sex and p.gear) then return false end
-    local n = 0
-    for _ in pairs(p.gear) do n = n + 1 end
-    return n >= MIN_LOOK
-end
-
-local function WearLook(model, p)
-    model:Undress()
-    for _, slot in ipairs(ns.LOOK_SLOTS) do
-        if p.gear[slot] then model:TryOn("item:" .. p.gear[slot]) end
-    end
-end
-
--- A model frame that can be dressed; a plain one where the client has none.
-local function NewModel(parent)
-    local ok, model = pcall(CreateFrame, "DressUpModel", nil, parent)
-    if not ok or not model then model = CreateFrame("PlayerModel", nil, parent) end
-    return model
-end
-
--- Rebuilds a player on a model frame from their saved look. Returns true
--- when there was enough saved and the client could do it.
-local function DressModel(model, p)
-    if not (HasLook(p) and model.SetCustomRace and model.TryOn and model.Undress) then return false end
-    local ok = pcall(function()
-        model:SetUnit("player")                  -- a body to start from
-        model:SetCustomRace(p.raceID, p.sex - 2) -- 0 male, 1 female
-        WearLook(model, p)
-    end)
-    -- The new body loads a moment later and may come up bare: the gear is
-    -- put on once more when it has (see ModelLoaded).
-    model.look = ok and p or nil
-    return ok
-end
-
--- For a model's OnModelLoaded script.
-local function ModelLoaded(model)
-    local p = model.look
-    if p then
-        model.look = nil
-        pcall(WearLook, model, p)
-    end
-end
-
--- Draws a player's flat picture: their live portrait when `unit` is given;
--- otherwise the picture of their race and sex (if `raceOK`, and where it
--- was saved and the client has it), or else their class icon.
-local function FillPortrait(tex, p, unit, raceOK)
+-- Draws a player's flat picture: their live portrait when `unit` is given,
+-- otherwise their class icon. The game cannot save a portrait or a model,
+-- so a player who is not around has no picture of their own.
+local function FillPortrait(tex, p, unit)
     local coords = p.class and CLASS_ICON_TCOORDS and CLASS_ICON_TCOORDS[p.class]
-    local atlas = not unit and raceOK and tex.SetAtlas and RaceAtlas(p) or nil
     if unit then
         SetPortraitTexture(tex, unit)
         tex:SetTexCoord(0, 1, 0, 1)
-    elseif atlas then
-        tex:SetAtlas(atlas)
     elseif coords then
         tex:SetTexture("Interface\\TargetingFrame\\UI-Classes-Circles")
         tex:SetTexCoord(coords[1], coords[2], coords[3], coords[4])
@@ -780,10 +717,9 @@ local function FillPortrait(tex, p, unit, raceOK)
     end
 end
 
--- mode: "3d" model, "2d" portrait, "class" icon or "none". A live model
--- or portrait needs the player in the group right now; otherwise a
--- stand-in is built from their saved look, and failing that the class
--- icon is used.
+-- mode: "3d" model, "2d" portrait, "class" icon or "none". A model or a
+-- portrait needs the player in the group and in sight right now; anyone
+-- else gets their class icon.
 --
 -- Pictures are framed in the player's class colour: a ring around the
 -- round 2D portrait / class icon, a square frame around the 3D model
@@ -792,14 +728,7 @@ local function SetPortrait(c, p, mode)
     local tex, model = c.portrait, c.model
     local unit = (mode == "2d" or mode == "3d") and UnitForName(p.name) or nil
     if unit and not InSight(unit) then unit = nil end -- still inside the dungeon, say
-    local live = mode == "3d" and unit ~= nil
-    -- Not around: a model rebuilt from their saved look, if there is enough
-    -- of it. c.modelKey says what the model frame holds, so that it is
-    -- only loaded again when that changes (reloading makes it flicker):
-    -- "unit:<name>" for a live player, the saved gear for a rebuilt one.
-    local rebuilt = mode == "3d" and not unit
-        and ((p.gear ~= nil and c.modelKey == p.gear) or DressModel(model, p))
-    local useModel = live or rebuilt
+    local useModel = mode == "3d" and unit ~= nil
     local useTexture = mode ~= "none" and not useModel
 
     local r, g, b = ClassRGB(p.class)
@@ -813,18 +742,16 @@ local function SetPortrait(c, p, mode)
     model:SetShown(useModel)
 
     if not useModel then
-        c.modelKey = nil
-        if useTexture then FillPortrait(tex, p, unit, mode ~= "class") end
+        c.modelFor = nil
+        if useTexture then FillPortrait(tex, p, unit) end
         return
     end
-    local key = live and ("unit:" .. p.name) or p.gear
-    if c.modelKey ~= key then
-        if live then
-            model.look = nil
-            model:SetUnit(unit)
-        end
+    -- c.modelFor: whose model the frame holds, so that it is only loaded
+    -- again when that changes (reloading makes it flicker).
+    if c.modelFor ~= p.name then
+        model:SetUnit(unit)
         if model.SetPortraitZoom then model:SetPortraitZoom(1) end
-        c.modelKey = key
+        c.modelFor = p.name
     end
 end
 
@@ -840,8 +767,7 @@ local function GetCol(i)
     c.portrait:SetSize(48, 48)
     c.ring:SetSize(54, 54)
     c.ringInner:SetSize(50, 50)
-    c.model = NewModel(c)
-    c.model:SetScript("OnModelLoaded", ModelLoaded)
+    c.model = CreateFrame("PlayerModel", nil, c)
     c.model:SetSize(52, 52)
     c.model:Hide()
 
@@ -1666,9 +1592,10 @@ end)
 -- The rest of the top row. Run details: everything about the run on
 -- show (podium, front page, timeline, rolls, numbers). Statistics: the
 -- tables over all runs (dungeons, luck, drops, item search and so on).
-local detailsBtn = MakeButton("Run details", 100, function() ns.OpenShow(ns.ViewedRun()) end)
+-- Each button closes its window again on a second click.
+local detailsBtn = MakeButton("Run details", 100, function() ns.ToggleShow(ns.ViewedRun()) end)
 detailsBtn:SetPoint("LEFT", needBtn, "RIGHT", 12, 0)
-local statsBtn = MakeButton("Statistics", 90, function() ns.ShowBrowse("dungeons") end)
+local statsBtn = MakeButton("Statistics", 90, function() ns.ToggleBrowse() end)
 statsBtn:SetPoint("LEFT", detailsBtn, "RIGHT", 4, 0)
 local bingoBtn = MakeButton("Bingo", 70, function() ns.ToggleBingo() end)
 bingoBtn:SetPoint("LEFT", statsBtn, "RIGHT", 12, 0)
@@ -1812,7 +1739,10 @@ function Render()
         for _, r in ipairs(rows) do r:Hide() end
         RenderColumns(sum, awards, insights)
     else
-        ceremonyPending = false -- the reveal only exists in the column view
+        -- The reveal only exists in the column view: one under way stops,
+        -- sounds and screenshot included.
+        ceremonyPending = false
+        CancelReveal()
         for _, c in ipairs(cols) do c:Hide() end
         for _, fs in ipairs(footLines) do fs:Hide() end
         RenderList(sum and BuildLines(sum, awards, insights) or {
@@ -1854,7 +1784,7 @@ function RenderList(lines, showVendor, showShare)
             -- No 3D models in the list: both picture modes use the portrait.
             local unit = o.portrait ~= "class" and UnitForName(line.p.name) or nil
             if unit and not InSight(unit) then unit = nil end
-            FillPortrait(r.portrait, line.p, unit, o.portrait ~= "class")
+            FillPortrait(r.portrait, line.p, unit)
             left = size + 18
         end
         r.portrait:SetShown(showPicture)
@@ -1929,20 +1859,26 @@ function ns.OnRerender(fn)
 end
 
 -- Immediate redraw of every window that is open: used when an option or
--- the theme changes, and when a run is pinned or deleted. (New loot only
--- redraws this window: see ns.Refresh.)
+-- the theme changes, when a run is pinned or deleted, and when an item is
+-- switched to its other price. (New loot only redraws this window: see
+-- ns.Refresh.)
 function ns.Rerender()
     if f:IsShown() then Render() end
     for _, fn in ipairs(redraws) do fn() end
 end
 
--- ceremony: reveal the award cards one by one (used when the window
--- opens by itself at the end of a run).
-function ns.ShowWindow(ceremony)
+-- Opens the window on the latest run, or on run `s`. ceremony: reveal the
+-- award cards one by one (used when the window opens by itself at the end
+-- of a run).
+function ns.ShowWindow(ceremony, s)
     viewIndex, currentRun = 1, nil
+    for i, run in ipairs(s and Runs() or {}) do
+        if run == s then viewIndex = i end
+    end
     ceremonyPending = ceremony and ns.db.options.showAwards or false
     RestoreWindow()
     f:Show()
+    f:Raise() -- above the other windows, which may have been opened since
     Render()
 end
 
@@ -1950,16 +1886,9 @@ function ns.ToggleWindow()
     if f:IsShown() then f:Hide() else ns.ShowWindow() end
 end
 
--- Opens the window on one particular run (used by the item search).
+-- Opens the window on one particular run (used by the statistics).
 function ns.ShowRun(s)
-    viewIndex, currentRun = 1, nil
-    for i, run in ipairs(Runs()) do
-        if run == s then viewIndex = i end
-    end
-    ceremonyPending = false
-    RestoreWindow()
-    f:Show()
-    Render()
+    ns.ShowWindow(false, s)
 end
 
 -- The run on show in this window; the most recent one when the window is
@@ -1978,7 +1907,6 @@ end
 ns.MoneyPlain = function(copper) return MoneyText(copper, false) end
 ns.UnitForName = UnitForName
 ns.FillPortrait = FillPortrait
-ns.NewModel, ns.DressModel, ns.ModelLoaded = NewModel, DressModel, ModelLoaded
 ns.NewRoundPicture, ns.InSight, ns.PodiumOrder = NewRoundPicture, InSight, PodiumOrder
 ns.MEDALS = MEDALS
 ns.Signed, ns.FirstName = Signed, FirstName

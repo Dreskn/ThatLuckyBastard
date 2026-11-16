@@ -27,7 +27,7 @@ local MAX_ROWS = 300
 local MAX_COLS = 8
 local MIN_QUERY = 2 -- letters needed before the item search runs
 
-local b, ui, title, skins = ns.MakeWindow("ThatLuckyBastardBrowseFrame", WIDTH, HEIGHT, "DIALOG", true)
+local b, ui, title, skins = ns.MakeWindow("ThatLuckyBastardBrowseFrame", WIDTH, HEIGHT, "HIGH", true)
 b:SetPoint("CENTER", 0, -30)
 
 local mode = "dungeons"
@@ -360,6 +360,8 @@ PAGES.search = {
             for name, p in pairs(s.players) do
                 for _, e in pairs(p.items) do
                     if ns.ItemName(e):lower():find(query, 1, true) then
+                        ns.MarkPrice(s, e) -- which of its two prices the item has in that run
+                        local value = ns.EntryMarket(e)
                         rows[#rows + 1] = {
                             link = e.link, run = s,
                             cells = {
@@ -367,9 +369,9 @@ PAGES.search = {
                                 s.name or "Run",
                                 ns.ClassColored(ns.DisplayName(name), p.class),
                                 (e.count > 1 and (e.count .. "x ") or "") .. e.link,
-                                ns.Money(ns.EntryMarket(e)),
+                                ns.Money(value),
                             },
-                            keys = { s.startedAt or 0, s.name or "Run", name, ns.ItemName(e), ns.EntryMarket(e) },
+                            keys = { s.startedAt or 0, s.name or "Run", name, ns.ItemName(e), value },
                         }
                     end
                 end
@@ -705,6 +707,11 @@ function ns.ShowBrowse(page, query)
     else
         b:Show()
     end
-    b:Raise() -- it may be opened from the run details, which sit at the same level
+    b:Raise() -- above the main window and the run details, which share its level
     if mode == "search" then search:SetFocus() end
+end
+
+-- The Statistics button: opens the window on its first page, or closes it.
+function ns.ToggleBrowse()
+    if b:IsShown() then b:Hide() else ns.ShowBrowse("dungeons") end
 end

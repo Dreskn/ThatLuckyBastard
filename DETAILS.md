@@ -112,7 +112,7 @@ The minimap button does the same: left-click for the window, right-click for the
 - **New figures start now.** The timeline, the roll sheet, roll luck and loot by source rely on details recorded from version 0.2.0 on. Runs recorded before have none of them.
 - **Boss loot is a rule of thumb:** whatever was picked up within 90 seconds of a boss kill, profession materials aside.
 - **Roll luck counts what the game reports.** A roll nobody won (everyone passed) is not counted, and a roll whose messages you were too far away to receive is missed.
-- **Pictures of players who have left are stand-ins.** The game cannot save a portrait or a model. That Lucky Bastard saves each player's race, sex and visible gear during the run, and afterwards shows the game's picture for that race, or a model of that race wearing that gear. Their face and hair are not known. A player whose gear was never close enough to read gets a class icon, as do runs recorded before version 0.2.0.
+- **Portraits and models need the player nearby.** The game cannot save either, so a player who is out of sight or gone from the group shows their class icon.
 - **Item search and the Runs page only cover the runs that are kept** (300 by default; any number up to unlimited). A run takes about 25 to 150 KB in the saved file. Dungeon figures, records, regulars, luck, drops and roles are kept separately and are not affected by that limit.
 - **People met once are forgotten after 90 days.** Regulars would otherwise fill up with strangers from random groups.
 - **Lowering the number of runs to keep takes effect when the next run ends,** so a misclick deletes nothing.

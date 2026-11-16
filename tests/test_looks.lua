@@ -1,82 +1,65 @@
--- Pictures of players after the group is gone, quest items last, and the
--- unlimited history.
+-- Pictures of players during and after the run, quest items last, and
+-- the unlimited history.
 Include("test_run.lua")
-print("\n==== looks, quest order, unlimited ====")
+print("\n==== pictures, quest order, unlimited ====")
 local ns = NS
 local db = ThatLuckyBastardDB
 local function check(ok, what)
     print((ok and "  ok    " or "  FAIL  ") .. what)
     if not ok then FAILED = (FAILED or 0) + 1 end
 end
-local function reset() ATLASES, TRYONS, CUSTOM_RACES = {}, {}, {} end
+-- How many pictures were drawn from `what` ("class", "model:party", ...).
+local function drawn(what)
+    local n = 0
+    for _, p in ipairs(PICTURES) do
+        if p:sub(1, #what) == what then n = n + 1 end
+    end
+    return n
+end
 
 local old = db.history[1]
-local kett = old.players["Kett Longstride"]
-check(kett.race == "Orc" and kett.raceID == 2 and kett.sex == 2, "race and sex saved for a party member")
-check(kett.gear and kett.gear[1] == 5001 and kett.gear[16] == 5016, "their visible gear saved")
-check(old.players["Mira Vale"].sex == 3, "and my own")
+check(old.players["Kett Longstride"].gear == nil and old.players["Mira Vale"].race == nil,
+      "nothing of the players' looks is saved")
 
--- The group is gone.
-WORLD.inInstance = false
+-- The group is still together and in sight: everyone gets their own
+-- picture. (The podium, which opens as the run in progress is left, is
+-- closed so that only the main window draws.)
+WORLD.inInstance, WORLD.visible = false, true
 Fire("PLAYER_ENTERING_WORLD", false, false)
-WORLD.party = {}
-
-db.options.useColumns = true
-db.options.portrait = "2d"
-reset()
-ns.ShowRun(old)
-check(#ATLASES == 4 and ATLASES[1] == "raceicon128-orc-male", "2D: the four absent players get their race picture (" .. #ATLASES .. ")")
-
-db.options.portrait = "class"
-reset()
-ns.Rerender()
-check(#ATLASES == 0, "class icon mode stays the class icon")
-
-db.options.portrait = "3d"
-reset()
-ns.Rerender()
-check(#CUSTOM_RACES == 4 and CUSTOM_RACES[1] == "2:0", "3D: four models rebuilt as male orcs")
-check(#TRYONS == 4 * 13, "each dressed in the 13 saved pieces (" .. #TRYONS .. " items put on)")
-reset()
-ns.Rerender()
-check(#TRYONS == 0, "and not rebuilt again on the next redraw")
-
--- A model that loads late comes up bare: the gear goes on once more, once.
-reset()
-local model
-for _, w in ipairs(FRAMES) do
-    if w.__kind == "DressUpModel" and rawget(w, "look") then model = w end
-end
-check(model ~= nil, "a rebuilt model is waiting for its body to load")
-if model then
-    model.__scripts.OnModelLoaded(model)
-    check(#TRYONS == 13, "gear put on again when the body has loaded")
-    model.__scripts.OnModelLoaded(model)
-    check(#TRYONS == 13, "but only once")
-end
-
--- The podium uses the same stand-ins. It opened by itself when the run
--- ended, so close it first: models are set up afresh each time it opens.
 ThatLuckyBastardShowFrame:Hide()
-reset()
-ns.OpenShow(old, false, "podium")
-check(#CUSTOM_RACES == 4, "podium: four look-alikes, and my own live model (" .. #CUSTOM_RACES .. ")")
-
--- Too little gear is no likeness: back to the flat picture. Looks belong
--- to a run, so showing another run first makes the columns start afresh.
-old.players["Kett Longstride"].gear = { [1] = 5001 }
+db.options.useColumns = true
 db.options.portrait = "3d"
-ns.ShowRun(db.active)
-reset()
+PICTURES = {}
 ns.ShowRun(old)
-check(#CUSTOM_RACES == 3, "a player with one piece of gear saved is not rebuilt; the other three are (" .. #CUSTOM_RACES .. ")")
-
--- A run from before looks were saved: class icons, as before.
-for _, p in pairs(old.players) do p.race, p.raceID, p.sex, p.gear = nil, nil, nil, nil end
-db.options.portrait = "2d"
-reset()
+check(drawn("model:party") == 4 and drawn("model:player") == 1 and drawn("class") == 0,
+      "3D, group in sight: five live models (" .. table.concat(PICTURES, " ") .. ")")
+PICTURES = {}
 ns.Rerender()
-check(#ATLASES == 0 and #CUSTOM_RACES == 0, "a run without saved looks falls back to class icons")
+check(#PICTURES == 0, "and they are not loaded again on the next redraw")
+
+-- The group is gone: everyone but me gets their class icon.
+WORLD.party, WORLD.visible = {}, false
+local MINE = { ["2d"] = "portrait:player", ["3d"] = "model:player" }
+for _, mode in ipairs({ "2d", "class", "3d" }) do
+    db.options.portrait = mode
+    PICTURES = {}
+    ns.Rerender()
+    local icons = mode == "class" and 5 or 4
+    check(drawn("class") == icons and (mode == "class" or drawn(MINE[mode]) == 1)
+          and drawn("model:party") + drawn("portrait:party") == 0,
+          mode .. ", group gone: everyone else gets their class icon (" .. table.concat(PICTURES, " ") .. ")")
+end
+
+-- The podium likewise.
+PICTURES = {}
+ns.OpenShow(old, false, "podium")
+check(drawn("class") == 4 and drawn("model:player") == 1, "podium, group gone: four class icons, and my own model")
+
+-- Saved looks from earlier versions are dropped when the addon loads.
+old.players["Kett Longstride"].race, old.players["Kett Longstride"].gear = "Orc", { [1] = 5001 }
+Fire("ADDON_LOADED", "ThatLuckyBastard")
+check(old.players["Kett Longstride"].race == nil and old.players["Kett Longstride"].gear == nil,
+      "saved looks from earlier versions are dropped at load")
 
 -- Quest items last.
 print("-- quest items")
@@ -135,4 +118,4 @@ ns.TrimHistory()
 check(#db.history == 30, "back to 30 trims again")
 ns.ToggleOptions(); ns.ToggleOptions()
 
-print(FAILED and (FAILED .. " check(s) FAILED") or "all checks passed (looks, quest order, unlimited)")
+print(FAILED and (FAILED .. " check(s) FAILED") or "all checks passed (pictures, quest order, unlimited)")

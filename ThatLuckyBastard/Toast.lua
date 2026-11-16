@@ -11,7 +11,7 @@ local MAX_QUEUE = 5
 local toast = CreateFrame("Frame", "ThatLuckyBastardToast", UIParent)
 toast:SetSize(340, 40)
 toast:SetPoint("TOP", UIParent, "TOP", 0, -150)
-toast:SetFrameStrata("HIGH")
+toast:SetFrameStrata("DIALOG") -- above the addon's windows, which open as a run ends
 toast:Hide()
 
 local bg = toast:CreateTexture(nil, "BACKGROUND")

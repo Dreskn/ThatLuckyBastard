@@ -244,4 +244,175 @@ ns.ToggleAuctionPrice(db.active, greenBelt)
 check(value(grey) == 40 and value(greenBelt) == 5000, "another right-click on each puts them back")
 Auctionator = nil
 
+-- Which of two windows is in front: the higher strata, then the one
+-- raised last.
+local STRATA = { MEDIUM = 1, HIGH = 2, DIALOG = 3, FULLSCREEN_DIALOG = 4 }
+local function inFront(a, b)
+    local sa, sb = STRATA[a.__strata] or 0, STRATA[b.__strata] or 0
+    if sa ~= sb then return sa > sb end
+    return (a.__raised or 0) > (b.__raised or 0)
+end
+-- Whether a text was drawn since TEXTLOG was last emptied.
+local function drew(text)
+    for _, t in ipairs(TEXTLOG) do
+        if t == text then return true end
+    end
+    return false
+end
+-- Clicks the main window's button with this label.
+local function click(label, button)
+    for _, w in ipairs(FRAMES) do
+        local t = rawget(w, "text")
+        if type(t) == "table" and t.__text == label and w.__scripts.OnClick then
+            w.__scripts.OnClick(w, button or "LeftButton")
+            return true
+        end
+    end
+    return false
+end
+
+print("==== item search: each item at the price it has in its run ====")
+local alone = db.active
+leave()
+NOW = NOW + 5000
+Fire("PLAYER_ENTERING_WORLD", false, false) -- long gone: closed, and its working notes dropped
+check(db.history[1] == alone and grey.noAH == nil, "the run with the grey item is closed")
+TEXTLOG = {}
+ns.ShowBrowse("search", "Chipped")
+check(drew(ns.Money(40)) and not drew(ns.Money(5000)), "the grey item is listed at its vendor price, not its auction price")
+
+print("==== a right-click on a price redraws every window ====")
+ns.ShowRun(alone)
+ns.ShowBrowse("search", "Green Belt")
+local beltRow
+for _, w in ipairs(FRAMES) do
+    local line = rawget(w, "line")
+    if type(line) == "table" and line.e == greenBelt and w.__scripts.OnClick then beltRow = w end
+end
+-- The value the item search shows for the green belt.
+local function searchValue()
+    for _, w in ipairs(FRAMES) do
+        local cells = rawget(w, "cells")
+        if cells and rawget(w, "link") == greenBelt.link and w:IsShown() then return cells[5].__text end
+    end
+end
+check(searchValue() == ns.Money(5000), "the item search shows the green at its auction price")
+if beltRow then beltRow.__scripts.OnClick(beltRow, "RightButton") end
+check(beltRow ~= nil and searchValue() == ns.Money(900), "a right-click in the main window: the search shows its vendor price at once")
+ns.ToggleAuctionPrice(alone, greenBelt)
+
+print("==== statistics: a run opened from them comes to the front ====")
+local browse = ThatLuckyBastardBrowseFrame
+ns.ShowRun(first)
+check(inFront(ThatLuckyBastardFrame, browse), "the run is in front of the statistics")
+ns.ShowBrowse("dungeons")
+check(inFront(browse, ThatLuckyBastardFrame), "and the statistics in front of it when opened again")
+ns.ToggleOptions()
+check(inFront(ThatLuckyBastardOptionsFrame, browse) and inFront(ThatLuckyBastardOptionsFrame, ThatLuckyBastardFrame),
+      "the options stay in front of both")
+ns.ToggleOptions()
+
+print("==== the Run details and Statistics buttons close their window too ====")
+ThatLuckyBastardShowFrame:Hide()
+browse:Hide()
+ns.ShowRun(first)
+check(click("Run details") and ThatLuckyBastardShowFrame:IsShown(), "Run details opens")
+check(click("Run details") and not ThatLuckyBastardShowFrame:IsShown(), "and a second click closes it")
+check(click("Statistics") and browse:IsShown(), "Statistics opens")
+check(click("Statistics") and not browse:IsShown(), "and a second click closes it")
+
+print("==== a queue that pops inside a dungeon ====")
+WORLD.party = { { "Borin Oak", "WARRIOR", "TANK" }, { "Sela Marrow", "MAGE", "DAMAGER" },
+                { "Kett Longstride", "HUNTER", "DAMAGER" } }
+local notices = 0
+ns.Notice = function(title, ...)
+    if title:find("in a row", 1, true) then notices = notices + 1 end
+    return realNotice(title, ...)
+end
+enter(10, "Queue One")
+local q1 = db.active
+Loot(("You receive loot: %s."):format(green))
+Loot(("%s receives loot: %s."):format("Borin Oak", epic))
+ThatLuckyBastardFrame:Hide()
+ThatLuckyBastardShowFrame:Hide()
+NOW = NOW + 600
+enter(11, "Queue Two") -- straight from one dungeon into the next
+RunTimers()
+check(db.active ~= q1 and db.active.instanceID == 11 and db.history[1] == q1 and q1.endedAt == NOW,
+      "the first run ends as the second one starts")
+check(ThatLuckyBastardFrame:IsShown() and ThatLuckyBastardShowFrame:IsShown(), "the window and the podium open, as on leaving")
+check(ns.ViewedRun() == q1, "on the run that just ended, not the new empty one")
+
+print("==== the streak notice, once per run ====")
+local q2 = db.active
+Loot(("You receive loot: %s."):format(green))
+NOW = NOW + 600
+leave()
+check(notices == 1, "leaving the second run with the same group: a streak notice")
+NOW = NOW + 60
+enter(11, "Queue Two") -- back in, to repair say
+check(db.active == q2, "coming back continues the run")
+ThatLuckyBastardFrame:Hide()
+NOW = NOW + 60
+leave()
+check(ThatLuckyBastardFrame:IsShown() and notices == 1, "leaving again opens the window, but no second notice")
+ns.Notice = realNotice
+
+print("==== a duo is a group ====")
+local function runOf(name, id, start, others)
+    local players = { ["Mira Vale"] = { items = {} } }
+    for _, n in ipairs(others) do players[n] = { items = {} } end
+    return { name = name, instanceID = id, owner = "Mira Vale", startedAt = start, endedAt = start + 500, players = players }
+end
+local duo1, duo2 = runOf("Duo A", 20, NOW - 2000, { "Pal Friend" }), runOf("Duo B", 21, NOW - 1400, { "Pal Friend" })
+table.insert(db.history, 1, duo1)
+table.insert(db.history, 1, duo2)
+local streak = ns.Streak(duo2)
+check(streak and streak.kind == "group" and streak.count == 2, "two runs in a row with the same partner are a streak")
+duo1.players = { ["Mira Vale"] = { items = {} } }
+duo2.players = { ["Mira Vale"] = { items = {} } }
+check(ns.Streak(duo2) == nil, "two runs alone in different dungeons are not")
+table.remove(db.history, 1)
+table.remove(db.history, 1)
+
+print("==== roll wins whose item never came ====")
+NOW = NOW + 5000
+Fire("PLAYER_ENTERING_WORLD", false, false)
+enter(12, "Roll Keep")
+local rolls = db.active
+Loot((H .. "%s has selected Need for: %s"):format(40, "Borin Oak", blue))
+Loot((H .. "%s won: %s"):format(40, "Borin Oak", blue)) -- and the mace never reaches his bags
+Loot((H .. "%s has selected Need for: %s"):format(41, "Sela Marrow", epic))
+Loot((H .. "%s won: %s"):format(41, "Sela Marrow", epic))
+NOW = NOW + 2
+Loot(("%s receives loot: %s."):format("Sela Marrow", epic)) -- this one does, a moment later
+NOW = NOW + 600
+Loot(("%s receives loot: %s."):format("Borin Oak", blue)) -- another mace, picked up later
+local function entry(name, id)
+    for _, e in pairs(rolls.players[name].items) do
+        if ns.ItemKey(e) == id then return e end
+    end
+end
+check(entry("Sela Marrow", "105").need == 1, "a win whose loot line follows is tagged as won on Need")
+check(entry("Borin Oak", "104").need == nil, "a later pickup of an item whose win was never looted is not")
+
+print("==== switching to the list view stops the award reveal ====")
+local shots = 0
+local realScreenshot = Screenshot
+Screenshot = function() shots = shots + 1 end
+db.options.ceremonyScreenshot = true
+ThatLuckyBastardShowFrame:Hide()
+TIMERS = {}
+ns.ShowWindow(true, q1)
+RunTimers()
+check(shots == 1, "a reveal left to finish takes its screenshot")
+TIMERS = {}
+ns.ShowWindow(true, q1)
+db.options.useColumns = false
+ns.Rerender()
+RunTimers()
+check(shots == 1, "one cut short by the list view takes none")
+db.options.useColumns, db.options.ceremonyScreenshot = true, false
+Screenshot = realScreenshot
+
 print(FAILED and (FAILED .. " check(s) FAILED") or "all checks passed (audit regressions)")

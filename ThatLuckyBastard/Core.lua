@@ -5,10 +5,9 @@ local issecret = issecretvalue or function() return false end
 
 local RESUME_WINDOW = 1200 -- a run can be continued for 20 minutes after leaving or logging out
 local ARRIVAL_GRACE = 10   -- seconds during which repeated arrival events count as one
-local ROLL_MATCH_WINDOW = 5 -- a roll win and its loot line arrive within this many seconds
+local ROLL_MATCH_WINDOW = 5 -- a roll win and its loot line arrive within this many seconds, in either order
 local CAPTURE_MAX = 600    -- lines kept by /tlb capture
 local LOG_MAX = 3000       -- pickups kept per run for the timeline
-local LOOK_INTERVAL = 60   -- seconds between two looks at the group's gear
 local TICKER_RETRY = 1.5   -- seconds before a notice retries an item whose value was not known yet
 local FORGET_AFTER = 90 * 24 * 3600 -- people met once are forgotten after this long
 ns.MIN_TIMED_RUN = 60      -- runs shorter than this get no per-hour figures
@@ -391,37 +390,11 @@ local function SetRole(p, unit)
     if not issecret(role) and role and role ~= "NONE" then p.role = role end
 end
 
--- What a player looks like, saved while they are around so that their
--- picture can be rebuilt once the group is gone: race, sex and the gear
--- that shows. The game does not tell us faces or hair. Other players'
--- gear is only readable when they are close by, so a slot keeps the last
--- thing seen in it.
-local LOOK_SLOTS = { 1, 3, 15, 5, 4, 19, 9, 10, 6, 7, 8, 16, 17 } -- head to feet, then weapons
-ns.LOOK_SLOTS = LOOK_SLOTS
-
-local function SaveLook(p, unit)
-    local _, raceFile, raceID = UnitRace(unit)
-    if type(raceFile) == "string" and not issecret(raceFile) and not issecret(raceID) then
-        p.race, p.raceID = raceFile, raceID
-    end
-    local sex = UnitSex(unit)
-    if type(sex) == "number" and not issecret(sex) and sex > 1 then p.sex = sex end -- 2 male, 3 female
-    if not GetInventoryItemID then return end
-    for _, slot in ipairs(LOOK_SLOTS) do
-        local id = GetInventoryItemID(unit, slot)
-        if type(id) == "number" and not issecret(id) then
-            p.gear = p.gear or {}
-            p.gear[slot] = id
-        end
-    end
-end
-
 local function UpdateRoster()
     local s = db.active
     if not Tracking(s) or not PLAYER_NAME then return end
     local me = AddPlayer(s, PLAYER_NAME, PLAYER_CLASS)
     SetRole(me, "player")
-    SaveLook(me, "player")
     local raid = IsInRaid()
     for i = 1, GetNumGroupMembers() do
         local unit = (raid and "raid" or "party") .. i
@@ -430,9 +403,7 @@ local function UpdateRoster()
             if not issecret(name) and name and name ~= UNKNOWNOBJECT then
                 local _, class = UnitClass(unit)
                 if issecret(class) then class = nil end
-                local p = AddPlayer(s, name, class)
-                SetRole(p, unit)
-                SaveLook(p, unit)
+                SetRole(AddPlayer(s, name, class), unit)
             end
         end
     end
@@ -469,8 +440,8 @@ local CommitRun    -- defined with the records code, further down
 -- file small.
 local function StripRun(s)
     s.rolls, s.pendingWins, s.killed = nil, nil, nil
-    s.enteredAt, s.lastSeen, s.lookedAt, s.nextId = nil, nil, nil, nil
-    s.leftDead, s.summarized = nil, nil
+    s.enteredAt, s.lastSeen, s.nextId = nil, nil, nil
+    s.leftDead, s.summarized, s.streakShown = nil, nil, nil
     for _, p in pairs(s.players) do
         for _, e in pairs(p.items) do
             e.lastAt, e.noAH = nil, nil
@@ -584,9 +555,26 @@ local function Continue(s)
     UpdateRoster()
 end
 
+-- What the player sees when they leave a run alive: the window, and on
+-- top of it the podium (only one of the two plays the reveal), then the
+-- streak notice. A run left again after coming back opens the window
+-- again, but the notice only the first time.
+local function ShowRunEnd(s)
+    local podium = db.options.podiumOnLeave
+    if db.options.popupLeave then ns.ShowWindow(not podium, s) end
+    if podium then ns.OpenShow(s, true) end
+    if not s.streakShown then
+        pcall(ns.StreakNotice, s)
+        -- Only the run in progress can be left again: a closed one keeps no note.
+        s.streakShown = s == db.active or nil
+    end
+end
+
 -- The rules, in full:
 --   * A run belongs to one instance. Arriving in a different one, or with
---     no run in progress, starts a new run.
+--     no run in progress, starts a new run. Going from the run's dungeon
+--     straight into another one (a queue that pops inside) leaves the run
+--     first, as if through the door.
 --   * Leaving alive opens the window. Leaving dead does nothing.
 --   * Coming back within RESUME_WINDOW continues the run: silently after
 --     a death, and with a "new run?" question otherwise. With the
@@ -621,7 +609,13 @@ local function CheckZone(isLogin, entered)
     if tracked then
         local name, _, _, _, _, _, _, instanceID = GetInstanceInfo()
         if not s or s.instanceID ~= instanceID then
-            NewSession(name, instanceID)
+            local ended -- the run just left without going outside, if it has something to show
+            if s and not s.leftAt and not isLogin then
+                s.leftAt = time()
+                if not UnitIsDeadOrGhost("player") and HasLoot(s) then ended = s end
+            end
+            NewSession(name, instanceID) -- files the previous run away
+            if ended then ShowRunEnd(ended) end
         elseif s.leftAt then
             local recent = time() - s.leftAt < RESUME_WINDOW
             if recent and s.leftDead then
@@ -657,18 +651,13 @@ local function CheckZone(isLogin, entered)
             s.leftDead = UnitIsDeadOrGhost("player") or nil
             if not s.leftDead and HasLoot(s) then -- nothing to show for a step in and out
                 PrintSummary(s)
-                -- The breakdown window, and on top of it the podium. Only one
-                -- of the two plays the reveal.
-                local podium = db.options.podiumOnLeave
-                if db.options.popupLeave then ns.ShowWindow(not podium) end
-                if podium then ns.OpenShow(s, true) end
-                if ns.StreakNotice then pcall(ns.StreakNotice, s) end
+                ShowRunEnd(s)
             end
         end
     end
 end
 
--- Moves roll wins from `wins` ({ need = n, greed = n }) onto an item
+-- Moves roll wins from `wins` ({ need = n, greed = n, ... }) onto an item
 -- entry, as far as the entry has copies not yet accounted for. An entry's
 -- `need` / `greed` fields count how many of its copies were won that way.
 local function TagWin(e, wins)
@@ -748,18 +737,19 @@ local function RecordLoot(name, rawLink, count)
     e.count = e.count + count
     e.lastAt = time()
     LogPickup(s, name, e, count)
-    -- If this player just won a roll on this item, note how it was won.
-    local wins = s.pendingWins and s.pendingWins[name] and s.pendingWins[name][ItemKey(e)]
+    -- If this player just won a roll on this item, note how it was won. A
+    -- win whose item never came (full bags, say) is dropped once it is too
+    -- old, so that a later copy of the item is not taken for it.
+    local pending = s.pendingWins and s.pendingWins[name]
+    local key = ItemKey(e)
+    local wins = pending and pending[key]
     if wins then
-        TagWin(e, wins)
+        local fresh = time() - (wins.at or 0) <= ROLL_MATCH_WINDOW
+        if fresh then TagWin(e, wins) end
+        if not fresh or (wins.need or 0) + (wins.greed or 0) == 0 then pending[key] = nil end
     end
     AnnounceLoot(s, name, e, count)
     s.lastSeen = time()
-    -- Looting happens next to the others: a good moment to note their gear.
-    if time() - (s.lookedAt or 0) >= LOOK_INTERVAL then
-        s.lookedAt = time()
-        UpdateRoster()
-    end
     ns.Refresh()
     if ns.BingoCheck then ns.BingoCheck() end
 end
@@ -824,10 +814,12 @@ local function RecordRollWin(s, name, key, method, rk)
         end
     end
     if wins[method] > 0 then
+        -- Its loot line has not come yet: the win waits for it (see RecordLoot).
         s.pendingWins = s.pendingWins or {}
         s.pendingWins[name] = s.pendingWins[name] or {}
         local pending = s.pendingWins[name][key] or {}
         pending[method] = (pending[method] or 0) + 1
+        pending.at = time()
         s.pendingWins[name][key] = pending
     end
     ns.Refresh()
@@ -900,8 +892,8 @@ end
 -- Summary used by the window
 ----------------------------------------------------------------------
 
--- The value used for totals, shares and sorting. `e.noAH` (see
--- MarkPrice) says this item is valued at its vendor price in this run.
+-- The value used for totals, shares and sorting. `e.noAH` says this item
+-- is valued at its vendor price in its run: call MarkPrice first.
 local function EntryMarket(e)
     if db.options.valueMode == "vendor" or e.noAH then return e.vendor * e.count end
     return (e.ah or e.vendor) * e.count
@@ -933,8 +925,6 @@ function ns.Summarize(s, needOnly)
     local out = { players = {}, count = 0, vendor = 0, market = 0, needOnly = needOnly }
     for name, p in pairs(s.players) do
         local ps = { name = name, class = p.class, role = p.role, count = 0, vendor = 0, market = 0, cats = {},
-                     -- the saved look, for pictures once the group is gone
-                     race = p.race, raceID = p.raceID, sex = p.sex, gear = p.gear,
                      -- for the awards: value won on Need / Greed rolls, and the best single item
                      needValue = 0, greedValue = 0, bestValue = 0,
                      -- also used by the bingo card: rolls won, and the best item quality
@@ -1533,6 +1523,14 @@ function handlers.ADDON_LOADED(name)
     -- Left behind by features that no longer exist.
     db.options.compact, db.options.popupBoss = nil, nil
     db.finalBoss, db.bossCount = nil, nil
+    -- Players' saved looks (race, sex and gear), from stand-in pictures
+    -- that were never a likeness.
+    local function DropLooks(s)
+        s.lookedAt = nil
+        for _, p in pairs(s.players or {}) do p.race, p.raceID, p.sex, p.gear = nil, nil, nil, nil end
+    end
+    if db.active then DropLooks(db.active) end
+    for _, s in ipairs(db.history) do DropLooks(s) end
     if db.theme ~= "modern" then db.theme = "classic" end
     for key, value in pairs(ns.OPTION_DEFAULTS) do
         if type(value) == "table" then

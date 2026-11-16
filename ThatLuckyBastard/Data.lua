@@ -15,7 +15,7 @@ local _, ns = ...
 local BOSS_WINDOW = 90   -- seconds after a boss kill during which loot counts as boss loot
 local STREAK_GAP = 1800  -- seconds: a run starting later than this after the one before is not "in a row"
 local SAME_GROUP = 0.6   -- of the smaller group must be the same people for "the same group"...
-local SAME_GROUP_MIN = 2 -- ...and never fewer than this many
+local SAME_GROUP_MIN = 2 -- ...and never fewer than this many, unless that is the whole group (a duo)
 local MIN_ROLE_GROUP = 3 -- players needed before a run counts towards shares by role and class
 ns.BOSS_WINDOW, ns.STREAK_GAP = BOSS_WINDOW, STREAK_GAP
 local CHOICES = { n = "need", g = "greed", p = "pass" }
@@ -289,15 +289,18 @@ local function Others(s)
     return set, n
 end
 
--- Mostly the same people (see SAME_GROUP at the top of the file).
+-- Mostly the same people (see SAME_GROUP at the top of the file). A run
+-- played alone is with no group.
 local function SameGroup(a, b)
     local setA, nA = Others(a)
     local setB, nB = Others(b)
+    local smaller = math.min(nA, nB)
+    if smaller == 0 then return false end
     local shared = 0
     for name in pairs(setA) do
         if setB[name] then shared = shared + 1 end
     end
-    return shared >= math.max(SAME_GROUP_MIN, math.ceil(math.min(nA, nB) * SAME_GROUP))
+    return shared >= math.min(smaller, math.max(SAME_GROUP_MIN, math.ceil(smaller * SAME_GROUP)))
 end
 
 local function EndOf(s)

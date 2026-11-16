@@ -88,11 +88,17 @@ function known.GetNumPoints() return 1 end
 function known.GetValue() return 1 end
 function known.GetChecked() return false end
 function known.GetUnit() return nil end
-ATLASES, TRYONS, CUSTOM_RACES = {}, {}, {}   -- what the pictures were built from
-function known.SetAtlas(self, atlas) ATLASES[#ATLASES + 1] = atlas end
-function known.TryOn(self, link) TRYONS[#TRYONS + 1] = link end
-function known.SetCustomRace(self, race, sex) CUSTOM_RACES[#CUSTOM_RACES + 1] = race .. ":" .. sex end
-function known.Undress() end
+-- What players' pictures were drawn from: "model:<unit>", "portrait:<unit>"
+-- or "class" (the class icon).
+PICTURES = {}
+function known.SetUnit(self, unit) PICTURES[#PICTURES + 1] = "model:" .. tostring(unit) end
+function known.SetTexture(self, path)
+    if path == "Interface\\TargetingFrame\\UI-Classes-Circles" then PICTURES[#PICTURES + 1] = "class" end
+end
+-- Which window is in front: its strata, then the latest to be raised.
+RAISES = 0
+function known.SetFrameStrata(self, strata) self.__strata = strata end
+function known.Raise(self) RAISES = RAISES + 1; self.__raised = RAISES end
 function known.GetItem() return nil end
 function known.RegisterEvent(self, event) self.__events = self.__events or {}; self.__events[event] = true end
 function known.CreateFontString() return NewWidget("FontString") end
@@ -143,7 +149,8 @@ function UIFrameFadeIn() end
 function GetCoinTextureString(c) return tostring(c) .. "c" end
 function GetCVar() return "1" end
 function GetCVarBool() return true end
-function SetPortraitTexture() end
+function SetPortraitTexture(tex, unit) PICTURES[#PICTURES + 1] = "portrait:" .. tostring(unit) end
+CLASS_ICON_TCOORDS = setmetatable({}, { __index = function() return { 0, 0.25, 0, 0.25 } end })
 function GetRealZoneText() return "Somewhere" end
 
 TIMERS = {}
@@ -178,12 +185,8 @@ function UnitClass(unit) if unit == "player" then return "Shaman", "SHAMAN" end 
 function UnitExists(unit) return unit == "player" or PartyMember(unit) ~= nil end
 function UnitIsUnit(a, b) return a == b end
 function UnitIsPlayer() return true end
-function UnitRace(unit) return "Orc", "Orc", 2 end
-function UnitSex(unit) return unit == "player" and 3 or 2 end
-function GetInventoryItemID(unit, slot) return WORLD.gearVisible ~= false and (5000 + slot) or nil end
-C_Texture = { GetAtlasInfo = function(atlas) return atlas:find("^raceicon128%-") and {} or nil end }
 function UnitGUID(unit) return 'Player-1-' .. tostring(unit) end
-function UnitIsVisible() return false end
+function UnitIsVisible() return WORLD.visible == true end -- close enough to be drawn
 function UnitIsDeadOrGhost() return WORLD.dead end
 function UnitGroupRolesAssigned(unit) if unit == "player" then return "HEALER" end local m = PartyMember(unit) return m and m[3] or "NONE" end
 function GetNumGroupMembers() return #WORLD.party end

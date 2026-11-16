@@ -25,7 +25,7 @@ local MEDALS = ns.MEDALS -- gold, silver, bronze, then grey
 -- once and are replayed on every tick.
 local ANIM = { dance = 69, applaud = 80, wave = 67, cry = 77, kneel = 75 }
 
-local show, ui, title, skins = ns.MakeWindow("ThatLuckyBastardShowFrame", WIDTH, HEIGHT, "DIALOG", true)
+local show, ui, title, skins = ns.MakeWindow("ThatLuckyBastardShowFrame", WIDTH, HEIGHT, "HIGH", true)
 show:SetPoint("CENTER", 0, 20)
 
 local page = "podium"
@@ -90,11 +90,10 @@ local function GetSlot(i)
     slot.rank:SetShadowColor(0, 0, 0, 0)
 
     -- The character, standing on the block.
-    slot.model = ns.NewModel(slot)
+    slot.model = CreateFrame("PlayerModel", nil, slot)
     slot.model:SetSize(SLOT_W, MODEL_H)
     slot.model:SetPoint("BOTTOM", slot.block, "TOP", 0, -6)
     slot.model:SetScript("OnModelLoaded", function(self)
-        ns.ModelLoaded(self)
         if slot.anim then self:SetAnimation(slot.anim) end
     end)
 
@@ -144,33 +143,22 @@ local function AnimFor(p, players, a)
     return ANIM.wave
 end
 
--- Shows the slot's player as a 3D model: live when they are close enough
--- to be seen, else rebuilt from their saved look; and as a flat picture
--- when neither can be had. Called again on every tick, so a
--- teammate who walks out of the dungeon a little later still gets their
--- model.
+-- Shows the slot's player as a 3D model when they are close enough to be
+-- seen, and as their class icon otherwise: the game cannot save a model.
+-- Called again on every tick, so a teammate who walks out of the dungeon
+-- a little later still gets their model.
 local function SetupPicture(slot)
     local p = slot.p
     local unit = ns.UnitForName(p.name)
-    local visible = unit and ns.InSight(unit)
-    -- Out of sight, or gone from the group: a look-alike rebuilt from what
-    -- was saved of them, where there is enough of it. slot.modelFor says
-    -- what the model frame holds: a name for a live player, the saved gear
-    -- for a rebuilt one.
-    local rebuilt = not visible
-        and ((p.gear ~= nil and slot.modelFor == p.gear) or ns.DressModel(slot.model, p))
-    if visible or rebuilt then
-        local key = visible and p.name or p.gear
+    if unit and ns.InSight(unit) then
         slot.portrait:Hide()
         slot.ring:Hide()
         slot.ringInner:Hide()
         slot.model:Show()
-        if slot.modelFor ~= key then
-            slot.modelFor = key
-            if visible then
-                slot.model.look = nil
-                slot.model:SetUnit(unit)
-            end
+        -- slot.modelFor: whose model the frame holds.
+        if slot.modelFor ~= p.name then
+            slot.modelFor = p.name
+            slot.model:SetUnit(unit)
             slot.model:SetAnimation(slot.anim)
         elseif slot.anim ~= ANIM.dance then
             slot.model:SetAnimation(slot.anim) -- replay the one-shot emotes
@@ -180,7 +168,7 @@ local function SetupPicture(slot)
         slot.model:Hide()
         local c = p.class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[p.class]
         if c then slot.ring:SetVertexColor(c.r, c.g, c.b) else slot.ring:SetVertexColor(1, 0.82, 0) end
-        ns.FillPortrait(slot.portrait, p, nil, true)
+        ns.FillPortrait(slot.portrait, p)
         slot.portrait:Show()
         slot.ring:Show()
         slot.ringInner:Show()
@@ -678,7 +666,14 @@ function ns.OpenShow(s, ceremony, which)
     run = s
     page = (which == "paper" or extra[which]) and which or "podium"
     show:Show()
+    show:Raise()
     Draw(ceremony)
+end
+
+-- The Run details button: closes the window if it already shows run `s`,
+-- and opens it on `s` otherwise.
+function ns.ToggleShow(s)
+    if show:IsShown() and run == s then show:Hide() else ns.OpenShow(s) end
 end
 
 ns.OnRerender(function()
