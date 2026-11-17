@@ -7,18 +7,73 @@ local MAX_COLUMNS = 5     -- groups up to this size get one column per player
 local COL_GAP = 6
 local ACCENT = ns.ACCENT
 
+----------------------------------------------------------------------
+-- The Receipt theme's materials: paper, inks, the counter the receipts
+-- lie on, till keys, and a typewriter font shipped in Media/ (Courier
+-- Prime, under the SIL Open Font License: Media/CourierPrime-OFL.txt).
+----------------------------------------------------------------------
+
+local PAPER = { 0.953, 0.937, 0.894 }
+local INK = { 0.165, 0.153, 0.141 }
+local INK_GREY = { 0.431, 0.404, 0.361 }
+local COUNTER = { 0.169, 0.149, 0.133 }
+local KEY, KEY_EDGE = { 0.910, 0.882, 0.816 }, { 0.663, 0.624, 0.533 }
+local RED_KEY, RED_KEY_EDGE = { 0.784, 0.267, 0.180 }, { 0.557, 0.176, 0.114 }
+local STAMP_RED, STAMP_BLUE = { 0.698, 0.227, 0.165 }, { 0.169, 0.298, 0.608 }
+ns.RECEIPT_ACCENT = { 0.878, 0.380, 0.290 } -- red ink, where Modern has its teal
+local INK_CODE, INK_GREY_CODE = "|cff2a2724", "|cff6e675c"
+-- Item qualities as inks that read on paper, by quality number.
+local QUALITY_INK = {
+    [0] = "|cff6e675c", [1] = "|cff2a2724", [2] = "|cff2f7a1f", [3] = "|cff1d4e9e",
+    [4] = "|cff6a2c9e", [5] = "|cffa0520a", [6] = "|cff8a6d1f", [7] = "|cff1d6f8a",
+}
+-- Awards stamped in red; the others in blue.
+local RED_STAMPS = { ninja = true, lionshare = true, empty = true, snakeeyes = true, colddice = true, window = true }
+
+local MEDIA = "Interface\\AddOns\\ThatLuckyBastard\\Media\\"
+local function ReceiptFont(name, file, size, color)
+    if not CreateFont then return end
+    local font = CreateFont(name)
+    font:SetFont(MEDIA .. file, size, "")
+    font:SetTextColor(color[1], color[2], color[3])
+end
+ReceiptFont("ThatLuckyBastardReceiptInk", "CourierPrime-Regular.ttf", 12, INK)
+ReceiptFont("ThatLuckyBastardReceiptInkBold", "CourierPrime-Bold.ttf", 12, INK)
+ReceiptFont("ThatLuckyBastardReceiptGrey", "CourierPrime-Regular.ttf", 12, INK_GREY)
+ReceiptFont("ThatLuckyBastardReceiptSmall", "CourierPrime-Regular.ttf", 10, INK_GREY)
+ReceiptFont("ThatLuckyBastardReceiptTotal", "CourierPrime-Bold.ttf", 19, INK)
+ReceiptFont("ThatLuckyBastardReceiptKey", "CourierPrime-Bold.ttf", 11, { 0.165, 0.149, 0.133 })
+ReceiptFont("ThatLuckyBastardReceiptKeyLight", "CourierPrime-Bold.ttf", 11, { 1.000, 0.957, 0.925 })
+ReceiptFont("ThatLuckyBastardReceiptTitle", "CourierPrime-Bold.ttf", 15, { 0.929, 0.902, 0.839 })
+ReceiptFont("ThatLuckyBastardReceiptCounter", "CourierPrime-Regular.ttf", 12, { 0.812, 0.776, 0.702 })
+
 local THEMES = {
     -- toolbarY: top of the button row under the title. scrollTop leaves
     -- room for that row and for the list view's column headers.
     classic = { rowH = 14, font = "GameFontHighlightSmall", toolbarY = -28, scrollTop = -78, scrollRight = -32 },
     modern  = { rowH = 20, font = "GameFontHighlight",      toolbarY = -44, scrollTop = -92, scrollRight = -14,
                 flat = true },
+    -- Flat like Modern, on a dark counter, with each player's loot printed
+    -- on paper (`paper`) and till keys for buttons.
+    receipt = { rowH = 16, font = "ThatLuckyBastardReceiptInk", toolbarY = -44, scrollTop = -96, scrollRight = -14,
+                flat = true, paper = true },
 }
 
--- The theme in force: the saved one, or Classic if that is not a theme.
+-- The theme in force: the saved one, or Modern if that is not a theme.
 local function ThemeName()
     return THEMES[ns.db.theme] and ns.db.theme or "modern"
 end
+ns.ThemeName = ThemeName
+
+-- The accent of the theme in force: Modern's teal, the Receipt's red ink.
+function ns.ThemeAccent()
+    return ThemeName() == "receipt" and ns.RECEIPT_ACCENT or ACCENT
+end
+
+-- True while the window draws on paper (the Receipt theme): money, names
+-- and items are then written in dark inks rather than the game's bright
+-- colours. Only ever on during a redraw, so tooltips keep their colours.
+local inkMode = false
 
 local CATS = {
     { key = "epic",     label = "Epic BoE",                      short = "Epic BoE",    color = { 0.64, 0.21, 0.93 } },
@@ -82,15 +137,16 @@ local function MoneyText(c, colored)
     return text
 end
 
+-- Gold, silver and copper in their colours; on paper, in plain ink.
 local function Money(c)
-    local text = MoneyText(c, true)
-    if text == "-" then return GREY .. "-|r" end
+    local text = MoneyText(c, not inkMode)
+    if text == "-" then return (inkMode and INK_GREY_CODE or GREY) .. "-|r" end
     return text
 end
 
 -- Subtotals are shown in flat grey so they do not read as item values.
 local function Grey(text)
-    return DIM .. text .. "|r"
+    return (inkMode and INK_GREY_CODE or DIM) .. text .. "|r"
 end
 
 local function MoneyGrey(c)
@@ -98,6 +154,7 @@ local function MoneyGrey(c)
 end
 
 local function CatColored(text, cat)
+    if inkMode then return text:upper() end -- a receipt's heading
     local c = cat.color
     return ("|cff%02x%02x%02x%s|r"):format(c[1] * 255, c[2] * 255, c[3] * 255, text)
 end
@@ -111,6 +168,21 @@ end
 local GetItemIconByID = (C_Item and C_Item.GetItemIconByID) or GetItemIcon
 local function ItemIcon(link)
     return (GetItemIconByID and GetItemIconByID(link)) or "Interface\\Icons\\INV_Misc_QuestionMark"
+end
+
+-- An item's link as written on paper: the game's bright quality colour
+-- swapped for a darker ink of the same quality. Still a working link.
+local function InkLink(e)
+    local link = e.link or ""
+    local part = link:match("(|H.-|h.-|h)")
+    if not part then return link end
+    return (QUALITY_INK[ns.Quality(e)] or INK_CODE) .. part .. "|r"
+end
+
+-- What an item row says: "3x [Item]", or on paper "3 [Item]" in ink.
+local function ItemLabel(e, count)
+    if inkMode then return (count > 1 and (count .. " ") or "") .. InkLink(e) end
+    return (count > 1 and (count .. "x ") or "") .. e.link
 end
 
 ----------------------------------------------------------------------
@@ -130,6 +202,9 @@ local MARK_COLORS = { ah = { 0.35, 0.70, 1.00 }, noah = { 1.00, 0.55, 0.15 }, of
 local LEGEND = "|cff59b3ffBlue dot|r: auction price    "
     .. "|cffff8c26Orange|r: no auction price, vendor used    "
     .. "|cff8c8c8cGrey|r: auction price not used (right-click)"
+local LEGEND_INK = "|cff1d5fc4Blue dot|r: auction price    "
+    .. "|cffb05a10Orange|r: no auction price, vendor used    "
+    .. "|cff6e675cGrey|r: auction price not used (right-click)"
 
 local function PriceMark(e)
     if ns.db.options.valueMode == "vendor" then return end
@@ -171,10 +246,13 @@ local function IsDominant(mark, market, total)
     return mark == "ah" and total > 0 and market > total / 2
 end
 
--- Row background: a faint white band, or orange for a dominant item.
+-- Row background: a faint white band (a faint grey one on paper), or
+-- orange for a dominant item.
 local function SetRowBg(tex, line)
     if line.warn then
         tex:SetColorTexture(1, 0.55, 0.15, 0.20)
+    elseif inkMode then
+        tex:SetColorTexture(INK[1], INK[2], INK[3], (line.bg or 0) * 0.5)
     else
         tex:SetColorTexture(1, 1, 1, line.bg or 0)
     end
@@ -190,11 +268,23 @@ local function SetMark(tex, mark)
     end
 end
 
--- Over / under an equal split, as coloured text.
+-- Over / under an equal split, as coloured text. On paper, the way a till
+-- prints it: "+28g 65s" over, "10g 88s-" under.
 local function DiffText(diff)
     if math.abs(diff) < 1 then return "" end
+    if inkMode then
+        return diff > 0 and ("+" .. Money(diff)) or (Money(-diff) .. "-")
+    end
     return (diff > 0 and (GOOD .. "+|r") or (BAD .. "-|r")) .. Money(math.abs(diff))
 end
+
+-- Above / below, as colour codes: brighter ones on the dark windows,
+-- darker inks on paper.
+local function GoodCode() return inkMode and "|cff2f7a1f" or GOOD end
+local function BadCode() return inkMode and "|cffb23a2a" or BAD end
+-- Headings and secondary text in the footer, likewise.
+local function HeadCode() return inkMode and INK_CODE or "|cffffd100" end
+local function LowCode() return inkMode and INK_GREY_CODE or "|cff909090" end
 
 -- Answers that cannot change while the window is being drawn are worked
 -- out once per redraw and kept here: who is in the group, and how names
@@ -235,7 +325,10 @@ local function DisplayName(name)
     return FirstName(name)
 end
 
+-- A name in its class colour. On paper, class colours (yellow, pink) do
+-- not read: the name is printed in ink, in capitals.
 local function ClassColored(name, class)
+    if inkMode then return INK_CODE .. name:upper() .. "|r" end
     local c = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
     if c then
         return ("|cff%02x%02x%02x%s|r"):format(c.r * 255, c.g * 255, c.b * 255, name)
@@ -381,6 +474,52 @@ local function BuildSkins(frame, onClose)
         skins.modern = s
     end
 
+    -- Receipt: a dark counter, a thin rule under the title, a till key to
+    -- close.
+    do
+        local s = CreateFrame("Frame", nil, frame)
+        s:SetAllPoints()
+        local bg = s:CreateTexture(nil, "BACKGROUND")
+        bg:SetAllPoints()
+        bg:SetColorTexture(COUNTER[1], COUNTER[2], COUNTER[3], 0.98)
+        local line = s:CreateTexture(nil, "ARTWORK")
+        line:SetPoint("TOPLEFT", 0, -TITLE_BAR_H)
+        line:SetPoint("TOPRIGHT", 0, -TITLE_BAR_H)
+        line:SetHeight(1)
+        line:SetColorTexture(1, 1, 1, 0.10)
+        local function Edge(p1, p2, w, h)
+            local t = s:CreateTexture(nil, "OVERLAY")
+            t:SetPoint(p1)
+            t:SetPoint(p2)
+            if w then t:SetWidth(w) else t:SetHeight(h) end
+            t:SetColorTexture(0, 0, 0, 0.6)
+        end
+        Edge("TOPLEFT", "TOPRIGHT", nil, 1)
+        Edge("BOTTOMLEFT", "BOTTOMRIGHT", nil, 1)
+        Edge("TOPLEFT", "BOTTOMLEFT", 1, nil)
+        Edge("TOPRIGHT", "BOTTOMRIGHT", 1, nil)
+
+        local close = CreateFrame("Button", nil, s)
+        close:SetSize(24, 22)
+        close:SetPoint("TOPRIGHT", -7, -7)
+        local face = close:CreateTexture(nil, "BACKGROUND")
+        face:SetAllPoints()
+        face:SetColorTexture(KEY[1], KEY[2], KEY[3], 1)
+        local low = close:CreateTexture(nil, "BORDER")
+        low:SetPoint("BOTTOMLEFT")
+        low:SetPoint("BOTTOMRIGHT")
+        low:SetHeight(3)
+        low:SetColorTexture(KEY_EDGE[1], KEY_EDGE[2], KEY_EDGE[3], 1)
+        local hl = close:CreateTexture(nil, "HIGHLIGHT")
+        hl:SetAllPoints()
+        hl:SetColorTexture(1, 1, 1, 0.25)
+        local x = close:CreateFontString(nil, "OVERLAY", "ThatLuckyBastardReceiptKey")
+        x:SetPoint("CENTER", 0, 1)
+        x:SetText("X")
+        close:SetScript("OnClick", onClose)
+        skins.receipt = s
+    end
+
     return skins
 end
 
@@ -438,7 +577,10 @@ function ns.ApplyWindowTheme(windowSkins, title)
     local flat = THEMES[name].flat == true
     for key, skin in pairs(windowSkins) do skin:SetShown(key == name) end
     title:ClearAllPoints()
-    if flat then
+    if name == "receipt" then
+        title:SetFontObject("ThatLuckyBastardReceiptTitle")
+        title:SetPoint("TOPLEFT", 14, -11)
+    elseif flat then
         title:SetFontObject("GameFontHighlightLarge")
         title:SetPoint("TOPLEFT", 14, -10)
     else
@@ -470,6 +612,25 @@ local scroll = CreateFrame("ScrollFrame", nil, ui, "UIPanelScrollFrameTemplate")
 local content = CreateFrame("Frame", nil, scroll)
 content:SetSize(WIDTH - 44, 1)
 scroll:SetScrollChild(content)
+
+-- Receipt theme: the till's printer slot the receipts come out of (column
+-- view), and the paper the list view is printed on.
+local slot = ui:CreateTexture(nil, "ARTWORK")
+slot:SetPoint("BOTTOMLEFT", scroll, "TOPLEFT", -6, 1)
+slot:SetPoint("BOTTOMRIGHT", scroll, "TOPRIGHT", 6, 1)
+slot:SetHeight(10)
+slot:SetColorTexture(0.071, 0.063, 0.063, 1)
+slot:Hide()
+local slotLip = ui:CreateTexture(nil, "ARTWORK", nil, 1)
+slotLip:SetPoint("TOPLEFT", slot, "BOTTOMLEFT")
+slotLip:SetPoint("TOPRIGHT", slot, "BOTTOMRIGHT")
+slotLip:SetHeight(1)
+slotLip:SetColorTexture(0.290, 0.259, 0.227, 1)
+slotLip:Hide()
+local listPaper = content:CreateTexture(nil, "BACKGROUND", nil, -8)
+listPaper:SetAllPoints()
+listPaper:SetColorTexture(PAPER[1], PAPER[2], PAPER[3], 1)
+listPaper:Hide()
 
 -- A gold outline around the breakdown, shown while the run on display is
 -- pinned. It follows the scroll area, so it fits both themes and both
@@ -556,6 +717,10 @@ local AWARDS_HINT = "Click for all awards."
 local shownAwards = {} -- the award of each player of the run on show, by name
 
 local function AwardTitle(award)
+    -- On paper, stamped in red or blue ink.
+    if inkMode then
+        return (RED_STAMPS[award.key] and "|cffb23a2a" or "|cff2b4c9b") .. award.title:upper() .. "|r"
+    end
     return "|cffffd100" .. award.title .. "|r" -- every award in the same gold: none is a verdict
 end
 
@@ -614,7 +779,10 @@ local function RowOnEnter(self)
 end
 
 local function StyleHighlight(r)
-    if theme.flat then
+    if theme.paper then
+        r:SetHighlightTexture("Interface\\Buttons\\WHITE8x8")
+        r:GetHighlightTexture():SetVertexColor(INK[1], INK[2], INK[3], 0.07)
+    elseif theme.flat then
         r:SetHighlightTexture("Interface\\Buttons\\WHITE8x8")
         r:GetHighlightTexture():SetVertexColor(1, 1, 1, 0.07)
     else
@@ -928,6 +1096,18 @@ local function GetAwardFrame(c)
     af.detail:SetPoint("BOTTOMRIGHT", -2, 2)
     af.detail:SetJustifyH("LEFT")
     af.detail:SetWordWrap(false)
+    af.bg = bg
+    -- Receipt theme: the card is a rubber stamp, a border in ink.
+    af.edges = {}
+    for k, pts in ipairs({ { "TOPLEFT", "TOPRIGHT" }, { "BOTTOMLEFT", "BOTTOMRIGHT" },
+                           { "TOPLEFT", "BOTTOMLEFT" }, { "TOPRIGHT", "BOTTOMRIGHT" } }) do
+        local t = af:CreateTexture(nil, "BORDER")
+        t:SetPoint(pts[1])
+        t:SetPoint(pts[2])
+        if k <= 2 then t:SetHeight(2) else t:SetWidth(2) end
+        t:Hide()
+        af.edges[k] = t
+    end
     af:SetScript("OnEnter", AwardOnEnter)
     af:SetScript("OnLeave", GameTooltip_Hide)
     af:SetScript("OnClick", function() ns.ShowBrowse("awards") end)
@@ -968,6 +1148,129 @@ local function GetColRow(c, j)
 end
 
 ----------------------------------------------------------------------
+-- Receipt theme: the award card as a rubber stamp, and the end of each
+-- receipt under its last line (a double rule, a barcode, a thank-you and
+-- the torn edge).
+----------------------------------------------------------------------
+
+local TAIL_H = 62 -- from the last line to the bottom of the paper
+local EDGE_H = 8  -- the torn edge, under the paper
+local EDGE = MEDIA .. "receipt-edge"
+
+local function StyleAward(af, award, paper)
+    af.icon:SetShown(not paper)
+    af.title:ClearAllPoints()
+    af.detail:ClearAllPoints()
+    if paper then
+        local ink = RED_STAMPS[award.key] and STAMP_RED or STAMP_BLUE
+        af.bg:SetColorTexture(0, 0, 0, 0)
+        for _, e in ipairs(af.edges) do
+            e:SetColorTexture(ink[1], ink[2], ink[3], 0.85)
+            e:Show()
+        end
+        af.title:SetFontObject("ThatLuckyBastardReceiptInkBold")
+        af.detail:SetFontObject("ThatLuckyBastardReceiptSmall")
+        af.title:SetTextColor(ink[1], ink[2], ink[3])
+        af.detail:SetTextColor(ink[1], ink[2], ink[3])
+        af.title:SetPoint("TOPLEFT", 4, -3)
+        af.title:SetPoint("TOPRIGHT", -4, -3)
+        af.detail:SetPoint("BOTTOMLEFT", 4, 3)
+        af.detail:SetPoint("BOTTOMRIGHT", -4, 3)
+        af.title:SetJustifyH("CENTER")
+        af.detail:SetJustifyH("CENTER")
+    else
+        af.bg:SetColorTexture(1, 1, 1, 0.07)
+        for _, e in ipairs(af.edges) do e:Hide() end
+        af.title:SetFontObject("GameFontNormalSmall")
+        af.detail:SetFontObject("GameFontHighlightSmall")
+        af.title:SetPoint("TOPLEFT", 30, -2)
+        af.title:SetPoint("TOPRIGHT", -2, -2)
+        af.detail:SetPoint("BOTTOMLEFT", 30, 2)
+        af.detail:SetPoint("BOTTOMRIGHT", -2, 2)
+        af.title:SetJustifyH("LEFT")
+        af.detail:SetJustifyH("LEFT")
+    end
+end
+
+-- Bars of one or two pixels with gaps of one to three: the same barcode
+-- for the same name.
+local function BarcodePattern(name)
+    local out = {}
+    for i = 1, 22 do
+        local b = name:byte((i - 1) % #name + 1) or 7
+        out[i] = { w = 1 + (b + i) % 2, gap = 1 + (b * i) % 3 }
+    end
+    return out
+end
+
+local function GetTail(c)
+    if c.tail then return c.tail end
+    local t = { bars = {} }
+    t.rule1 = c:CreateTexture(nil, "ARTWORK")
+    t.rule2 = c:CreateTexture(nil, "ARTWORK")
+    for _, rule in ipairs({ t.rule1, t.rule2 }) do
+        rule:SetHeight(1)
+        rule:SetColorTexture(INK[1], INK[2], INK[3], 1)
+    end
+    t.thanks = c:CreateFontString(nil, "OVERLAY", "ThatLuckyBastardReceiptSmall")
+    t.thanks:SetText("THANK YOU FOR LOOTING")
+    t.thanks:SetJustifyH("CENTER")
+    t.thanks:SetWordWrap(false)
+    t.thanks:SetPoint("BOTTOMLEFT", 4, 9)
+    t.thanks:SetPoint("BOTTOMRIGHT", -4, 9)
+    t.edge = c:CreateTexture(nil, "BACKGROUND")
+    t.edge:SetPoint("TOPLEFT", c, "BOTTOMLEFT")
+    t.edge:SetPoint("TOPRIGHT", c, "BOTTOMRIGHT")
+    t.edge:SetHeight(EDGE_H)
+    t.edge:SetTexture(EDGE, "REPEAT", "CLAMP") -- tiled by its texture coordinates (ShowTail)
+    t.edge:SetVertexColor(PAPER[1], PAPER[2], PAPER[3])
+    c.tail = t
+    return t
+end
+
+local function ShowTail(c, show, name, width)
+    local t = c.tail
+    if not show then
+        if t then
+            t.rule1:Hide()
+            t.rule2:Hide()
+            t.thanks:Hide()
+            t.edge:Hide()
+            for _, b in ipairs(t.bars) do b:Hide() end
+        end
+        return
+    end
+    t = GetTail(c)
+    for k, rule in ipairs({ t.rule1, t.rule2 }) do
+        rule:ClearAllPoints()
+        rule:SetPoint("BOTTOMLEFT", 8, TAIL_H - 8 - (k - 1) * 3)
+        rule:SetPoint("BOTTOMRIGHT", -8, TAIL_H - 8 - (k - 1) * 3)
+        rule:Show()
+    end
+    local pattern = BarcodePattern(name or "?")
+    local total = 0
+    for _, bar in ipairs(pattern) do total = total + bar.w + bar.gap end
+    local x = math.floor((width - total) / 2)
+    for i, bar in ipairs(pattern) do
+        local b = t.bars[i]
+        if not b then
+            b = c:CreateTexture(nil, "ARTWORK")
+            b:SetColorTexture(INK[1], INK[2], INK[3], 1)
+            t.bars[i] = b
+        end
+        b:ClearAllPoints()
+        b:SetPoint("BOTTOMLEFT", x, 24)
+        b:SetSize(bar.w, 20)
+        b:Show()
+        x = x + bar.w + bar.gap
+    end
+    for i = #pattern + 1, #t.bars do t.bars[i]:Hide() end
+    t.thanks:Show()
+    t.edge:SetTexCoord(0, width / 16, 0, 1) -- one tooth every 16 pixels
+    t.edge:Show()
+end
+
+----------------------------------------------------------------------
 -- Footer: the text lines under the breakdown. Totals, run time, dungeon
 -- records, comparison with your average, and the legend for the dots.
 ----------------------------------------------------------------------
@@ -1001,7 +1304,7 @@ local RECORD_LABELS = {
 -- "40% higher" / "12% lower" / "about the same"
 local function Versus(pct)
     if math.abs(pct) < 5 then return "about the same" end
-    return ("%d%% %s"):format(math.abs(pct) + 0.5, pct > 0 and (GOOD .. "higher|r") or (BAD .. "lower|r"))
+    return ("%d%% %s"):format(math.abs(pct) + 0.5, pct > 0 and (GoodCode() .. "higher|r") or (BadCode() .. "lower|r"))
 end
 
 -- insights: nil when they are switched off. includeTotals: the list view
@@ -1010,34 +1313,36 @@ local function FooterTexts(sum, insights, includeTotals)
     local o = ns.db.options
     local texts = {}
     local n = #sum.players
+    -- Headings and secondary words: gold and grey, or two inks on paper.
+    local hi, lo = HeadCode(), LowCode()
 
     if includeTotals and o.showTotals and n > 0 then
         local equal = sum.market / n
         if o.valueMode == "vendor" then
-            texts[#texts + 1] = ("|cffffd100Total|r  %s      |cff909090Equal split|r  %s"):format(
-                Money(sum.market), Money(equal))
+            texts[#texts + 1] = ("%sTotal|r  %s      %sEqual split|r  %s"):format(
+                hi, Money(sum.market), lo, Money(equal))
         else
-            texts[#texts + 1] = ("|cffffd100Total|r  %s      |cff909090Vendor|r  %s      |cff909090Equal split|r  %s")
-                :format(Money(sum.market), Money(sum.vendor), Money(equal))
+            texts[#texts + 1] = ("%sTotal|r  %s      %sVendor|r  %s      %sEqual split|r  %s")
+                :format(hi, Money(sum.market), lo, Money(sum.vendor), lo, Money(equal))
         end
     end
 
     if insights then
         local parts = {}
         if insights.duration then
-            parts[#parts + 1] = "|cff909090Run time|r  " .. Duration(insights.duration)
+            parts[#parts + 1] = lo .. "Run time|r  " .. Duration(insights.duration)
             if insights.perHour then
-                parts[#parts + 1] = "|cff909090Group per hour|r  " .. Money(insights.perHour)
+                parts[#parts + 1] = lo .. "Group per hour|r  " .. Money(insights.perHour)
             end
         end
         if insights.fair then
-            parts[#parts + 1] = ("|cff909090Fairness|r  %d / 100"):format(insights.fair)
+            parts[#parts + 1] = ("%sFairness|r  %d / 100"):format(lo, insights.fair)
         end
         if #parts > 0 then texts[#texts + 1] = table.concat(parts, "      ") end
         if insights.streak then
             local streak = insights.streak
-            texts[#texts + 1] = ("|cffffd100%s|r      |cff909090together so far|r  %s      |cff909090yours|r  %s")
-                :format(ns.StreakLabel(streak), Money(streak.total), Money(streak.mine))
+            texts[#texts + 1] = ("%s%s|r      %stogether so far|r  %s      %syours|r  %s")
+                :format(hi, ns.StreakLabel(streak), lo, Money(streak.total), lo, Money(streak.mine))
         end
         if insights.records then
             local names = {}
@@ -1045,21 +1350,21 @@ local function FooterTexts(sum, insights, includeTotals)
                 if insights.records[label[1]] then names[#names + 1] = label[2] end
             end
             if #names > 0 then
-                texts[#texts + 1] = "|cffffd100New record here:|r  " .. table.concat(names, ", ")
+                texts[#texts + 1] = hi .. "New record here:|r  " .. table.concat(names, ", ")
             end
         end
         if insights.groupPct then
-            local text = ("|cff909090Against your average here|r  group loot %s"):format(Versus(insights.groupPct))
+            local text = ("%sAgainst your average here|r  group loot %s"):format(lo, Versus(insights.groupPct))
             if insights.minePct then
                 text = text .. (",  your own %s"):format(Versus(insights.minePct))
             end
-            texts[#texts + 1] = text .. ("  |cff909090(%d earlier %s)|r"):format(
-                insights.priorRuns, insights.priorRuns == 1 and "run" or "runs")
+            texts[#texts + 1] = text .. ("  %s(%d earlier %s)|r"):format(
+                lo, insights.priorRuns, insights.priorRuns == 1 and "run" or "runs")
         end
     end
 
     if n > 0 and o.valueMode ~= "vendor" and (ns.HasPriceSource() or AnyAuctionPrice(sum)) then
-        texts[#texts + 1] = LEGEND
+        texts[#texts + 1] = inkMode and LEGEND_INK or LEGEND
     end
     return texts
 end
@@ -1078,7 +1383,7 @@ local function ItemLine(e, count, market, total)
     local dominant = IsDominant(mark, market, total)
     return {
         link = e.link, e = e,
-        label = (count > 1 and (count .. "x ") or "") .. e.link,
+        label = ItemLabel(e, count),
         value = Money(market),
         mark = mark,
         warn = dominant,
@@ -1089,7 +1394,7 @@ end
 
 -- What a column or an opened player row says when there is nothing in it.
 local function NoLootLabel(sum)
-    return GREY .. (sum.needOnly and "No Need wins" or "No loot seen") .. "|r"
+    return (inkMode and INK_GREY_CODE or GREY) .. (sum.needOnly and "No Need wins" or "No loot seen") .. "|r"
 end
 
 -- A player's items for one category, or all of them when `cat` is false
@@ -1108,8 +1413,9 @@ local function BuildColumnLines(sum, o)
     local function add(i, line) out[i][#out[i] + 1] = line end
 
     local function Header(cat, cs)
-        return { label = CatColored(cat.short, cat), cat = cat, bg = 0.08,
-                 value = cs and MoneyGrey(cs.market) or Grey("-") }
+        -- On paper, a heading and its sum in the same bold ink.
+        local value = cs and (inkMode and Money(cs.market) or MoneyGrey(cs.market)) or Grey("-")
+        return { label = CatColored(cat.short, cat), cat = cat, bg = 0.08, value = value }
     end
 
     -- Each player's own items, in their own order.
@@ -1207,19 +1513,25 @@ local HEADER_GLOW_H = 72 -- Modern theme: the class-coloured glow at the top of 
 
 local function RenderColumns(sum, awards, insights)
     local n = #sum.players
-    local colW = (content:GetWidth() - COL_GAP * (n - 1)) / n
+    -- Receipt theme: each column is a receipt, printed in ink and lying a
+    -- little apart from the next on the counter.
+    local paper = theme.paper and true or false
+    local gap = paper and 12 or COL_GAP
+    local colW = (content:GetWidth() - gap * (n - 1)) / n
     local rowH = theme.rowH
     local equal = sum.market / n
     local maxH = 0
+    inkMode = paper -- the footer under the receipts is on the counter: see below
 
     -- Header layout depends on what the options show.
     local o = ns.db.options
     local showBar = theme.flat and o.showBar
     local y = -8
-    local yPortrait, yName, yMarket, yVendor, yShare, yBar
+    local yRank, yPortrait, yName, yMarket, yVendor, yShare, yBar
+    if paper then yRank = y; y = y - 18 end -- "*** 1ST ***"
     if o.portrait ~= "none" then yPortrait = y; y = y - 58 end
     yName = y; y = y - 18
-    yMarket = y; y = y - (theme.flat and 20 or 18)
+    yMarket = y; y = y - (paper and 24 or theme.flat and 20 or 18)
     if o.showVendor and o.valueMode ~= "vendor" then yVendor = y; y = y - 14 end
     if o.showShare then yShare = y; y = y - 16 end
     if showBar then yBar = y; y = y - 9 end
@@ -1240,26 +1552,50 @@ local function RenderColumns(sum, awards, insights)
     -- are aligned. (Summarize leaves the players in rank order for it.)
     local podium = o.sortPlayers == "podium"
     if podium then sum.players = PodiumOrder(sum.players) end
-    local step = (podium and not o.alignItems) and 14 or 0
+    -- Receipts all come out of the printer at the same height.
+    local step = (podium and not o.alignItems and not paper) and 14 or 0
     local colLines = BuildColumnLines(sum, o)
 
     for i, p in ipairs(sum.players) do
         local c = GetCol(i)
         c:ClearAllPoints()
         c.offset = step * math.min(p.rank - 1, 3)
-        c:SetPoint("TOPLEFT", (i - 1) * (colW + COL_GAP), -c.offset)
+        c:SetPoint("TOPLEFT", (i - 1) * (colW + gap), -c.offset)
         c:SetWidth(colW)
-        c.bg:SetColorTexture(1, 1, 1, (theme.flat and 0.045 or 0.03) + ((podium and p.rank == 1) and 0.04 or 0))
-        if podium then
-            local medal = MEDALS[p.rank] or MEDALS[4]
-            c.medal:SetColorTexture(medal[1], medal[2], medal[3], 0.95)
-            c.rank:SetText(ns.Ordinal(p.rank))
-            c.rank:SetTextColor(medal[1], medal[2], medal[3])
+        if paper then
+            c.bg:SetColorTexture(PAPER[1], PAPER[2], PAPER[3], 1)
+        else
+            c.bg:SetColorTexture(1, 1, 1, (theme.flat and 0.045 or 0.03) + ((podium and p.rank == 1) and 0.04 or 0))
         end
-        c.medal:SetShown(podium)
-        c.rank:SetShown(podium)
+        c.rank:ClearAllPoints()
+        if paper then
+            -- Every receipt says its place, podium order or not.
+            c.rank:SetFontObject("ThatLuckyBastardReceiptInkBold")
+            c.rank:SetTextColor(INK[1], INK[2], INK[3])
+            c.rank:SetPoint("TOP", 0, yRank)
+            c.rank:SetText("*** " .. ns.Ordinal(p.rank):upper() .. " ***")
+        else
+            c.rank:SetFontObject("GameFontNormalSmall")
+            c.rank:SetPoint("TOPLEFT", 6, -8)
+            if podium then
+                local medal = MEDALS[p.rank] or MEDALS[4]
+                c.medal:SetColorTexture(medal[1], medal[2], medal[3], 0.95)
+                c.rank:SetText(ns.Ordinal(p.rank))
+                c.rank:SetTextColor(medal[1], medal[2], medal[3])
+            end
+        end
+        c.medal:SetShown(podium and not paper)
+        c.rank:SetShown(podium or paper)
 
         SetPortrait(c, p, o.portrait)
+        -- On paper the picture is printed: in grey, ringed in grey ink.
+        c.portrait:SetDesaturated(paper)
+        if paper then
+            c.ring:SetVertexColor(INK_GREY[1], INK_GREY[2], INK_GREY[3])
+            c.ringInner:SetVertexColor(0.851, 0.824, 0.761)
+        else
+            c.ringInner:SetVertexColor(DISC[1], DISC[2], DISC[3])
+        end
         if yPortrait then
             c.portrait:ClearAllPoints()
             c.portrait:SetPoint("TOP", 0, yPortrait)
@@ -1267,6 +1603,7 @@ local function RenderColumns(sum, awards, insights)
             c.model:SetPoint("TOP", 0, yPortrait + 2)
         end
         PlaceText(c.name, yName)
+        c.name:SetFontObject(paper and "ThatLuckyBastardReceiptInkBold" or "GameFontNormal")
         c.name:SetText(ClassColored(DisplayName(p.name), p.class))
         c.hover.p = p
         c.hover:SetHeight(-yMarket) -- from the top down to just under the name
@@ -1275,12 +1612,20 @@ local function RenderColumns(sum, awards, insights)
         c.vendor:SetShown(yVendor ~= nil)
         if yVendor then
             PlaceText(c.vendor, yVendor)
-            c.vendor:SetText("|cff909090Vendor|r " .. Money(p.vendor))
+            if paper then
+                c.vendor:SetFontObject("ThatLuckyBastardReceiptGrey")
+                c.vendor:SetText("VENDOR " .. Money(p.vendor))
+            else
+                c.vendor:SetFontObject("GameFontHighlightSmall")
+                c.vendor:SetText("|cff909090Vendor|r " .. Money(p.vendor))
+            end
         end
         c.share:SetShown(yShare ~= nil)
+        c.share:SetFontObject(paper and "ThatLuckyBastardReceiptInk" or "GameFontHighlightSmall")
         if yShare then PlaceText(c.share, yShare) end
 
-        local flat = theme.flat
+        -- Modern's decoration: the glow, the strip and the pill. None on paper.
+        local flat = theme.flat and not paper
         local cr, cg, cb = ClassRGB(p.class)
         c.top:SetShown(flat)
         c.top:SetHeight(math.min(HEADER_GLOW_H, headerH))
@@ -1290,6 +1635,11 @@ local function RenderColumns(sum, awards, insights)
             c.track:ClearAllPoints()
             c.track:SetPoint("TOPLEFT", 8, yBar)
             c.track:SetPoint("TOPRIGHT", -8, yBar)
+            if paper then
+                c.track:SetColorTexture(0.839, 0.812, 0.749, 1)
+            else
+                c.track:SetColorTexture(1, 1, 1, 0.08)
+            end
         end
         if flat and c.glowClass ~= (p.class or "") then -- only when the column changes hands
             c.glowClass = p.class or ""
@@ -1298,13 +1648,15 @@ local function RenderColumns(sum, awards, insights)
                 c.top:SetColorTexture(cr, cg, cb, 0.12)
             end
         end
-        c.market:SetFontObject(flat and "GameFontHighlightLarge" or "GameFontHighlight")
+        c.market:SetFontObject(paper and "ThatLuckyBastardReceiptTotal"
+            or flat and "GameFontHighlightLarge" or "GameFontHighlight")
 
         local diff = p.market - equal
         local diffText = sum.market > 0 and DiffText(diff) or ""
         local showDiff = diffText ~= ""
         if sum.market > 0 then
-            c.share:SetText(Pct(p.market, sum.market) .. (showDiff and ("  " .. diffText) or ""))
+            c.share:SetText((paper and "SHARE " or "") .. Pct(p.market, sum.market)
+                .. (showDiff and ("  " .. diffText) or ""))
         else
             c.share:SetText("")
         end
@@ -1332,6 +1684,7 @@ local function RenderColumns(sum, awards, insights)
                 af:SetPoint("TOPLEFT", 4, yAward)
                 af:SetPoint("TOPRIGHT", -4, yAward)
                 af.icon:SetTexture("Interface\\Icons\\" .. award.icon)
+                StyleAward(af, award, paper)
                 af.title:SetText(AwardTitle(award))
                 af.detail:SetText(AwardShort(award))
                 if ceremonyPending then
@@ -1359,7 +1712,11 @@ local function RenderColumns(sum, awards, insights)
                 seg:ClearAllPoints()
                 seg:SetPoint("TOPLEFT", x, yBar)
                 seg:SetWidth(math.max(w, 1))
-                seg:SetColorTexture(cat.color[1], cat.color[2], cat.color[3], 0.95)
+                if paper then -- one bar in ink: a till prints in one colour
+                    seg:SetColorTexture(INK[1], INK[2], INK[3], 1)
+                else
+                    seg:SetColorTexture(cat.color[1], cat.color[2], cat.color[3], 0.95)
+                end
                 seg:Show()
                 x = x + w
             else
@@ -1377,7 +1734,8 @@ local function RenderColumns(sum, awards, insights)
             r:SetPoint("TOPRIGHT", 0, -(headerH + (j - 1) * rowH))
             r:SetHeight(rowH)
             local left = 4
-            if line.link and o.showIcons then
+            -- A receipt prints no icons and no colour chips.
+            if line.link and o.showIcons and not paper then
                 r.icon:SetSize(rowH - 4, rowH - 4)
                 r.icon:SetTexture(ItemIcon(line.link))
                 r.icon:Show()
@@ -1385,13 +1743,17 @@ local function RenderColumns(sum, awards, insights)
             else
                 r.icon:Hide()
             end
-            if line.cat then
+            if line.cat and not paper then
                 r.chip:SetColorTexture(line.cat.color[1], line.cat.color[2], line.cat.color[3], 0.9)
                 r.chip:Show()
                 left = 8
             else
                 r.chip:Hide()
             end
+            local font = paper and (line.cat and "ThatLuckyBastardReceiptInkBold" or "ThatLuckyBastardReceiptInk")
+                or "GameFontHighlightSmall"
+            r.label:SetFontObject(font)
+            r.value:SetFontObject(font)
             r.label:ClearAllPoints()
             r.label:SetPoint("LEFT", left, 0)
             r.label:SetPoint("RIGHT", r.value, "LEFT", -4, 0)
@@ -1404,11 +1766,19 @@ local function RenderColumns(sum, awards, insights)
         end
         for j = #lines + 1, #c.rows do c.rows[j]:Hide() end
 
-        maxH = math.max(maxH, c.offset + headerH + #lines * rowH + 6)
+        -- A receipt ends where its print does, with its tail; the other
+        -- looks keep the columns level.
+        c.ownH = headerH + #lines * rowH + (paper and TAIL_H or 6)
+        ShowTail(c, paper, p.name, colW)
+        maxH = math.max(maxH, c.offset + c.ownH + (paper and EDGE_H or 0))
         c:Show()
     end
-    for i = 1, n do cols[i]:SetHeight(maxH - cols[i].offset) end
+    for i = 1, n do
+        local c = cols[i]
+        c:SetHeight(paper and c.ownH or (maxH - c.offset))
+    end
     for i = n + 1, #cols do cols[i]:Hide() end
+    inkMode = false -- the footer is written on the counter, not on paper
     if ceremonyPending then
         ceremonyPending = false
         local length = REVEAL_STEP * revealIndex
@@ -1437,6 +1807,7 @@ local function RenderColumns(sum, awards, insights)
             fs:SetJustifyH("LEFT")
             footLines[i] = fs
         end
+        fs:SetFontObject(paper and "ThatLuckyBastardReceiptCounter" or "GameFontHighlightSmall")
         fs:ClearAllPoints()
         fs:SetPoint("TOPLEFT", 4, -bottom)
         fs:SetText(text)
@@ -1468,7 +1839,7 @@ local function BuildLines(sum, awards, insights)
         local award = awards[p.name]
         add({
             player = p.name, p = p, bg = 0.12,
-            label = (open and "|cffffd100-|r " or "|cffffd100+|r ")
+            label = HeadCode() .. (open and "-" or "+") .. "|r "
                 .. ClassColored(DisplayName(p.name), p.class) .. (award and ("   " .. AwardTitle(award)) or ""),
             count = p.count, vendor = Money(p.vendor), market = Money(p.market),
             share = Pct(p.market, sum.market),
@@ -1495,7 +1866,7 @@ local function BuildLines(sum, awards, insights)
                         -- The column view's item line, with the list's own columns.
                         local line = ItemLine(e, e.count, ns.EntryMarket(e), sum.market)
                         line.indent, line.icon = cat and 36 or 24, true
-                        line.label, line.count = e.link, "x" .. e.count
+                        line.label, line.count = inkMode and InkLink(e) or e.link, "x" .. e.count
                         line.vendor, line.market = Money(e.vendor * e.count), line.value
                         add(line)
                     end
@@ -1506,7 +1877,7 @@ local function BuildLines(sum, awards, insights)
 
     if n > 0 and o.showTotals then
         add({})
-        add({ indent = 4, bg = 0.12, label = "|cffffd100Total|r", count = sum.count,
+        add({ indent = 4, bg = 0.12, label = HeadCode() .. "Total|r", count = sum.count,
               vendor = Money(sum.vendor), market = Money(sum.market), share = "100%" })
         add({ indent = 4, label = "Equal split (" .. n .. " players)",
               vendor = Money(sum.vendor / n), market = Money(sum.market / n), share = Pct(1, n) })
@@ -1538,12 +1909,20 @@ local function MakeButton(text, width, onClick, parent)
     b.tpl:SetText(text)
     b.tpl:SetScript("OnClick", onClick)
 
+    -- The flat variant serves two looks: Modern's flat button, and the
+    -- Receipt theme's till key (a pale key with a darker lower edge, its
+    -- label in capitals in the typewriter font). Paint draws whichever is
+    -- in force from the button's state.
     b.flat = CreateFrame("Button", nil, b)
     b.flat:SetAllPoints()
     local bg = b.flat:CreateTexture(nil, "BACKGROUND")
     bg:SetAllPoints()
-    bg:SetColorTexture(1, 1, 1, 0.08)
     b.flat.bg = bg
+    local edge = b.flat:CreateTexture(nil, "BORDER")
+    edge:SetPoint("BOTTOMLEFT")
+    edge:SetPoint("BOTTOMRIGHT")
+    edge:SetHeight(3)
+    b.flat.edge = edge
 
     -- A line in the accent colour under the button, for the selected state.
     local function Mark(owner)
@@ -1558,29 +1937,62 @@ local function MakeButton(text, width, onClick, parent)
     b.tpl.mark, b.flat.mark = Mark(b.tpl), Mark(b.flat)
     local hl = b.flat:CreateTexture(nil, "HIGHLIGHT")
     hl:SetAllPoints()
-    hl:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 0.30)
+    b.flat.hl = hl
     b.flat.text = b.flat:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     b.flat.text:SetPoint("CENTER")
-    b.flat.text:SetText(text)
     b.flat:SetScript("OnClick", onClick)
+    b.label, b.on = text, true
+
+    function b:Paint()
+        local fb = self.flat
+        if self.key then
+            -- Delete (tinted) and Share (loud) are red keys.
+            local red = self.loud or self.tint ~= nil
+            local face, low = red and RED_KEY or KEY, red and RED_KEY_EDGE or KEY_EDGE
+            local dim = self.selected and 0.86 or 1 -- a selected key is held down
+            fb.bg:SetColorTexture(face[1] * dim, face[2] * dim, face[3] * dim, 1)
+            fb.edge:SetColorTexture(low[1], low[2], low[3], 1)
+            fb.edge:SetShown(not self.selected)
+            fb.hl:SetColorTexture(1, 1, 1, 0.22)
+            fb.mark:Hide()
+            fb.text:SetFontObject(red and "ThatLuckyBastardReceiptKeyLight" or "ThatLuckyBastardReceiptKey")
+            fb.text:SetText(self.label:upper())
+            fb.text:SetAlpha(self.on and 1 or 0.4)
+        else
+            fb.bg:SetColorTexture(1, 1, 1, self.selected and 0.16 or 0.08)
+            fb.edge:Hide()
+            fb.hl:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 0.30)
+            fb.mark:SetShown(self.selected and true or false)
+            fb.text:SetFontObject("GameFontHighlightSmall")
+            if self.tint then fb.text:SetTextColor(self.tint[1], self.tint[2], self.tint[3]) end
+            fb.text:SetText(self.label)
+            local alpha = (self.selected or not self.isTab) and 1 or 0.7
+            fb.text:SetAlpha(self.on and alpha or 0.35)
+        end
+    end
 
     function b:SetLabel(label)
+        self.label = label
         self.tpl:SetText(label)
-        self.flat.text:SetText(label)
+        self:Paint()
     end
     function b:SetOn(on)
+        self.on = on and true or false
         self.tpl:SetEnabled(on)
         self.flat:SetEnabled(on)
-        self.flat.text:SetAlpha(on and 1 or 0.35)
+        self:Paint()
     end
     function b:SetFlat(flat)
         self.tpl:SetShown(not flat)
         self.flat:SetShown(flat)
+        self.key = flat and ThemeName() == "receipt"
+        self:Paint()
     end
     -- Colours the label in both looks (a little lighter under the mouse on
     -- the game-styled one, which keeps the game's grey while it is off).
     function b:SetTextColor(r, g, bl)
-        self.flat.text:SetTextColor(r, g, bl)
+        self.tint = { r, g, bl }
+        self:Paint()
         if not CreateFont then return end
         local function Tinted(base, lighten)
             fontCount = fontCount + 1
@@ -1595,12 +2007,12 @@ local function MakeButton(text, width, onClick, parent)
     -- For tabs and toggles: marks the button as the current choice. The
     -- other buttons of the set stay fully readable.
     function b:SetSelected(selected)
+        self.selected = selected and true or false
         self.tpl.mark:SetShown(selected)
-        self.flat.mark:SetShown(selected)
-        self.flat.bg:SetColorTexture(1, 1, 1, selected and 0.16 or 0.08)
-        self.flat.text:SetAlpha((selected or not self.isTab) and 1 or 0.7)
         if selected then self.tpl:LockHighlight() else self.tpl:UnlockHighlight() end
+        self:Paint()
     end
+    b:Paint()
     if not parent then buttons[#buttons + 1] = b end
     return b
 end
@@ -1665,6 +2077,7 @@ TopButton("Timeline", function() ns.ToggleRunWindow("timeline", ns.ViewedRun()) 
 TopButton("Statistics", function() ns.ToggleBrowse() end)
 local bingoBtn = TopButton("Bingo", function() ns.ToggleBingo() end)
 local shareBtn = MakeButton("Share", TOP_W, function() ns.ToggleShare(ns.ViewedRun()) end)
+shareBtn.loud = true -- a red key in the Receipt theme
 
 local expandAll = MakeButton("Expand all", 90, function()
     local s = currentRun
@@ -1707,6 +2120,7 @@ local function ApplyTheme()
     for _, h in ipairs(headers) do
         if theme.flat then h:SetTextColor(0.60, 0.63, 0.68) else h:SetTextColor(1, 0.82, 0) end
     end
+    runLabel:SetFontObject(theme.paper and "ThatLuckyBastardReceiptCounter" or "GameFontHighlightSmall")
     for _, b in ipairs(buttons) do b:SetFlat(theme.flat) end
     for _, r in ipairs(rows) do StyleRow(r) end
     for _, c in ipairs(cols) do
@@ -1812,6 +2226,12 @@ function Render()
     headers.share:SetShown(not useColumns and showShare)
     headers.diff:SetShown(not useColumns and showShare)
     expandAll:SetShown(not useColumns)
+    -- Receipt theme: receipts come out of a printer slot; the list is
+    -- printed on one long sheet.
+    local paper = theme.paper and true or false
+    slot:SetShown(paper and useColumns)
+    slotLip:SetShown(paper and useColumns)
+    listPaper:SetShown(paper and not useColumns)
     if useColumns then
         for _, r in ipairs(rows) do r:Hide() end
         RenderColumns(sum, awards, insights)
@@ -1822,9 +2242,11 @@ function Render()
         CancelReveal()
         for _, c in ipairs(cols) do c:Hide() end
         for _, fs in ipairs(footLines) do fs:Hide() end
+        inkMode = paper
         RenderList(sum and BuildLines(sum, awards, insights) or {
             { indent = 4, wide = true, label = "No run recorded yet. Enter a dungeon, or type /tlb start." },
         }, showVendor, showShare)
+        inkMode = false
     end
     drawing = false
     wipe(drawCache)
@@ -1869,10 +2291,12 @@ function RenderList(lines, showVendor, showShare)
             left = size + 18
         end
         r.portrait:SetShown(showPicture)
+        r.portrait:SetDesaturated(theme.paper and true or false) -- printed, on paper
         r.ring:SetShown(showPicture)
         r.ringInner:SetShown(showPicture)
 
-        if line.icon and o.showIcons then
+        -- Paper has no icons and no colour chips.
+        if line.icon and o.showIcons and not theme.paper then
             r.icon:ClearAllPoints()
             r.icon:SetPoint("LEFT", left, 0)
             r.icon:SetSize(h - 4, h - 4)
@@ -1883,7 +2307,7 @@ function RenderList(lines, showVendor, showShare)
             r.icon:Hide()
         end
 
-        if line.cat then
+        if line.cat and not theme.paper then
             r.chip:ClearAllPoints()
             r.chip:SetPoint("LEFT", left - 8, 0)
             r.chip:SetSize(3, h - 4)
@@ -1909,6 +2333,11 @@ function RenderList(lines, showVendor, showShare)
         SetMark(r.mark, line.mark)
         SetRowBg(r.bg, line)
         if theme.flat and line.frac and line.frac > 0 then
+            if theme.paper then
+                r.bar:SetColorTexture(INK[1], INK[2], INK[3], 0.10)
+            else
+                r.bar:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 0.22)
+            end
             r.bar:SetWidth(math.max(1, width * line.frac))
             r.bar:Show()
         else

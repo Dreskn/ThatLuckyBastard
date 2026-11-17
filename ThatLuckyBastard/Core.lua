@@ -83,6 +83,16 @@ ns.OPTION_DEFAULTS = {
     streak = true,          -- recap when you chain runs with the same group or dungeon
     showMinimap = true,     -- minimap button
     minimapAngle = 215,     -- its position around the minimap, in degrees
+    -- Share window: post a "link" (for players with the addon) or a
+    -- "summary" (lines anyone can read). The summary's contents:
+    shareMode = "link",
+    summaryLines = 5,       -- players listed: 3, 5 or 10
+    summaryLink = true,     -- the first line is the run's link
+    summaryTime = true,     -- run time on the first line
+    summaryTotal = true,    -- the group's total on the first line
+    summaryShare = true,    -- each player's share of the run
+    summaryGap = false,     -- each player's gap to an equal split
+    summaryAward = true,    -- each player's award
 }
 
 -- Fills in the options `o` lacks with their defaults. With `all`, puts
@@ -1562,7 +1572,9 @@ function handlers.ADDON_LOADED(name)
     end
     if db.active then DropLooks(db.active) end
     for _, s in ipairs(db.history) do DropLooks(s) end
-    if db.theme ~= "classic" then db.theme = "modern" end -- Modern unless Classic was chosen
+    -- Modern unless another theme was chosen (themes that no longer exist
+    -- fall back to it too).
+    if db.theme ~= "classic" and db.theme ~= "receipt" then db.theme = "modern" end
     ns.FillDefaults(db.options)
     -- Silver off with copper on was a fourth way to write amounts, which
     -- the options no longer offer: it reads as 12g.
@@ -1802,7 +1814,7 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
         end
     elseif cmd == "theme" then
         if not ns.SetTheme(arg) then
-            Print("Themes: classic, modern. Example: /tlb theme modern")
+            Print("Themes: modern, classic, receipt. Example: /tlb theme receipt")
         end
     elseif cmd == "start" then
         NewSession(GetRealZoneText() or "Manual run", nil, true)
@@ -1849,7 +1861,7 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
         Print("/tlb delete - delete the run on show")
         Print("/tlb clear - delete all runs except pinned ones")
         Print("/tlb start, /tlb stop - track a run by hand, outside a dungeon")
-        Print("/tlb theme classic|modern")
+        Print("/tlb theme modern|classic|receipt")
         Print("/tlb capture - record raw loot messages, for troubleshooting")
     end
 end

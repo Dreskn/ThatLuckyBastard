@@ -3,4 +3,5 @@
 *.toc text
 *.md text
 *.tga binary
+*.ttf binary
 *.png binary

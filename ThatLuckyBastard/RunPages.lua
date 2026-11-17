@@ -513,7 +513,7 @@ local function DrawNumbers(s)
     end
     for i = #lines + 1, #numberTexts do numberTexts[i]:Hide() end
     numbersContent:SetHeight(y + 10)
-    exportBtn:SetFlat(ns.db.theme == "modern")
+    exportBtn:SetFlat(ns.db.theme ~= "classic") -- Modern and Receipt are both flat
 end
 
 ns.AddStatsPage("rolls", rollsPage, DrawRolls)

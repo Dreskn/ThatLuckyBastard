@@ -54,9 +54,10 @@ Tables over everything recorded. Click a column title to sort. The last two tabs
 
 ## Sharing a run
 
-The **Share** button (or `/tlb share`) shares the run on show, in two ways:
+The **Share** button (or `/tlb share`) shares the run on show, in three ways:
 
 - **A link in chat.** Pick a channel: say, yell, emote, party, raid, raid warning, instance, guild, officer, a channel or community you joined, or a whisper to a player whose full name you type. The link goes into your chat box and you send it yourself. Players with the addon click it to see the run; others see plain text. Global channels (General, Trade, LocalDefense and the like) are not offered, and links posted there stay plain text.
+- **A summary in chat** anyone can read, like a damage meter's report. Choose **Summary** in the Share window, check the lines, and click a channel to post them. A first line names the run, then one line per player, most loot first. Options › Share sets how many players (5 by default) and what the lines show. Emote and raid warning are not offered for a summary.
 - **A code.** The run as text to copy out of the game and paste anywhere: about 3,000 to 5,000 characters for a five-player dungeon. Anyone with the addon imports it in the **Shared runs** window (`/tlb import`).
 
 A click on a link asks the player who posted it for the run. Their addon sends it back through hidden addon messages, never through chat, at the pace the game allows: a few seconds to about 15. It works while they are online, and only for runs they posted a link to.
@@ -90,7 +91,7 @@ A run starts automatically when you enter a dungeon (and raids, if enabled). The
 | `/tlb share` | Share the run on show: a link in chat, or a code |
 | `/tlb import` | The Shared runs window: import a code, and the runs shared with you |
 | `/tlb bingo` | Your loot bingo card |
-| `/tlb theme classic` / `modern` | Change the look |
+| `/tlb theme modern` / `classic` / `receipt` | Change the look |
 | `/tlb start` | Track a run manually, outside a dungeon |
 | `/tlb stop` | End the current run |
 | `/tlb pin` | Pin the run on show so that it is never deleted; again to unpin |
@@ -110,11 +111,12 @@ The minimap button does the same: left-click for the window, right-click for the
 
 ## Options
 
-- **Window:** the theme (Modern, the default, or Classic), the size of every window, one column per player (up to 5) or a list, items grouped by category, the same item lined up across columns, item order (value or name), what to show (icons, shares, share bar, totals, run time and records), and amounts as 12g 34s (the default), 12g 34s 56c or 12g.
+- **Window:** the theme (Modern, the default, Classic, or Receipt: each player's loot printed on a till receipt), the size of every window, one column per player (up to 5) or a list, items grouped by category, the same item lined up across columns, item order (value or name), what to show (icons, shares, share bar, totals, run time and records), and amounts as 12g 34s (the default), 12g 34s 56c or 12g.
 - **Players:** the picture (2D portrait by default, 3D model, class icon or none), names as the game shows them (its "My Secondary Name" setting), full or first name only, and the order: podium (top looter in the middle, the default), loot value, role or name, optionally with you first.
 - **Loot:** auction or vendor prices, with the addon the auction prices come from; vendor totals; which categories to show, and whether hidden ones still count.
 - **End of run:** what opens when you leave a dungeon alive (the breakdown and the podium by default, either one, or nothing), awards, the reveal's sounds and screenshot, the streak recap, and a line in your chat window that only you see.
 - **While you play:** the valuable loot notice (5 gold and up by default, or off), familiar faces, the two tooltip lines and loot bingo.
+- **Share:** the chat summary: how many players (5 by default, up to 25), the first line (run link, run time, group total) and the player lines (share %, gap to equal split, award), with a preview.
 - **General:** raid tracking, what happens when you come back into the same dungeon, how many runs to keep, the minimap button.
 
 Options that do nothing as things stand are greyed out, such as the share bar in Classic. **Defaults** puts every option back except the number of runs to keep.
@@ -137,7 +139,7 @@ Options that do nothing as things stand are greyed out, such as the share bar in
 
 ## Privacy
 
-That Lucky Bastard never sends chat messages. Everything it shows, including the awards, the notices and what it knows about the people you run with, appears only on the screen of the player who has it installed. The one exception is a run you share: you post its link in chat yourself, and when someone with the addon clicks it, your addon sends them that run, and nothing else, through hidden addon messages. The export and the share code are text you copy yourself; nothing is written anywhere else.
+That Lucky Bastard never sends chat messages on its own. Everything it shows, including the awards, the notices and what it knows about the people you run with, appears only on the screen of the player who has it installed. The exceptions are runs you share yourself: you post a link in chat, or click a channel to post a summary, and when someone with the addon clicks a link, your addon sends them that run, and nothing else, through hidden addon messages. Nothing is ever posted when a run ends or at any other time without your click. The export and the share code are text you copy yourself; nothing is written anywhere else.
 
 ## Compatibility
 
@@ -194,6 +196,16 @@ python tests/run_tests.py ThatLuckyBastard tests/test_share.lua
 python tests/run_tests.py ThatLuckyBastard tests/test_options.lua
 ```
 
-`tools/make_logo.py` draws the addon's mark (needs Pillow); the brand colours live at the top of `ThatLuckyBastard/Core.lua`.
+```bash
+python tests/run_tests.py ThatLuckyBastard tests/test_receipt.lua
+```
+
+```bash
+python tests/run_tests.py ThatLuckyBastard tests/test_summary.lua
+```
+
+`tools/make_logo.py` draws the addon's mark (needs Pillow); the brand colours live at the top of `ThatLuckyBastard/Core.lua`. `tools/make_receipt_edge.py` draws the torn edge of the Receipt theme's receipts.
+
+The Receipt theme's typewriter font is Courier Prime, by the Courier Prime Project Authors, under the SIL Open Font License 1.1 (`ThatLuckyBastard/Media/CourierPrime-OFL.txt`).
 
 The rig proves that the code runs and computes the right figures. It cannot show what a window looks like; that still needs the game.

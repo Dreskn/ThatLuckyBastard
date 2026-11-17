@@ -210,6 +210,80 @@ function ns.ShareTag(s)
     return ("[%s: %s #%s]"):format(TAG, name, ns.ShareId(s))
 end
 
+----------------------------------------------------------------------
+-- Summary in chat: a few plain lines anyone can read, like a damage
+-- meter's report. They are sent only when you click a channel in the
+-- Share window with Summary chosen: the addon never posts on its own.
+----------------------------------------------------------------------
+
+-- The lines of run `s`'s summary, as the Share options set them: a first
+-- line naming the run, then one line per player, most loot first.
+function ns.SummaryLines(s)
+    if not s then return {} end
+    local o = ns.db.options
+    local sum = ns.Summarize(s)
+    local awards = ns.RunAwards(s, sum)
+    local limit = o.summaryLines or 5
+
+    local facts = {}
+    local duration = o.summaryTime and ns.RunDuration(s)
+    if duration and duration >= ns.MIN_TIMED_RUN then facts[#facts + 1] = ns.Duration(duration) end
+    if o.summaryTotal and sum.market > 0 then facts[#facts + 1] = ns.MoneyPlain(sum.market) .. " in all" end
+    local first
+    if o.summaryLink then
+        -- Players with the addon can click it, as in Link mode.
+        first = ns.ShareTag(s) .. (#facts > 0 and (" " .. table.concat(facts, ", ")) or "")
+    else
+        first = TAG .. ": " .. (s.name or "Run") .. (#facts > 0 and (", " .. table.concat(facts, ", ")) or "")
+    end
+    local lines = { first }
+
+    local ranked = {}
+    for _, p in ipairs(sum.players) do ranked[#ranked + 1] = p end
+    table.sort(ranked, function(a, b) return (a.rank or 99) < (b.rank or 99) end)
+    local equal = #ranked > 0 and sum.market / #ranked or 0
+    for i = 1, math.min(#ranked, limit) do
+        local p = ranked[i]
+        local line = ("%d. %s %s"):format(i, ns.DisplayName(p.name), p.market > 0 and ns.MoneyPlain(p.market) or "0g")
+        local extra = {}
+        if o.summaryShare and sum.market > 0 then
+            extra[#extra + 1] = ("%.0f%%"):format(p.market / sum.market * 100)
+        end
+        local diff = p.market - equal
+        if o.summaryGap and sum.market > 0 and math.abs(diff) >= 1 then
+            extra[#extra + 1] = (diff > 0 and "+" or "-") .. ns.MoneyPlain(math.abs(diff))
+        end
+        if #extra > 0 then line = line .. " (" .. table.concat(extra, ", ") .. ")" end
+        local award = o.summaryAward and awards[p.name]
+        if award then line = line .. " " .. award.title end
+        lines[#lines + 1] = line
+    end
+    if #ranked > limit then lines[#lines + 1] = ("and %d more"):format(#ranked - limit) end
+
+    -- Chat refuses escape codes in typed text: no "|" may get through.
+    for i, line in ipairs(lines) do lines[i] = (line:gsub("|", "")) end
+    return lines
+end
+
+-- Sends `lines` to channel `c` of the Share window, or as whispers to
+-- `whisperTo`. Called from a click only: the game wants a click or a key
+-- press for most channels, and all the lines go out in that same moment.
+local function PostLines(lines, c, whisperTo)
+    local send = (C_ChatInfo and C_ChatInfo.SendChatMessage) or SendChatMessage
+    for _, line in ipairs(lines) do
+        if whisperTo then
+            if send then send(line, "WHISPER", nil, whisperTo) end
+        elseif c.club then
+            -- A community's chat is not a numbered channel to the server.
+            if C_Club and C_Club.SendMessage then C_Club.SendMessage(c.club, c.stream, line) end
+        elseif c.channel then
+            if send then send(line, "CHANNEL", nil, c.channel) end
+        elseif send then
+            send(line, c.chatType)
+        end
+    end
+end
+
 -- Where tags turn into links: every chat but the global channels.
 local CHAT_EVENTS = {
     "CHAT_MSG_SAY", "CHAT_MSG_YELL", "CHAT_MSG_EMOTE", "CHAT_MSG_PARTY", "CHAT_MSG_PARTY_LEADER", "CHAT_MSG_RAID",
@@ -262,20 +336,24 @@ if hooksecurefunc and SetItemRef then hooksecurefunc("SetItemRef", OnLink) end
 local WIDTH = 400
 local BTN_W, BTN_GAP, PER_ROW = 118, 4, 3
 
--- The channels a link can be posted to. `usable`: whether you can talk
--- there right now.
+-- The channels a link or a summary can be posted to. `command`: how the
+-- link is typed in the chat box; `chatType`: where a summary is sent.
+-- `usable`: whether you can talk there right now. `noSummary`: not for a
+-- summary of several lines (an emote puts your name before each line,
+-- and a burst of raid warnings fills everyone's screen).
 local CHANNELS = {
-    { label = "Say", command = "/s" },
-    { label = "Yell", command = "/y" },
-    { label = "Emote", command = "/e" },
-    { label = "Party", command = "/p", usable = function() return IsInGroup() end },
-    { label = "Raid", command = "/ra", usable = function() return IsInRaid() end },
-    { label = "Raid warning", command = "/rw", usable = function()
+    { label = "Say", command = "/s", chatType = "SAY" },
+    { label = "Yell", command = "/y", chatType = "YELL" },
+    { label = "Emote", command = "/e", chatType = "EMOTE", noSummary = true },
+    { label = "Party", command = "/p", chatType = "PARTY", usable = function() return IsInGroup() end },
+    { label = "Raid", command = "/ra", chatType = "RAID", usable = function() return IsInRaid() end },
+    { label = "Raid warning", command = "/rw", chatType = "RAID_WARNING", noSummary = true, usable = function()
         return IsInGroup() and (UnitIsGroupLeader("player") or UnitIsGroupAssistant("player"))
     end },
-    { label = "Instance", command = "/i", usable = function() return IsInGroup(LE_PARTY_CATEGORY_INSTANCE or 2) end },
-    { label = "Guild", command = "/g", usable = function() return IsInGuild() end },
-    { label = "Officer", command = "/o", usable = function()
+    { label = "Instance", command = "/i", chatType = "INSTANCE_CHAT",
+      usable = function() return IsInGroup(LE_PARTY_CATEGORY_INSTANCE or 2) end },
+    { label = "Guild", command = "/g", chatType = "GUILD", usable = function() return IsInGuild() end },
+    { label = "Officer", command = "/o", chatType = "OFFICER", usable = function()
         return IsInGuild() and not (C_GuildInfo and C_GuildInfo.IsGuildOfficer and not C_GuildInfo.IsGuildOfficer())
     end },
 }
@@ -293,11 +371,15 @@ local function CustomChannels()
         if type(id) == "number" and type(name) == "string" and not disabled and not global[name]
                 and not GLOBAL_CHANNELS[name] then
             local label = name
+            local club, stream = name:match("^Community:(%d+):(%d+)")
             if name:find("^Community:") then
                 label = resolve and resolve(name)
                 if type(label) ~= "string" or label:find("^Community:") then label = nil end -- not one we can name
             end
-            if label then out[#out + 1] = { label = Short(label, 17), command = "/" .. id } end
+            if label then
+                out[#out + 1] = { label = Short(label, 17), command = "/" .. id,
+                                  channel = not club and id or nil, club = club, stream = stream }
+            end
         end
     end
     return out
@@ -344,11 +426,55 @@ local shareRun, channels = nil, {}
 local linkHead, linkHint = Text("GameFontNormal"), Text("GameFontDisableSmall")
 local codeHead, codeHint = Text("GameFontNormal"), Text("GameFontDisableSmall")
 local importHead, importHint = Text("GameFontNormal"), Text("GameFontDisableSmall")
-linkHead:SetText("Link in chat")
+linkHead:SetText("Chat")
 codeHead:SetText("Code")
 codeHint:SetText("The run as text, to paste outside the game.")
 importHead:SetText("Shared with you")
 importHint:SetText("Open a code someone gave you, or a run you received.")
+
+-- What a channel button posts: "link" (one tag, left in the chat box for
+-- you to send) or "summary" (the lines in the preview, sent at once).
+local function Mode()
+    return ns.db.options.shareMode == "summary" and "summary" or "link"
+end
+
+-- The summary, as it will be posted: the lines on a faint panel.
+local preview = Text("GameFontHighlightSmall")
+preview:SetWidth(WIDTH - 44)
+local previewBg = ui:CreateTexture(nil, "BACKGROUND")
+previewBg:SetPoint("TOPLEFT", preview, "TOPLEFT", -6, 5)
+previewBg:SetPoint("BOTTOMRIGHT", preview, "BOTTOMRIGHT", 6, -5)
+previewBg:SetColorTexture(0, 0, 0, 0.3)
+
+local Draw -- below
+local modeTabs = {}
+for i, m in ipairs({ { "Link", "link" }, { "Summary", "summary" } }) do
+    local tab = ns.MakeButton(m[1], 90, function()
+        ns.db.options.shareMode = m[2]
+        Draw()
+    end, ui)
+    tab.isTab, tab.mode = true, m[2]
+    modeTabs[i] = tab
+end
+
+-- Posts run `s` to channel `c` (or as a whisper to `whisperTo`) the way
+-- the mode says, then closes the window.
+local function Post(s, c, whisperTo)
+    if Mode() == "summary" then
+        -- The first line carries the link unless the options leave it out.
+        if ns.db.options.summaryLink then s.shared = true end
+        PostLines(ns.SummaryLines(s), c, whisperTo)
+    else
+        s.shared = true -- your addon answers clicks on this run's link from now on
+        if whisperTo then
+            OpenWhisper(whisperTo, ns.ShareTag(s))
+        else
+            local open = (ChatFrameUtil and ChatFrameUtil.OpenChat) or ChatFrame_OpenChat
+            if open then open(c.command .. " " .. ns.ShareTag(s)) end
+        end
+    end
+    win:Hide()
+end
 
 local channelButtons = {}
 local function ChannelButton(i)
@@ -356,10 +482,8 @@ local function ChannelButton(i)
         channelButtons[i] = ns.MakeButton("", BTN_W, function()
             local c, s = channels[i], shareRun
             if not (c and s) then return end
-            s.shared = true -- your addon answers clicks on this run's link from now on
-            local open = (ChatFrameUtil and ChatFrameUtil.OpenChat) or ChatFrame_OpenChat
-            if open then open(c.command .. " " .. ns.ShareTag(s)) end
-            win:Hide()
+            if Mode() == "summary" and c.noSummary then return end
+            Post(s, c)
         end, ui)
     end
     return channelButtons[i]
@@ -386,11 +510,9 @@ local function Whisper()
     local s = shareRun
     local name = (nameBox:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
     if not s or name == "" then return nameBox:SetFocus() end
-    s.shared = true -- your addon answers clicks on this run's link from now on
     lastWhisper = name
     nameBox:ClearFocus()
-    OpenWhisper(name, ns.ShareTag(s))
-    win:Hide()
+    Post(s, nil, name)
 end
 nameBox:SetScript("OnEnterPressed", Whisper)
 local whisperBtn = ns.MakeButton("Whisper", BTN_W, Whisper, ui)
@@ -398,13 +520,19 @@ local whisperBtn = ns.MakeButton("Whisper", BTN_W, Whisper, ui)
 local codeBtn = ns.MakeButton("Show the code", 130, function() ns.ShowExport("code", shareRun) end, ui)
 local importBtn = ns.MakeButton("Shared runs", 130, function() ns.ToggleImport() end, ui)
 
-local function Draw()
+function Draw()
     local flat, top = ns.ApplyWindowTheme(skins, title)
     local s = shareRun
     title:SetText(ns.Title("Share  -  " .. (s and s.name or "Run")))
     local own = s ~= nil and not s.example and not s.sharedBy
-    linkHint:SetText(own and "Press Enter to post it. Players with the addon click it to see the run."
-                     or "Only runs you recorded can be shared.")
+    local summary = Mode() == "summary"
+    if not own then
+        linkHint:SetText("Only runs you recorded can be shared.")
+    elseif summary then
+        linkHint:SetText("Click a channel to post these lines.")
+    else
+        linkHint:SetText("Press Enter to post it. Players with the addon click it to see the run.")
+    end
 
     local y = top
     local function Place(widget, x, height)
@@ -412,8 +540,23 @@ local function Draw()
         widget:SetPoint("TOPLEFT", x, y)
         y = y - height
     end
-    Place(linkHead, 16, 18)
+    Place(linkHead, 16, 22)
+    for i, tab in ipairs(modeTabs) do
+        tab:ClearAllPoints()
+        tab:SetPoint("TOPLEFT", 16 + (i - 1) * 94, y)
+        tab:SetFlat(flat)
+        tab:SetSelected(Mode() == tab.mode)
+    end
+    y = y - 28
     Place(linkHint, 16, 22)
+    preview:SetShown(summary and own)
+    previewBg:SetShown(summary and own)
+    if summary and own then
+        preview:SetText(table.concat(ns.SummaryLines(s), "\n"))
+        preview:ClearAllPoints()
+        preview:SetPoint("TOPLEFT", 22, y - 5)
+        y = y - (preview:GetStringHeight() + 20)
+    end
     channels = {}
     for _, c in ipairs(CHANNELS) do channels[#channels + 1] = c end
     for _, c in ipairs(CustomChannels()) do channels[#channels + 1] = c end
@@ -421,7 +564,7 @@ local function Draw()
         local b = ChannelButton(i)
         b:SetLabel(c.label)
         b:SetFlat(flat)
-        b:SetOn(own and (not c.usable or c.usable()) or false)
+        b:SetOn(own and (not c.usable or c.usable()) and not (summary and c.noSummary) or false)
         b:ClearAllPoints()
         b:SetPoint("TOPLEFT", 16 + ((i - 1) % PER_ROW) * (BTN_W + BTN_GAP), y - math.floor((i - 1) / PER_ROW) * 26)
         b:Show()

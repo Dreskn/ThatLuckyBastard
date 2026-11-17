@@ -6,7 +6,6 @@ local _, ns = ...
 -- share bar in the Classic theme, say) is greyed out rather than hidden,
 -- so that nothing moves as you click.
 
-local ACCENT = ns.ACCENT
 local GOLD = { 1.00, 0.82, 0.00 }
 local WIDTH, HEIGHT = 590, 550
 local SIDEBAR_W = 140
@@ -192,14 +191,14 @@ do
 
     Section(p, "Theme")
     local defs = {}
-    for i, t in ipairs({ { "Modern", "modern" }, { "Classic", "classic" } }) do
+    for i, t in ipairs({ { "Modern", "modern" }, { "Classic", "classic" }, { "Receipt", "receipt" } }) do
         defs[i] = {
             t[1],
             function() return (ns.db.theme or "modern") == t[2] end,
             function() ns.db.theme = t[2] end,
         }
     end
-    Group(p, defs, 2, true)
+    Group(p, defs, 3, true, 130)
 
     Section(p, "Size")
     scaleLabel = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -240,7 +239,7 @@ do
 
     Section(p, "Show")
     Toggles(p, {
-        { "Item icons", "showIcons" },
+        { "Item icons", "showIcons", function() return ns.db.theme ~= "receipt" end }, -- a receipt prints none
         { "Each share, and its gap to an equal split", "showShare" },
         { "Share bar", "showBar", function() return ns.db.theme ~= "classic" end },
         { "Run total and equal split", "showTotals" },
@@ -417,7 +416,69 @@ do
 end
 
 ----------------------------------------------------------------------
--- Page 6: General
+-- Page 6: Share
+----------------------------------------------------------------------
+
+local MAX_SUMMARY = 25 -- players in one summary: more lines at once and chat holds them back
+
+do
+    local p = NewPage("Share", "The summary posted in chat.")
+
+    -- How many players: a small box to type the number in.
+    Section(p, "Summary")
+    RowLabel(p, "Players")
+    local box = CreateFrame("EditBox", nil, p, "InputBoxTemplate")
+    box:SetSize(30, 20)
+    box:SetPoint("TOPLEFT", 70, p.y - 1)
+    box:SetAutoFocus(false)
+    box:SetNumeric(true)
+    box:SetMaxLetters(2)
+    box:SetJustifyH("CENTER")
+    box:SetScript("OnEnterPressed", box.ClearFocus)
+    box:SetScript("OnEscapePressed", function(self)
+        self:SetText(tostring(Opt().summaryLines))
+        self:ClearFocus()
+    end)
+    box:SetScript("OnEditFocusLost", function(self)
+        local n = tonumber(self:GetText())
+        if n then Opt().summaryLines = math.max(1, math.min(math.floor(n), MAX_SUMMARY)) end
+        self:SetText(tostring(Opt().summaryLines))
+        Sync()
+    end)
+    live[#live + 1] = function()
+        if not box:HasFocus() then box:SetText(tostring(Opt().summaryLines)) end
+    end
+    p.y = p.y - ROW_H - 2
+
+    Section(p, "First line")
+    Toggles(p, {
+        { "Run link", "summaryLink" },
+        { "Run time", "summaryTime" },
+        { "Group total", "summaryTotal" },
+    })
+
+    Section(p, "Player lines")
+    Toggles(p, {
+        { "Share %", "summaryShare" },
+        { "Gap to equal split", "summaryGap" },
+        { "Award", "summaryAward", function() return Opt().showAwards end },
+    })
+
+    -- What would be posted for the run on show.
+    Section(p, "Preview")
+    local preview = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    preview:SetPoint("TOPLEFT", 4, p.y - 2)
+    preview:SetWidth(PAGE_W - 8)
+    preview:SetJustifyH("LEFT")
+    live[#live + 1] = function()
+        local s = ns.ViewedRun and ns.ViewedRun()
+        local lines = s and not s.example and ns.SummaryLines(s) or {}
+        preview:SetText(#lines > 0 and table.concat(lines, "\n") or "No run of yours to show yet.")
+    end
+end
+
+----------------------------------------------------------------------
+-- Page 7: General
 ----------------------------------------------------------------------
 
 -- How many runs keeping only `limit` would delete: your own beyond it
@@ -549,7 +610,8 @@ local function StyleCheck(b)
         b.box:SetColorTexture(1, 1, 1, 0.12)
         b.tick:SetSize(8, 8)
         b.tick:SetTexCoord(0, 1, 0, 1)
-        b.tick:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 1)
+        local accent = ns.ThemeAccent()
+        b.tick:SetColorTexture(accent[1], accent[2], accent[3], 1)
     elseif b.radio then
         b.box:SetPoint("LEFT", 4, 0)
         b.box:SetSize(16, 16)
@@ -572,7 +634,7 @@ end
 local function ApplyTheme()
     local top
     flat, top = ns.ApplyWindowTheme(skins, title)
-    local hue = flat and ACCENT or GOLD
+    local hue = flat and ns.ThemeAccent() or GOLD
     sidebar:ClearAllPoints()
     sidebar:SetPoint("TOPLEFT", 10, top)
     sidebar:SetPoint("BOTTOMLEFT", 10, 12)
@@ -608,7 +670,7 @@ local function ApplyTheme()
         scaleSlider:SetThumbTexture("Interface\\Buttons\\WHITE8x8")
         local thumb = scaleSlider:GetThumbTexture()
         thumb:SetSize(8, 16)
-        thumb:SetVertexColor(ACCENT[1], ACCENT[2], ACCENT[3])
+        thumb:SetVertexColor(hue[1], hue[2], hue[3])
         scaleSlider.track:SetColorTexture(1, 1, 1, 0.12)
     else
         scaleSlider:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")

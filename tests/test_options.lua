@@ -62,10 +62,10 @@ check(ThatLuckyBastardOptionsFrame:IsShown() and ThatLuckyBastardFrame:IsShown()
 
 print("-- pages and wording")
 local pagesFound = true
-for _, name in ipairs({ "Window", "Players", "Loot", "End of run", "While you play", "General" }) do
+for _, name in ipairs({ "Window", "Players", "Loot", "End of run", "While you play", "Share", "General" }) do
     pagesFound = pagesFound and has(name)
 end
-check(pagesFound, "six pages: Window, Players, Loot, End of run, While you play, General")
+check(pagesFound, "seven pages: Window, Players, Loot, End of run, While you play, Share, General")
 check(not has("Appearance") and not has("Behaviour") and not has("Extras") and not has("Items and values"),
       "the old pages are gone")
 for _, label in ipairs({

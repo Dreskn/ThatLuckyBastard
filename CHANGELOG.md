@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **A summary in chat** anyone can read, like a damage meter's report: in the Share window choose Summary and click a channel. Options › Share sets how many players and what the lines show. Nothing is posted without your click.
+- **A third theme, Receipt.** Each player's loot is printed on a till receipt: typewriter type, items in ink, the award as a rubber stamp, a barcode and a torn edge. The buttons are till keys. Pick it in Options › Window or with `/tlb theme receipt`.
+
 ## 0.4.1
 
 - More places to share a run's link: emote, raid warning, your communities, and a whisper to a player whose full name you type (it fills in with the player you target).

@@ -85,6 +85,12 @@ function known.GetStringWidth(self) return #(self.__text or "") * 6 end
 function known.GetFrameLevel() return 1 end
 function known.SetScale(self, scale) self.__scale = scale end
 function known.GetScale(self) return self.__scale or 1 end
+-- The font a text was last given (a font object or its name), and whether
+-- a picture is drawn in grey.
+function known.SetFontObject(self, font) self.__font = font end
+function known.GetFontObject(self) return self.__font end
+function known.SetDesaturated(self, on) self.__desaturated = on and true or false end
+function known.IsDesaturated(self) return self.__desaturated == true end
 -- Whether a button can be clicked (greyed-out options cannot).
 function known.SetEnabled(self, on) self.__enabled = on and true or false end
 function known.IsEnabled(self) return self.__enabled ~= false end
@@ -244,6 +250,9 @@ end
 SENT = {}         -- addon messages: { prefix, text, channel, target }
 CHAT_FILTERS = {} -- [event] = the filter the addon added
 OPENED_CHAT = {}  -- text put in the chat box
+CHAT_SENT = {}    -- chat lines the addon sent itself: { text, chatType, target }
+function SendChatMessage(text, chatType, _, target) CHAT_SENT[#CHAT_SENT + 1] = { text, chatType, target } end
+C_Club = { SendMessage = function(club, stream, text) CHAT_SENT[#CHAT_SENT + 1] = { text, "CLUB", club .. ":" .. stream } end }
 C_ChatInfo = {
     RegisterAddonMessagePrefix = function() return true end,
     SendAddonMessage = function(prefix, text, channel, target) SENT[#SENT + 1] = { prefix, text, channel, target } end,
