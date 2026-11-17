@@ -18,6 +18,11 @@ It records what every player in your group loots, puts a gold value on it, and s
 - **While you play:** notices for valuable loot and familiar faces, one line in player and item tooltips, and a private loot bingo card.
 - **Sharing:** post a run as a link in chat, or copy it as a code to paste anywhere. Players with the addon open it.
 
+| ![The podium](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/podium.png) | ![The front page](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/paper.png) |
+| --- | --- |
+| ![The timeline](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/timeline.png) | ![Statistics: dungeons](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/stats.png) |
+| ![Sharing a run](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/share.png) | |
+
 ## How loot is valued
 
 - Vendor prices come from the game. Auction prices come from [Auctionator](https://www.curseforge.com/wow/addons/auctionator) or TradeSkillMaster, if you have one of them.
