@@ -230,28 +230,40 @@ PAGES.luck = {
     end,
 }
 
+-- Your loot against theirs: "+12g 40s" in green when you took more.
+local function Lead(diff)
+    if math.abs(diff) < 1 then return "-" end
+    return (diff > 0 and "|cff40d040+|r" or "|cffe05050-|r") .. ns.Money(math.abs(diff))
+end
+
 PAGES.regulars = {
     title = "Regulars",
-    blurb = "People you have run with.",
+    blurb = "People you have run with. Difference: your loot minus theirs.",
     cols = {
-        { "Player", 0 }, { "Runs", 70, "RIGHT" }, { "Avg loot", 110, "RIGHT" },
-        { "Luckiest", 80, "RIGHT" }, { "Ninja", 70, "RIGHT" }, { "Last run", 130, "RIGHT" },
+        { "Player", 0 }, { "Runs", 55, "RIGHT" }, { "Theirs", 100, "RIGHT" }, { "Yours", 100, "RIGHT" },
+        { "Difference", 105, "RIGHT" }, { "Luckiest", 70, "RIGHT" }, { "Ninja", 55, "RIGHT" },
+        { "Last run", 120, "RIGHT" },
     },
     defaultSort = 2,
     rows = function()
         local rows = {}
         for name, who in pairs(ns.db.people) do
-            local avg = who.value / math.max(who.runs, 1)
+            -- `mine` is unknown for players whose runs with you were deleted
+            -- before it was kept: those sort last.
+            local mine = who.mine
             rows[#rows + 1] = {
                 cells = {
                     ns.ClassColored(ns.DisplayName(name), who.class),
                     tostring(who.runs),
-                    ns.Money(avg),
+                    ns.Money(who.value),
+                    mine and ns.Money(mine) or "-",
+                    mine and Lead(mine - who.value) or "-",
                     who.lucky > 0 and tostring(who.lucky) or "-",
                     who.ninja > 0 and tostring(who.ninja) or "-",
                     DateText(who.last),
                 },
-                keys = { name, who.runs, avg, who.lucky, who.ninja, who.last or 0 },
+                keys = { name, who.runs, who.value, mine or -1, mine and (mine - who.value) or -1e12,
+                         who.lucky, who.ninja, who.last or 0 },
             }
         end
         if #rows == 0 then

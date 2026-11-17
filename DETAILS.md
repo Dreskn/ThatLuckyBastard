@@ -28,7 +28,7 @@ Tables over everything recorded. Click a column title to sort. The last two tabs
 - **Records:** your richest run, best personal haul, biggest single item and fastest run per dungeon.
 - **Runs:** every run that is kept, with time, loot, your share, fairness and top looter. Filter by dungeon or player; click a run to open it.
 - **Luck:** rolls entered, wins expected and wins had, for you and for everyone you run with, plus average rolls.
-- **Regulars:** the people you run with: runs together, average loot, and how often they were Luckiest or Ninja.
+- **Regulars:** the people you run with: runs together, their loot and yours in those runs, the difference, and how often they were Luckiest or Ninja.
 - **Drops:** per dungeon, every item seen, in how many of your runs, how many of it, its average value, and who got it last.
 - **Roles:** how loot shares turn out by role and by class, against an equal share.
 - **Find item:** search past runs for an item to see when it dropped and who got it.
@@ -202,6 +202,10 @@ python tests/run_tests.py ThatLuckyBastard tests/test_receipt.lua
 
 ```bash
 python tests/run_tests.py ThatLuckyBastard tests/test_summary.lua
+```
+
+```bash
+python tests/run_tests.py ThatLuckyBastard tests/test_regulars.lua
 ```
 
 `tools/make_logo.py` draws the addon's mark (needs Pillow); the brand colours live at the top of `ThatLuckyBastard/Core.lua`. `tools/make_receipt_edge.py` draws the torn edge of the Receipt theme's receipts.

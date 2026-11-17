@@ -746,7 +746,8 @@ local function PersonTooltip(owner, p, award)
         GameTooltip:AddLine("That's you.", 0.7, 0.7, 0.7)
     elseif who and who.runs > 0 then
         GameTooltip:AddLine(("Runs together: %d"):format(who.runs), 1, 1, 1)
-        GameTooltip:AddLine("Average loot: " .. Money(who.value / who.runs), 1, 1, 1)
+        GameTooltip:AddLine("Their loot: " .. Money(who.value), 1, 1, 1)
+        if who.mine then GameTooltip:AddLine("Yours: " .. Money(who.mine), 1, 1, 1) end
         if who.lucky > 0 then GameTooltip:AddLine(("Luckiest x%d"):format(who.lucky), 1, 1, 1) end
         if who.ninja > 0 then GameTooltip:AddLine(("Ninja x%d"):format(who.ninja), 1, 1, 1) end
     else

@@ -1393,7 +1393,9 @@ end
 -- take the record; with no boss kills counted there is no fastest run.
 --
 -- db.people[name] keeps, per player you have run with: runs together,
--- total loot value, and how often they were Luckiest or Ninja.
+-- their total loot value (`value`) and yours in the same runs (`mine`),
+-- and how often they were Luckiest or Ninja. `mine` is nil for a player
+-- whose runs with you were all deleted before it was kept.
 --
 -- Both are updated once per run, when it is closed (CommitRun). A run
 -- that is over but not closed yet is compared against them on the fly.
@@ -1428,17 +1430,22 @@ function CommitRun(s)
     local st = RunStats(s, sum)
     s.stats = { group = st.group, mine = st.mine }
 
-    -- Regulars
+    -- Regulars: each player's loot, and yours beside it.
     local awards = ns.Awards(s, sum)
     for _, p in ipairs(sum.players) do
         if p.name ~= ns.Me(s) then
             local who = db.people[p.name]
             if not who then
-                who = { runs = 0, value = 0, lucky = 0, ninja = 0 }
+                who = { runs = 0, value = 0, mine = 0, lucky = 0, ninja = 0 }
                 db.people[p.name] = who
+            elseif who.mine == nil then
+                -- Your side of their earlier runs is unknown: both totals
+                -- start again, so that they always cover the same runs.
+                who.runs, who.value, who.mine = 0, 0, 0
             end
             who.runs = who.runs + 1
             who.value = who.value + p.market
+            who.mine = who.mine + st.mine
             who.class = p.class or who.class
             who.last = s.startedAt
             local a = awards[p.name]
@@ -1582,6 +1589,47 @@ function handlers.ADDON_LOADED(name)
     ns.db = db
 end
 
+-- Once, when the version that keeps your side arrives: each player's total
+-- and yours are worked out again from the runs still kept, so that both
+-- cover the same runs. Runs deleted earlier cannot be counted; a player
+-- whose runs with you are all gone keeps their figures, with yours
+-- unknown. Luckiest and Ninja counts stay as they were.
+local function RebuildRegulars()
+    if db.regularsBoth then return end
+    db.regularsBoth = true
+    local tally = {}
+    for _, s in ipairs(db.history) do
+        if not s.example and s.players then
+            local sum = ns.Summarize(s)
+            local me, mine = ns.Me(s), 0
+            for _, p in ipairs(sum.players) do
+                if p.name == me then mine = p.market end
+            end
+            for _, p in ipairs(sum.players) do
+                if p.name ~= me then
+                    local t = tally[p.name] or { runs = 0, value = 0, mine = 0, last = 0 }
+                    tally[p.name] = t
+                    t.runs, t.value, t.mine = t.runs + 1, t.value + p.market, t.mine + mine
+                    t.class = p.class or t.class
+                    t.last = math.max(t.last, s.startedAt or 0)
+                end
+            end
+        end
+    end
+    for name, who in pairs(db.people) do
+        if not tally[name] then who.mine = nil end
+    end
+    for name, t in pairs(tally) do
+        local who = db.people[name]
+        if not who then
+            who = { lucky = 0, ninja = 0 }
+            db.people[name] = who
+        end
+        who.runs, who.value, who.mine, who.last = t.runs, t.value, t.mine, t.last
+        who.class = t.class or who.class
+    end
+end
+
 function handlers.PLAYER_LOGIN()
     -- On Forever a character has a first and a second name. UnitName
     -- returns them separately; GetUnitName gives the full name, which is
@@ -1590,6 +1638,7 @@ function handlers.PLAYER_LOGIN()
     ns.playerName = PLAYER_NAME
     PLAYER_CLASS = select(2, UnitClass("player"))
     if ns.ApplyScale then ns.ApplyScale() end -- the windows' size, from the options
+    RebuildRegulars()
     -- People met in a single run, long ago, are forgotten: with random
     -- groups the list would otherwise grow for ever.
     local cutoff = time() - FORGET_AFTER

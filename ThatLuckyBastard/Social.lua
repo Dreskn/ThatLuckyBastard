@@ -17,7 +17,9 @@ local MAX_NOTICES = 4 -- familiar faces announced at once (a raid can hold many)
 -- "5 runs together   avg 3g 20s   Ninja x2"
 local function PersonLine(who)
     local parts = { who.runs == 1 and "1 run together" or (who.runs .. " runs together") }
-    parts[#parts + 1] = "avg " .. ns.Money(who.value / math.max(who.runs, 1))
+    -- Their loot in those runs, and yours (unknown for runs deleted before it was kept).
+    parts[#parts + 1] = "them " .. ns.Money(who.value)
+    if who.mine then parts[#parts + 1] = "you " .. ns.Money(who.mine) end
     if (who.ninja or 0) > 0 then parts[#parts + 1] = "Ninja x" .. who.ninja end
     if (who.lucky or 0) > 0 then parts[#parts + 1] = "Luckiest x" .. who.lucky end
     return table.concat(parts, "   ")
