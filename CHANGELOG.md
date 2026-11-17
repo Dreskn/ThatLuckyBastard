@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.4.5
 
 - **Regulars** show each player's total loot in your runs together and yours beside it, with the difference; so do player tooltips. Your side is worked out once from your kept runs.
 - **A summary in chat** anyone can read, like a damage meter's report: in the Share window choose Summary and click a channel. Options › Share sets how many players and what the lines show. Nothing is posted without your click.
