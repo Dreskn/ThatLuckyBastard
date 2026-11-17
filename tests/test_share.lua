@@ -19,10 +19,18 @@ local function click(label)
     end
     return false
 end
+-- A button of the share window (other windows have buttons of the same
+-- name: the options have a "General" page).
 local function hasButton(label)
     for _, w in ipairs(FRAMES) do
         local t = rawget(w, "text")
-        if type(t) == "table" and t.__text == label then return true end
+        if type(t) == "table" and t.__text == label then
+            local up = w
+            while up do
+                if up == ThatLuckyBastardShareFrame then return true end
+                up = rawget(up, "__parent")
+            end
+        end
     end
     return false
 end
@@ -158,6 +166,41 @@ check(click("Guild") and OPENED_CHAT[1] == "/g " .. ns.ShareTag(run) and run.sha
 check(not ThatLuckyBastardShareFrame:IsShown(), "and the window gets out of the way")
 ns.ToggleShare(run)
 check(click("Dungeon Pals") and OPENED_CHAT[2] == "/5 " .. ns.ShareTag(run), "a channel of your own, by its number")
+ns.ToggleShare(run)
+check(hasButton("Emote") and hasButton("Raid warning") and hasButton("Our Club"),
+      "Emote, Raid warning and your communities are offered too")
+check(click("Our Club") and OPENED_CHAT[#OPENED_CHAT] == "/7 " .. ns.ShareTag(run), "a community, under its own name")
+ns.ToggleShare(run)
+check(click("Emote") and OPENED_CHAT[#OPENED_CHAT] == "/e " .. ns.ShareTag(run), "an emote")
+check(ns.VERSION == "9.9.9", "the version shown beside Options comes from the .toc file")
+
+print("-- whispering a link")
+local nameBox, afterShare = nil, false
+for _, w in ipairs(FRAMES) do
+    if w == ThatLuckyBastardShareFrame then
+        afterShare = true
+    elseif afterShare and w.__kind == "EditBox" then
+        nameBox = w
+        break
+    end
+end
+WORLD.target = "Lichy Val"
+ns.ToggleShare(run)
+check(nameBox:GetText() == "Lichy Val", "the name box offers the player you target")
+nameBox:SetText("  Kett   Longstride ")
+local opened = #OPENED_CHAT
+check(click("Whisper") and #OPENED_CHAT == opened + 1 and OPENED_CHAT[#OPENED_CHAT] == ns.ShareTag(run)
+      and CHAT_BOX:GetAttribute("chatType") == "WHISPER" and CHAT_BOX:GetAttribute("tellTarget") == "Kett Longstride",
+      "Whisper: the chat box whispers the whole two-word name, with the tag in it")
+check(not ThatLuckyBastardShareFrame:IsShown(), "and the window gets out of the way")
+WORLD.target = nil
+ns.ToggleShare(run)
+check(nameBox:GetText() == "Kett Longstride", "the name whispered last is offered again")
+nameBox:SetText("")
+opened = #OPENED_CHAT
+click("Whisper")
+check(#OPENED_CHAT == opened and ThatLuckyBastardShareFrame:IsShown(), "with no name, nothing opens")
+ns.ToggleShare(run)
 TEXTLOG = {}
 ns.ToggleShare(run)
 check(click("Show the code") and ThatLuckyBastardExportFrame:IsShown() and drew(ns.EncodeRun(run)),
@@ -184,7 +227,11 @@ check(inOwn and inOwn:find(link, 1, true), "in a channel of your own it is a lin
 local _, told = CHAT_FILTERS.CHAT_MSG_WHISPER_INFORM(nil, "CHAT_MSG_WHISPER_INFORM", tag, "Lichy Val")
 check(told and told:find(":Mira Vale|h", 1, true), "in a whisper you sent, it points to your own run")
 check(CHAT_FILTERS.CHAT_MSG_SAY and CHAT_FILTERS.CHAT_MSG_PARTY and CHAT_FILTERS.CHAT_MSG_RAID and CHAT_FILTERS.CHAT_MSG_OFFICER
-      and CHAT_FILTERS.CHAT_MSG_YELL and CHAT_FILTERS.CHAT_MSG_INSTANCE_CHAT, "say, yell, party, raid, instance and officer chat too")
+      and CHAT_FILTERS.CHAT_MSG_YELL and CHAT_FILTERS.CHAT_MSG_INSTANCE_CHAT and CHAT_FILTERS.CHAT_MSG_EMOTE
+      and CHAT_FILTERS.CHAT_MSG_RAID_WARNING and CHAT_FILTERS.CHAT_MSG_COMMUNITIES_CHANNEL,
+      "say, yell, emote, party, raid, raid warning, instance, officer and community chat too")
+local _, inClub = CHAT_FILTERS.CHAT_MSG_COMMUNITIES_CHANNEL(nil, "CHAT_MSG_COMMUNITIES_CHANNEL", tag, "Lichy Val")
+check(inClub and inClub:find(link, 1, true), "in a community it is a link")
 
 print("-- clicking a link")
 local notices = {}

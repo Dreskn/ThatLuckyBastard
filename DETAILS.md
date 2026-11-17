@@ -56,7 +56,7 @@ Tables over everything recorded. Click a column title to sort. The last two tabs
 
 The **Share** button (or `/tlb share`) shares the run on show, in two ways:
 
-- **A link in chat.** Pick a channel: say, yell, party, raid, instance, guild, officer, or a channel you joined. The link goes into your chat box and you send it yourself. Players with the addon click it to see the run; others see plain text. Global channels (General, Trade, LocalDefense and the like) are not offered, and links posted there stay plain text.
+- **A link in chat.** Pick a channel: say, yell, emote, party, raid, raid warning, instance, guild, officer, a channel or community you joined, or a whisper to a player whose full name you type. The link goes into your chat box and you send it yourself. Players with the addon click it to see the run; others see plain text. Global channels (General, Trade, LocalDefense and the like) are not offered, and links posted there stay plain text.
 - **A code.** The run as text to copy out of the game and paste anywhere: about 3,000 to 5,000 characters for a five-player dungeon. Anyone with the addon imports it in the **Shared runs** window (`/tlb import`).
 
 A click on a link asks the player who posted it for the run. Their addon sends it back through hidden addon messages, never through chat, at the pace the game allows: a few seconds to about 15. It works while they are online, and only for runs they posted a link to.
@@ -104,18 +104,20 @@ The minimap button does the same: left-click for the window, right-click for the
 
 - Entering a different dungeon starts a new run.
 - Running back in as a ghost after a wipe continues the same run.
-- If you come back into the same dungeon within 20 minutes without having died out of it, That Lucky Bastard asks whether it is a new run. With the prompt turned off, it always starts a new run.
+- If you come back into the same dungeon within 20 minutes without having died out of it, That Lucky Bastard asks whether it is a new run. Set it to "Always a new run" and it no longer asks.
 - If you reset the instance yourself, the run is closed automatically.
 - A reload or a short disconnect inside the dungeon continues the run.
 
 ## Options
 
-- **Appearance:** two themes (Modern, the default, and Classic), player picture (3D model, 2D portrait by default, class icon or none), window scale.
-- **Layout:** columns or list, group items by category, align the same item across players to compare line by line, and which details to show.
-- **Items and values:** switch categories on or off, auction or vendor-only pricing, show or hide silver and copper, item order.
-- **Players:** order by podium (top looter in the middle, the default), role (tank, healer, damage), value or name; optionally always show yourself first. Names follow the game's "My Secondary Name" setting, or can be forced to full or first name only.
-- **Behaviour:** when the window opens by itself, raid tracking, a one-line chat summary, how many runs to keep, the minimap button.
-- **Extras:** the podium, awards and their sounds, run time and records, bingo, familiar faces, the streak recap, the two tooltip lines, and the live loot notices with their minimum value.
+- **Window:** the theme (Modern, the default, or Classic), the size of every window, one column per player (up to 5) or a list, items grouped by category, the same item lined up across columns, item order (value or name), what to show (icons, shares, share bar, totals, run time and records), and amounts as 12g 34s (the default), 12g 34s 56c or 12g.
+- **Players:** the picture (2D portrait by default, 3D model, class icon or none), names as the game shows them (its "My Secondary Name" setting), full or first name only, and the order: podium (top looter in the middle, the default), loot value, role or name, optionally with you first.
+- **Loot:** auction or vendor prices, with the addon the auction prices come from; vendor totals; which categories to show, and whether hidden ones still count.
+- **End of run:** what opens when you leave a dungeon alive (the breakdown and the podium by default, either one, or nothing), awards, the reveal's sounds and screenshot, the streak recap, and a line in your chat window that only you see.
+- **While you play:** the valuable loot notice (5 gold and up by default, or off), familiar faces, the two tooltip lines and loot bingo.
+- **General:** raid tracking, what happens when you come back into the same dungeon, how many runs to keep, the minimap button.
+
+Options that do nothing as things stand are greyed out, such as the share bar in Classic. **Defaults** puts every option back except the number of runs to keep.
 
 ## Limitations
 
@@ -128,7 +130,7 @@ The minimap button does the same: left-click for the window, right-click for the
 - **Portraits and models need the player nearby.** The game cannot save either, so a player who is out of sight or gone from the group shows their class icon.
 - **Item search and the Runs page only cover the runs that are kept** (300 by default; any number up to unlimited). A run takes about 25 to 150 KB in the saved file. Dungeon figures, records, regulars, luck, drops and roles are kept separately and are not affected by that limit.
 - **People met once are forgotten after 90 days.** Regulars would otherwise fill up with strangers from random groups.
-- **Lowering the number of runs to keep takes effect when the next run ends,** so a misclick deletes nothing.
+- **Lowering the number of runs to keep asks first,** saying how many runs would go, then deletes them at once. Pinned runs stay.
 - **Deleting runs does not change the statistics.** Dungeon figures, regulars, luck, drops and roles are added up when a run is closed, and keep what a deleted run contributed.
 - **Fastest run** only compares runs with the most boss kills seen for that dungeon, so an abandoned run cannot take the record.
 - **Auction prices are taken as they are.** A rarely traded item with an unrealistic listing can distort a run. Items valued at an auction price carry a blue dot, and an item worth more than half of the run on its own is highlighted in orange. Right-click an item to switch it to its vendor price for that run (and again to switch back).
@@ -186,6 +188,10 @@ python tests/run_tests.py ThatLuckyBastard tests/test_audit.lua
 
 ```bash
 python tests/run_tests.py ThatLuckyBastard tests/test_share.lua
+```
+
+```bash
+python tests/run_tests.py ThatLuckyBastard tests/test_options.lua
 ```
 
 `tools/make_logo.py` draws the addon's mark (needs Pillow); the brand colours live at the top of `ThatLuckyBastard/Core.lua`.

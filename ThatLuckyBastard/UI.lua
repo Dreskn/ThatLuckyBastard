@@ -392,8 +392,16 @@ end
 -- The main window, the run windows, the statistics and the bingo card
 -- share the HIGH level: each comes to the front when it opens or is
 -- clicked. The options sit above them, on DIALOG.
-function ns.MakeWindow(name, width, height, strata, closeOnEscape)
+--
+-- Every window follows the Size option (see ns.ApplyScale), unless it has
+-- `fixedSize`: the options window, whose slider would move under the mouse.
+local scaledWindows, appliedScale = {}, nil
+function ns.MakeWindow(name, width, height, strata, closeOnEscape, fixedSize)
     local w = CreateFrame("Frame", name, UIParent)
+    if not fixedSize then
+        scaledWindows[#scaledWindows + 1] = w
+        if appliedScale then w:SetScale(appliedScale) end
+    end
     w:SetSize(width, height)
     w:SetFrameStrata(strata)
     w:SetToplevel(true)
@@ -410,6 +418,16 @@ function ns.MakeWindow(name, width, height, strata, closeOnEscape)
     content:SetAllPoints()
     content:SetFrameLevel(w:GetFrameLevel() + 10)
     return w, content, content:CreateFontString(nil, "OVERLAY", "GameFontNormal"), windowSkins
+end
+
+-- Sizes the main window and every window made by ns.MakeWindow (but the
+-- options) by the Size option.
+function ns.ApplyScale()
+    local scale = ns.db and ns.db.options.scale or 1
+    if scale == appliedScale then return end
+    appliedScale = scale
+    f:SetScale(scale)
+    for _, w in ipairs(scaledWindows) do w:SetScale(scale) end
 end
 
 -- Shows the skin of the theme in force and places the title for it.
@@ -1611,6 +1629,11 @@ local RIGHT_EDGE = -24 -- right margin of the buttons on the right, clear of the
 local optionsBtn = MakeButton("Options", 80, function() ns.ToggleOptions() end)
 optionsBtn:SetPoint("BOTTOMRIGHT", RIGHT_EDGE, 10)
 
+-- The addon's version, quietly, beside Options.
+local versionLabel = ui:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+versionLabel:SetPoint("RIGHT", optionsBtn, "LEFT", -10, 0)
+versionLabel:SetText(ns.VERSION ~= "" and ("v" .. ns.VERSION) or "")
+
 -- Top row, buttons of one size side by side (the first is placed by
 -- ApplyTheme):
 --   Need only    switches between all loot and Need-roll wins only (to
@@ -1620,7 +1643,7 @@ optionsBtn:SetPoint("BOTTOMRIGHT", RIGHT_EDGE, 10)
 --                rolls and numbers are tabs of Statistics)
 --   Statistics   the tables over all runs (dungeons, luck, drops, item
 --                search and so on)
---   Bingo        your bingo card
+--   Bingo        your bingo card (not there while bingo is switched off)
 -- and on its own on the right, Share: the run on show as a link in chat
 -- or as a code (Share.lua). Each button closes its window again on a
 -- second click. Six of them and Share fit the narrowest window.
@@ -1640,7 +1663,7 @@ TopButton("Podium", function() ns.ToggleRunWindow("podium", ns.ViewedRun()) end)
 TopButton("Front page", function() ns.ToggleRunWindow("paper", ns.ViewedRun()) end)
 TopButton("Timeline", function() ns.ToggleRunWindow("timeline", ns.ViewedRun()) end)
 TopButton("Statistics", function() ns.ToggleBrowse() end)
-TopButton("Bingo", function() ns.ToggleBingo() end)
+local bingoBtn = TopButton("Bingo", function() ns.ToggleBingo() end)
 local shareBtn = MakeButton("Share", TOP_W, function() ns.ToggleShare(ns.ViewedRun()) end)
 
 local expandAll = MakeButton("Expand all", 90, function()
@@ -1653,7 +1676,7 @@ local expandAll = MakeButton("Expand all", 90, function()
     for name in pairs(s.players) do expanded[name] = anyClosed or nil end
     Render()
 end)
-expandAll:SetPoint("RIGHT", optionsBtn, "LEFT", -4, 0)
+expandAll:SetPoint("RIGHT", versionLabel, "LEFT", -10, 0)
 
 local runLabel = ui:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 runLabel:SetPoint("LEFT", deleteBtn, "RIGHT", 10, 0)
@@ -1718,7 +1741,7 @@ function Render()
     drawing = true
     wipe(drawCache)
     if currentTheme ~= ThemeName() then ApplyTheme() end
-    f:SetScale(o.scale or 1)
+    ns.ApplyScale()
     headers.market:SetText(o.valueMode == "vendor" and "Value" or "Market")
 
     -- The window shows a run, not a position: when the list shifts under
@@ -1736,6 +1759,7 @@ function Render()
     if s ~= revealRun then CancelReveal() end
 
     needBtn:SetSelected(needOnly) -- lit while on; a second click shows all loot again
+    bingoBtn:SetShown(o.bingo and true or false)
     older:SetOn(viewIndex < #runs)
     newer:SetOn(viewIndex > 1)
     local stored = s ~= nil and not s.example
@@ -1920,6 +1944,7 @@ end
 -- switched to its other price. (New loot only redraws this window: see
 -- ns.Refresh.)
 function ns.Rerender()
+    ns.ApplyScale()
     if f:IsShown() then Render() end
     for _, fn in ipairs(redraws) do fn() end
 end

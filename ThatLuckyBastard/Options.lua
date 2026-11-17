@@ -2,17 +2,21 @@ local _, ns = ...
 
 -- Options panel: a list of pages on the left, the selected page on the
 -- right. It uses the same skins as the other windows and restyles its own
--- controls to match.
+-- controls to match. An option that does nothing as things stand (the
+-- share bar in the Classic theme, say) is greyed out rather than hidden,
+-- so that nothing moves as you click.
 
 local ACCENT = ns.ACCENT
 local GOLD = { 1.00, 0.82, 0.00 }
-local WIDTH, HEIGHT = 590, 480
+local WIDTH, HEIGHT = 590, 550
 local SIDEBAR_W = 140
 local ROW_H = 22
-local COL2_X = 200 -- x of the second column in two-column groups
+local COL_W = 200 -- width of a column in two-column groups
 local PAGE_W = WIDTH - SIDEBAR_W - 46 -- width of the page area
 
-local o, ui, title, skins = ns.MakeWindow("ThatLuckyBastardOptionsFrame", WIDTH, HEIGHT, "DIALOG", true)
+-- The last argument keeps this window at its size whatever the Size
+-- option says, so that the slider does not move under the mouse.
+local o, ui, title, skins = ns.MakeWindow("ThatLuckyBastardOptionsFrame", WIDTH, HEIGHT, "DIALOG", true, true)
 o:SetPoint("CENTER")
 title:SetText(ns.Title("Options"))
 
@@ -22,10 +26,13 @@ sidebarBg:SetAllPoints()
 local pageArea = CreateFrame("Frame", nil, ui)
 
 local pages, navs, sections, checks = {}, {}, {}, {}
+local live = {} -- texts that follow the saved data, rewritten on every sync
 local currentPage = 1
 local flat = false
 local scaleSlider, scaleLabel
 local Sync
+
+local function Opt() return ns.db.options end
 
 ----------------------------------------------------------------------
 -- Building blocks
@@ -85,6 +92,8 @@ local function Section(p, text)
     p.y = p.y - 22
 end
 
+-- Grey text of up to two lines under a group. Returns it, for the texts
+-- that change.
 local function Hint(p, text)
     local fs = p:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
     fs:SetPoint("TOPLEFT", 4, p.y - 2)
@@ -92,11 +101,28 @@ local function Hint(p, text)
     fs:SetJustifyH("LEFT")
     fs:SetText(text)
     p.y = p.y - 28
+    return fs
+end
+
+-- A line of text that introduces the controls under it.
+local function Label(p, text)
+    local fs = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fs:SetPoint("TOPLEFT", 4, p.y - 4)
+    fs:SetText(text)
+    p.y = p.y - 18
+end
+
+-- Text at the start of a row whose controls come after it, on the same line.
+local function RowLabel(p, text)
+    local fs = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    fs:SetPoint("TOPLEFT", 4, p.y - 5)
+    fs:SetText(text)
 end
 
 -- A checkbox (or radio button) drawn by the panel itself so it can be
--- restyled per theme. Does not move the page cursor.
-local function MakeCheck(p, x, label, get, set, radio)
+-- restyled per theme. `enabled`, if given, says whether it does anything
+-- as things stand; it is greyed out when not. Does not move the page cursor.
+local function MakeCheck(p, x, label, get, set, radio, enabled)
     local b = CreateFrame("Button", nil, p)
     b:SetHeight(ROW_H)
     b:SetPoint("TOPLEFT", x, p.y)
@@ -107,7 +133,7 @@ local function MakeCheck(p, x, label, get, set, radio)
     b.text:SetPoint("LEFT", 26, 0)
     b.text:SetText(label)
     b:SetWidth(30 + b.text:GetStringWidth())
-    b.get, b.radio = get, radio
+    b.get, b.radio, b.enabled = get, radio, enabled
     b:SetScript("OnClick", function()
         if radio then set() else set(not get()) end
         Sync()
@@ -119,66 +145,61 @@ local function MakeCheck(p, x, label, get, set, radio)
     return b
 end
 
--- Lays controls out in one or two columns and advances the page cursor.
--- defs = { { label, get, set }, ... }
-local function Group(p, defs, columns, radio)
-    columns = columns or 1
+-- Lays controls out in columns and advances the page cursor.
+-- defs = { { label, get, set, enabled }, ... }; columns of `colW` from `x0`.
+local function Group(p, defs, columns, radio, colW, x0)
+    columns, colW, x0 = columns or 1, colW or COL_W, x0 or 0
     for i, def in ipairs(defs) do
         local col = (i - 1) % columns
-        MakeCheck(p, col * COL2_X, def[1], def[2], def[3], radio)
+        MakeCheck(p, x0 + col * colW, def[1], def[2], def[3], radio, def[4])
         if col == columns - 1 or i == #defs then p.y = p.y - ROW_H end
     end
 end
 
--- On/off switches stored in db.options. keys = { { "Label", "key" }, ... }
+-- On/off switches stored in db.options. keys = { { "Label", "key", enabled }, ... }
 local function Toggles(p, keys, columns)
     local defs = {}
     for i, k in ipairs(keys) do
         defs[i] = {
             k[1],
-            function() return ns.db.options[k[2]] end,
-            function(on) ns.db.options[k[2]] = on end,
+            function() return Opt()[k[2]] end,
+            function(on) Opt()[k[2]] = on end,
+            k[3],
         }
     end
     Group(p, defs, columns)
 end
 
 -- Pick-one group stored in db.options[key]. choices = { { "Label", value }, ... }
-local function Choices(p, key, choices, columns)
+local function Choices(p, key, choices, columns, colW, x0)
     local defs = {}
     for i, c in ipairs(choices) do
         defs[i] = {
             c[1],
-            function() return ns.db.options[key] == c[2] end,
-            function() ns.db.options[key] = c[2] end,
+            function() return Opt()[key] == c[2] end,
+            function() Opt()[key] = c[2] end,
         }
     end
-    Group(p, defs, columns, true)
+    Group(p, defs, columns, true, colW, x0)
 end
 
 ----------------------------------------------------------------------
--- Page 1: Appearance
+-- Page 1: Window
 ----------------------------------------------------------------------
 
 do
-    local p = NewPage("Appearance", "How the window looks.")
+    local p = NewPage("Window", "How the breakdown looks.")
 
     Section(p, "Theme")
     local defs = {}
-    for i, t in ipairs({ { "Classic", "classic" }, { "Modern", "modern" } }) do
+    for i, t in ipairs({ { "Modern", "modern" }, { "Classic", "classic" } }) do
         defs[i] = {
             t[1],
             function() return (ns.db.theme or "modern") == t[2] end,
             function() ns.db.theme = t[2] end,
         }
     end
-    Group(p, defs, 1, true)
-
-    Section(p, "Player picture")
-    Choices(p, "portrait", {
-        { "3D model", "3d" }, { "2D portrait", "2d" }, { "Class icon", "class" }, { "None", "none" },
-    }, 2)
-    Hint(p, "Players out of sight or gone from the group show their class icon.")
+    Group(p, defs, 2, true)
 
     Section(p, "Size")
     scaleLabel = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -200,160 +221,320 @@ do
         if not ns.db then return end
         value = math.floor(value * 20 + 0.5) / 20
         scaleLabel:SetText(("Scale: %d%%"):format(value * 100 + 0.5))
-        if ns.db.options.scale ~= value then
-            ns.db.options.scale = value
+        if Opt().scale ~= value then
+            Opt().scale = value
             ns.Rerender()
         end
     end)
     scaleSlider = s
     p.y = p.y - 26
-end
 
-----------------------------------------------------------------------
--- Page 2: Layout
-----------------------------------------------------------------------
-
-do
-    local p = NewPage("Layout", "How a run is laid out, and what it shows.")
-
-    Section(p, "Arrangement")
+    Section(p, "Layout")
+    Choices(p, "useColumns", { { "One column per player, up to 5", true }, { "Always a list", false } }, 2)
     Toggles(p, {
-        { "One column per player for groups of 5 or fewer", "useColumns" },
         { "Group items by category", "groupByCategory" },
-        { "Align the same item across players", "alignItems" },
+        { "Line up the same item across columns", "alignItems", function() return Opt().useColumns end },
     })
+    RowLabel(p, "Order items by")
+    Choices(p, "sortItems", { { "Value", "value" }, { "Name", "name" } }, 2, 90, 110)
 
-    Section(p, "Details to show")
+    Section(p, "Show")
     Toggles(p, {
-        { "Vendor value", "showVendor" },
         { "Item icons", "showIcons" },
-        { "Share, and gap to an equal split", "showShare" },
-        { "Share bar (Modern theme)", "showBar" },
-        { "Total and equal split", "showTotals" },
+        { "Each share, and its gap to an equal split", "showShare" },
+        { "Share bar", "showBar", function() return ns.db.theme ~= "classic" end },
+        { "Run total and equal split", "showTotals" },
+        { "Run time, records and averages", "showInsights" },
     })
-end
 
-----------------------------------------------------------------------
--- Page 3: Items and values
-----------------------------------------------------------------------
-
-do
-    local p = NewPage("Items and values", "What counts, and how it is priced.")
-
-    Section(p, "Categories")
-    local defs = {}
-    for i, cat in ipairs({
-        { "Epic BoE", "epic" }, { "Blue BoE", "rare" }, { "Green BoE", "uncommon" },
-        { "Bind on Pickup", "bop" }, { "Quest items", "quest" }, { "Profession materials", "prof" },
-        { "Other", "other" }, { "Junk", "junk" },
-    }) do
-        defs[i] = {
-            cat[1],
-            function() return ns.db.options.cats[cat[2]] ~= false end,
-            function(on) ns.db.options.cats[cat[2]] = on end,
-        }
+    -- Two saved switches, offered as the three ways they can combine.
+    Section(p, "Amounts")
+    local function Amounts(silver, copper)
+        return function() return Opt().showSilver == silver and (not silver or Opt().showCopper == copper) end,
+            function() Opt().showSilver, Opt().showCopper = silver, copper end
     end
-    Group(p, defs, 2)
-    Hint(p, "Unticked categories are hidden and not counted.")
-    Toggles(p, { { "Count hidden categories anyway", "countHidden" } })
-
-    Section(p, "Price")
-    Choices(p, "valueMode", {
-        { "Auction price, vendor if unknown", "market" }, { "Vendor price only", "vendor" },
-    })
-    Toggles(p, { { "Show silver", "showSilver" }, { "Show copper", "showCopper" } }, 2)
-
-    Section(p, "Order items by")
-    Choices(p, "sortItems", { { "Value", "value" }, { "Name", "name" } }, 2)
+    Group(p, {
+        { "12g 34s 56c", Amounts(true, true) },
+        { "12g 34s", Amounts(true, false) },
+        { "12g", Amounts(false, false) },
+    }, 3, true, 130)
 end
 
 ----------------------------------------------------------------------
--- Page 4: Players
+-- Page 2: Players
 ----------------------------------------------------------------------
 
 do
-    local p = NewPage("Players", "The order players appear in.")
+    local p = NewPage("Players", "How each player is shown.")
 
-    Section(p, "Order players by")
-    Choices(p, "sortPlayers", {
-        { "Role (tank, healer, damage)", "role" },
-        { "Podium (top looter in the middle)", "podium" },
-        { "Loot value", "value" },
-        { "Name", "name" },
-    })
-    p.y = p.y - 6
-    Toggles(p, { { "Always show me first (except podium)", "selfFirst" } })
+    Section(p, "Picture")
+    Choices(p, "portrait", {
+        { "2D portrait", "2d" }, { "3D model", "3d" }, { "Class icon", "class" }, { "None", "none" },
+    }, 2)
+    Hint(p, "Players out of sight or gone from the group show their class icon. "
+        .. "3D models show in the column view only.")
 
     Section(p, "Names")
     Choices(p, "nameStyle", {
-        { "Follow the game's name setting", "game" },
+        { "As the game shows them", "game" },
         { "Full name", "full" },
         { "First name only", "first" },
     })
+
+    Section(p, "Order")
+    Choices(p, "sortPlayers", {
+        { "Podium (top looter in the middle)", "podium" },
+        { "Loot value", "value" },
+        { "Role (tank, healer, damage)", "role" },
+        { "Name", "name" },
+    })
+    p.y = p.y - 6
+    Toggles(p, { { "Put me first", "selfFirst", function() return Opt().sortPlayers ~= "podium" end } })
 end
 
 ----------------------------------------------------------------------
--- Page 5: Behaviour
+-- Page 3: Loot
 ----------------------------------------------------------------------
 
 do
-    local p = NewPage("Behaviour", "What is tracked, and when the window opens.")
+    local p = NewPage("Loot", "What counts, and at what price.")
 
-    Section(p, "Open the window automatically")
-    Toggles(p, {
-        { "When I leave a dungeon alive", "popupLeave" },
+    Section(p, "Price")
+    Choices(p, "valueMode", {
+        { "Auction price, vendor when there is none", "market" }, { "Vendor price only", "vendor" },
     })
+    Toggles(p, { { "Vendor totals too", "showVendor", function() return Opt().valueMode ~= "vendor" end } })
+    local source = Hint(p, "")
+    live[#live + 1] = function()
+        local name = ns.PriceSourceName()
+        if Opt().valueMode == "vendor" then
+            source:SetText("")
+        elseif name then
+            source:SetText(("Auction prices from %s. Right-click an item in the window to switch its price.")
+                :format(name))
+        else
+            source:SetText("No Auctionator or TradeSkillMaster: vendor prices are used.")
+        end
+    end
+
+    -- In the order the window shows them.
+    Section(p, "Categories shown")
+    local defs = {}
+    for i, cat in ipairs({
+        { "Epic BoE", "epic" }, { "Blue BoE", "rare" }, { "Green BoE", "uncommon" },
+        { "Bind on Pickup", "bop" }, { "Profession materials", "prof" }, { "Other", "other" },
+        { "Junk", "junk" }, { "Quest items", "quest" },
+    }) do
+        defs[i] = {
+            cat[1],
+            function() return Opt().cats[cat[2]] ~= false end,
+            function(on) Opt().cats[cat[2]] = on end,
+        }
+    end
+    Group(p, defs, 2)
+    Hint(p, "Unticked ones are hidden from the window.")
+    local function AnyHidden()
+        for _, on in pairs(Opt().cats) do
+            if on == false then return true end
+        end
+        return false
+    end
+    Toggles(p, { { "Hidden ones still count in totals", "countHidden", AnyHidden } })
+end
+
+----------------------------------------------------------------------
+-- Page 4: End of run
+----------------------------------------------------------------------
+
+do
+    local p = NewPage("End of run", "When you leave a dungeon alive.")
+
+    -- Two saved switches (the breakdown, the podium), offered as the four
+    -- ways they can combine.
+    Section(p, "Open")
+    local function Open(window, podium)
+        return function() return Opt().popupLeave == window and Opt().podiumOnLeave == podium end,
+            function() Opt().popupLeave, Opt().podiumOnLeave = window, podium end
+    end
+    Group(p, {
+        { "The breakdown and the podium", Open(true, true) },
+        { "The breakdown", Open(true, false) },
+        { "The podium", Open(false, true) },
+        { "Nothing", Open(false, false) },
+    }, 1, true)
+
+    Section(p, "Awards")
+    Toggles(p, { { "Hand out awards (Ninja, Jackpot and more)", "showAwards" } })
+    Hint(p, "/tlb awards lists them all.")
+
+    -- The podium reveals its players one by one; the breakdown reveals the
+    -- awards, when it opens without the podium.
+    Section(p, "The reveal")
+    local function Reveals()
+        return Opt().podiumOnLeave or (Opt().popupLeave and Opt().showAwards) or false
+    end
+    Toggles(p, {
+        { "Sounds", "ceremonySound", Reveals },
+        { "Screenshot at the end", "ceremonyScreenshot", Reveals },
+    })
+
+    Section(p, "Also")
+    Toggles(p, {
+        { "Streak recap after back-to-back runs", "streak" },
+        { "A line in my chat window (only I see it)", "chatSummary" },
+    })
+end
+
+----------------------------------------------------------------------
+-- Page 5: While you play
+----------------------------------------------------------------------
+
+do
+    local p = NewPage("While you play", "Only you see these.")
+
+    -- The notice's switch and its amount, offered as one choice.
+    Section(p, "Notices")
+    Label(p, "Valuable loot, worth at least:")
+    local function Worth(copper)
+        return function() return Opt().ticker and Opt().tickerMin == copper end,
+            function() Opt().ticker, Opt().tickerMin = true, copper end
+    end
+    Group(p, {
+        { "1g", Worth(10000) }, { "5g", Worth(50000) }, { "25g", Worth(250000) }, { "100g", Worth(1000000) },
+        { "Off", function() return not Opt().ticker end, function() Opt().ticker = false end },
+    }, 5, true, 70)
+    Toggles(p, { { "Someone I've run with joins my group", "familiar" } })
+
+    Section(p, "Tooltips")
+    Toggles(p, {
+        { "Players: our runs together", "tipPlayers" },
+        { "Items: seen in my runs", "tipItems" },
+    })
+
+    Section(p, "Bingo")
+    Toggles(p, { { "Loot bingo", "bingo" } })
+    Hint(p, "A private card dealt each run.")
+end
+
+----------------------------------------------------------------------
+-- Page 6: General
+----------------------------------------------------------------------
+
+-- How many runs keeping only `limit` would delete: your own beyond it
+-- (pinned ones aside), and those shared with you beyond it.
+local function RunsOver(limit)
+    local own = 0
+    for _, s in ipairs(ns.db.history) do
+        if not s.pinned then own = own + 1 end
+    end
+    return math.max(own - limit, 0) + math.max(#ns.db.shared - limit, 0)
+end
+
+local function Refresh()
+    if o:IsShown() then
+        Sync()
+    else
+        ns.UpdateMinimapButton()
+        ns.Rerender()
+    end
+end
+
+StaticPopupDialogs["THATLUCKYBASTARD_KEEP_FEWER"] = {
+    text = ns.NAME .. "\n\nKeep only %s runs?\n\n%s",
+    button1 = YES,
+    button2 = NO,
+    OnAccept = function(_, limit)
+        Opt().maxHistory = limit
+        ns.TrimHistory()
+        Refresh()
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
+
+-- The confirmations come up over this window, which is on the same level.
+local function Confirm(which, a, b, data)
+    local dialog = StaticPopup_Show(which, a, b, data)
+    if dialog and dialog.Raise then dialog:Raise() end
+end
+
+-- A number that would delete runs asks first, then deletes them at once.
+local function KeepRuns(limit)
+    local over = RunsOver(limit)
+    if over == 0 then
+        Opt().maxHistory = limit
+    else
+        Confirm("THATLUCKYBASTARD_KEEP_FEWER", tostring(limit),
+            ("The %d oldest will be deleted now. Pinned runs stay."):format(over), limit)
+    end
+end
+
+do
+    local p = NewPage("General", "What is recorded and kept.")
 
     Section(p, "Tracking")
-    Toggles(p, {
-        { "Track raids too", "trackRaids" },
-        { "Ask whether re-entering a dungeon is a new run", "askNewRun" },
-        { "One-line summary in my chat window when a run ends", "chatSummary" },
-    })
+    Toggles(p, { { "Track raids too", "trackRaids" } })
+
+    Section(p, "Back in the same dungeon")
+    Choices(p, "askNewRun", { { "Ask if it's a new run", true }, { "Always a new run", false } }, 2)
+    Hint(p, "After a death, the run always goes on.")
 
     Section(p, "Runs to keep")
-    Choices(p, "maxHistory", {
-        { "10", 10 }, { "30", 30 }, { "100", 100 }, { "300", 300 }, { "Unlimited", 99999 },
-    }, 2)
-    Hint(p, "About 25 to 150 KB per run. Pinned runs come on top; shared runs are counted apart. "
-        .. "A lower number applies when the next run ends.")
-    p.y = p.y - 4
+    local defs = {}
+    for i, c in ipairs({ { "10", 10 }, { "30", 30 }, { "100", 100 }, { "300", 300 }, { "Unlimited", 99999 } }) do
+        defs[i] = {
+            c[1],
+            function() return Opt().maxHistory == c[2] end,
+            function() KeepRuns(c[2]) end,
+        }
+    end
+    Group(p, defs, 5, true, 75)
+    local count = Hint(p, "")
+    live[#live + 1] = function()
+        local runs, pinned = #ns.db.history, 0
+        for _, s in ipairs(ns.db.history) do
+            if s.pinned then pinned = pinned + 1 end
+        end
+        local text = ("You have %d run%s"):format(runs, runs == 1 and "" or "s")
+        if pinned > 0 then text = text .. (" (%d pinned)"):format(pinned) end
+        if #ns.db.shared > 0 then text = text .. (" and %d shared with you"):format(#ns.db.shared) end
+        count:SetText(text .. ".\nAbout 25 to 150 KB per run. Pinned runs don't count.")
+    end
 
     Section(p, "Minimap")
-    Toggles(p, { { "Show the minimap button", "showMinimap" } })
+    Toggles(p, { { "Minimap button", "showMinimap" } })
 end
 
 ----------------------------------------------------------------------
--- Page 6: Extras
+-- Defaults
 ----------------------------------------------------------------------
 
-do
-    local p = NewPage("Extras", "Everything here is shown to you alone.")
+-- Everything back as on a new install, except the number of runs to keep
+-- (a lower one would delete runs) and where the minimap button was put.
+StaticPopupDialogs["THATLUCKYBASTARD_DEFAULTS"] = {
+    text = ns.NAME .. "\n\nPut every option back to its default?\n\n|cff909090Runs to keep stays as it is.|r",
+    button1 = YES,
+    button2 = NO,
+    OnAccept = function()
+        local x = Opt()
+        local keep, angle = x.maxHistory, x.minimapAngle
+        ns.FillDefaults(x, true)
+        x.maxHistory, x.minimapAngle = keep, angle
+        ns.db.theme = "modern"
+        Refresh()
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
 
-    Section(p, "End of run")
-    Toggles(p, {
-        { "Open the podium when a run ends", "podiumOnLeave" },
-        { "Awards", "showAwards" },
-        { "Sounds during the reveal", "ceremonySound" },
-        { "Screenshot after the reveal", "ceremonyScreenshot" },
-        { "Run time, records and averages under the breakdown", "showInsights" },
-    })
-
-    Section(p, "During the run")
-    Toggles(p, {
-        { "Loot bingo", "bingo" },
-        { "Notice when a familiar player joins my group", "familiar" },
-        { "Streak recap after back-to-back runs", "streak" },
-        { "Player tooltips: our runs together", "tipPlayers" },
-        { "Item tooltips: seen in my runs", "tipItems" },
-        { "Notice for valuable loot", "ticker" },
-    })
-    Hint(p, "Worth at least:")
-    p.y = p.y + 10
-    Choices(p, "tickerMin", {
-        { "1 gold", 10000 }, { "5 gold", 50000 }, { "25 gold", 250000 }, { "100 gold", 1000000 },
-    }, 2)
-end
+local defaultsBtn = ns.MakeButton("Defaults", SIDEBAR_W - 20, function()
+    Confirm("THATLUCKYBASTARD_DEFAULTS")
+end, sidebar)
+defaultsBtn:SetPoint("BOTTOM", 0, 10)
 
 ----------------------------------------------------------------------
 -- Theme and refresh
@@ -400,6 +581,7 @@ local function ApplyTheme()
     pageArea:ClearAllPoints()
     pageArea:SetPoint("TOPLEFT", sidebar, "TOPRIGHT", 18, -8)
     pageArea:SetPoint("BOTTOMRIGHT", -18, 12)
+    defaultsBtn:SetFlat(flat)
 
     for i, n in ipairs(navs) do
         local selected = (i == currentPage)
@@ -440,9 +622,14 @@ end
 function Sync()
     ApplyTheme()
     for _, b in ipairs(checks) do
+        local on = true
+        if b.enabled then on = b.enabled() and true or false end
+        b:SetEnabled(on)
+        b:SetAlpha(on and 1 or 0.4)
         b.tick:SetShown(b.get() and true or false)
     end
-    local scale = ns.db.options.scale or 1
+    for _, fn in ipairs(live) do fn() end
+    local scale = Opt().scale or 1
     scaleSlider:SetValue(scale)
     scaleLabel:SetText(("Scale: %d%%"):format(scale * 100 + 0.5))
     ns.UpdateMinimapButton()

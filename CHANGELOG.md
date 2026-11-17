@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.1
+
+- More places to share a run's link: emote, raid warning, your communities, and a whisper to a player whose full name you type (it fills in with the player you target).
+- The addon's version shows beside the Options button.
+- **The options, reorganised** into Window, Players, Loot, End of run, While you play and General, in plainer words. What opens at the end of a run, how amounts are written and the valuable loot notice are now one choice each. Options that do nothing as things stand are greyed out, and a Defaults button puts them all back.
+- Size now applies to every window, not only the main one.
+- Lowering the number of runs to keep asks first, then deletes at once, instead of deleting later without a word.
+- The Bingo button leaves the main window while bingo is switched off.
+- New installs write amounts as 12g 34s, without copper.
+
 ## 0.4.0
 
 New

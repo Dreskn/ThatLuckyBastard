@@ -66,6 +66,11 @@ function known.SetText(self, text)
     if TEXTLOG and self.__text ~= "" then TEXTLOG[#TEXTLOG + 1] = self.__text end
 end
 function known.GetText(self) return self.__text end
+function known.SetAttribute(self, key, value)
+    self.__attributes = self.__attributes or {}
+    self.__attributes[key] = value
+end
+function known.GetAttribute(self, key) return self.__attributes and self.__attributes[key] end
 -- The edit box that has the keyboard, if any.
 function known.SetFocus(self) FOCUSED = self end
 function known.ClearFocus(self) if FOCUSED == self then FOCUSED = nil end end
@@ -78,7 +83,11 @@ function known.GetSize(self) return self.__w or 700, self.__h or 400 end
 function known.GetStringHeight() return 12 end
 function known.GetStringWidth(self) return #(self.__text or "") * 6 end
 function known.GetFrameLevel() return 1 end
-function known.GetScale() return 1 end
+function known.SetScale(self, scale) self.__scale = scale end
+function known.GetScale(self) return self.__scale or 1 end
+-- Whether a button can be clicked (greyed-out options cannot).
+function known.SetEnabled(self, on) self.__enabled = on and true or false end
+function known.IsEnabled(self) return self.__enabled ~= false end
 function known.GetEffectiveScale() return 1 end
 function known.GetFont() return "font", 12, "" end
 function known.GetName(self) return self.__name end
@@ -117,7 +126,7 @@ function known.GetPushedTexture() return NewWidget("Texture") end
 FRAMES = {}
 function CreateFrame(kind, name, parent, template)
     local w = NewWidget(kind, name)
-    w.__template = template
+    w.__template, w.__parent = template, parent
     FRAMES[#FRAMES + 1] = w
     if name then _G[name] = w end
     return w
@@ -143,7 +152,13 @@ function GameTooltip_Hide() end
 UISpecialFrames = {}
 StaticPopupDialogs = {}
 SlashCmdList = {}
-function StaticPopup_Show() end
+-- The confirmations asked for: { which, a, b, data }. Answering one is
+-- calling StaticPopupDialogs[which].OnAccept.
+POPUPS = {}
+function StaticPopup_Show(which, a, b, data)
+    POPUPS[#POPUPS + 1] = { which = which, a = a, b = b, data = data }
+    return NewWidget("StaticPopup")
+end
 STANDARD_TEXT_FONT = "Fonts\\FRIZQT__.TTF"
 YES, NO, UNKNOWNOBJECT = "Yes", "No", "Unknown"
 RAID_CLASS_COLORS = setmetatable({}, { __index = function() return { r = 1, g = 1, b = 1, colorStr = "ffffffff" } end })
@@ -189,7 +204,12 @@ local function PartyMember(unit)
     return i and WORLD.party[i]
 end
 function UnitName(unit) if unit == "player" then return "Mira", "Vale" end local m = PartyMember(unit) return m and m[1] end
-function GetUnitName(unit) if unit == "player" then return WORLD.me end local m = PartyMember(unit) return m and m[1] end
+function GetUnitName(unit)
+    if unit == "player" then return WORLD.me end
+    if unit == "target" then return WORLD.target end
+    local m = PartyMember(unit)
+    return m and m[1]
+end
 function UnitClass(unit) if unit == "player" then return "Shaman", "SHAMAN" end local m = PartyMember(unit) return m and m[2], m and m[2] end
 function UnitExists(unit) return unit == "player" or PartyMember(unit) ~= nil end
 function UnitIsUnit(a, b) return a == b end
@@ -240,7 +260,17 @@ function IsInGuild() return WORLD.guild == true end
 C_GuildInfo = { IsGuildOfficer = function() return WORLD.officer == true end }
 LE_PARTY_CATEGORY_INSTANCE = 2
 function EnumerateServerChannels() return "General", "Trade", "LocalDefense" end
-function GetChannelList() return 1, "General", false, 2, "Trade", false, 5, "Dungeon Pals", false end
+function GetChannelList()
+    return 1, "General", false, 2, "Trade", false, 5, "Dungeon Pals", false, 7, "Community:4242:1", false
+end
+function ChatFrame_ResolveChannelName(name) return name == "Community:4242:1" and "Our Club" or name end
+function UnitIsGroupLeader(unit) return unit == "player" and WORLD.leader == true end
+function UnitIsGroupAssistant() return false end
+-- The chat box: what the addon set on it.
+CHAT_BOX = CreateFrame("EditBox", "ChatFrame1EditBox")
+function ChatEdit_ChooseBoxForSend() return CHAT_BOX end
+function ChatEdit_UpdateHeader() end
+C_AddOns = { GetAddOnMetadata = function(addon, field) return field == "Version" and "9.9.9" or nil end }
 
 -- The modern client's wording for loot and roll messages.
 LOOT_ITEM = "%s receives loot: %s."

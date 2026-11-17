@@ -22,6 +22,9 @@ ns.ACCENT = { 0.25, 0.78, 0.72 }
 ns.ACCENT_HEX = "|cff40c7b8"
 ns.BRAND = "|cffffffffThat|r " .. ns.ACCENT_HEX .. "Lucky|r |cffffffffBastard|r"
 ns.NAME = "That Lucky Bastard" -- the same, where colour codes are not wanted
+-- The version, from the .toc file, so that it is only ever written there.
+local GetAddOnMetadata = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+ns.VERSION = GetAddOnMetadata and GetAddOnMetadata(ADDON, "Version") or ""
 ns.LOGO = "Interface\\AddOns\\ThatLuckyBastard\\Media\\logo.tga"
 ns.MARK = ("|T%s:0|t"):format(ns.LOGO) -- the mark alone, for a line in a tooltip
 
@@ -57,8 +60,10 @@ ns.OPTION_DEFAULTS = {
              junk = true },
     countHidden = false,
     valueMode = "market",   -- "market" (auction, vendor fallback) or "vendor"
-    showSilver = true,      -- amounts smaller than the smallest shown unit
-    showCopper = true,      -- are still displayed, so nothing reads as zero
+    -- Amounts as 12g 34s (copper off), 12g 34s 56c or 12g. Amounts smaller
+    -- than the smallest shown unit still show, so nothing reads as zero.
+    showSilver = true,
+    showCopper = false,
     groupByCategory = true, -- off: every item in one list
     -- "role" (tank, healer, damage), "podium" (top looter in the middle),
     -- "value" or "name"
@@ -79,6 +84,21 @@ ns.OPTION_DEFAULTS = {
     showMinimap = true,     -- minimap button
     minimapAngle = 215,     -- its position around the minimap, in degrees
 }
+
+-- Fills in the options `o` lacks with their defaults. With `all`, puts
+-- every option back to its default instead.
+function ns.FillDefaults(o, all)
+    for key, value in pairs(ns.OPTION_DEFAULTS) do
+        if type(value) == "table" then
+            if all or type(o[key]) ~= "table" then o[key] = {} end
+            for k, v in pairs(value) do
+                if o[key][k] == nil then o[key][k] = v end
+            end
+        elseif all or o[key] == nil then
+            o[key] = value
+        end
+    end
+end
 
 local function Print(msg)
     print(ns.BRAND .. ": " .. msg)
@@ -330,6 +350,13 @@ ns.AuctionPrice = AuctionPrice
 -- True when an addon that can supply auction prices is loaded.
 function ns.HasPriceSource()
     return AuctionatorAPI() ~= nil or HasTSM()
+end
+
+-- The name of the addon(s) supplying auction prices, or nil.
+function ns.PriceSourceName()
+    local auctionator, tsm = AuctionatorAPI() ~= nil, HasTSM()
+    if auctionator and tsm then return "Auctionator and TradeSkillMaster" end
+    return (auctionator and "Auctionator") or (tsm and "TradeSkillMaster") or nil
 end
 
 local function Categorize(quality, classID, bindType)
@@ -1536,16 +1563,10 @@ function handlers.ADDON_LOADED(name)
     if db.active then DropLooks(db.active) end
     for _, s in ipairs(db.history) do DropLooks(s) end
     if db.theme ~= "classic" then db.theme = "modern" end -- Modern unless Classic was chosen
-    for key, value in pairs(ns.OPTION_DEFAULTS) do
-        if type(value) == "table" then
-            if type(db.options[key]) ~= "table" then db.options[key] = {} end
-            for k, v in pairs(value) do
-                if db.options[key][k] == nil then db.options[key][k] = v end
-            end
-        elseif db.options[key] == nil then
-            db.options[key] = value
-        end
-    end
+    ns.FillDefaults(db.options)
+    -- Silver off with copper on was a fourth way to write amounts, which
+    -- the options no longer offer: it reads as 12g.
+    if not db.options.showSilver then db.options.showCopper = false end
     ns.db = db
 end
 
@@ -1556,6 +1577,7 @@ function handlers.PLAYER_LOGIN()
     PLAYER_NAME = GetUnitName("player", true) or UnitName("player")
     ns.playerName = PLAYER_NAME
     PLAYER_CLASS = select(2, UnitClass("player"))
+    if ns.ApplyScale then ns.ApplyScale() end -- the windows' size, from the options
     -- People met in a single run, long ago, are forgotten: with random
     -- groups the list would otherwise grow for ever.
     local cutoff = time() - FORGET_AFTER

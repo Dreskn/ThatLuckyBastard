@@ -212,9 +212,10 @@ end
 
 -- Where tags turn into links: every chat but the global channels.
 local CHAT_EVENTS = {
-    "CHAT_MSG_SAY", "CHAT_MSG_YELL", "CHAT_MSG_PARTY", "CHAT_MSG_PARTY_LEADER", "CHAT_MSG_RAID",
+    "CHAT_MSG_SAY", "CHAT_MSG_YELL", "CHAT_MSG_EMOTE", "CHAT_MSG_PARTY", "CHAT_MSG_PARTY_LEADER", "CHAT_MSG_RAID",
     "CHAT_MSG_RAID_LEADER", "CHAT_MSG_RAID_WARNING", "CHAT_MSG_INSTANCE_CHAT", "CHAT_MSG_INSTANCE_CHAT_LEADER",
     "CHAT_MSG_GUILD", "CHAT_MSG_OFFICER", "CHAT_MSG_WHISPER", "CHAT_MSG_WHISPER_INFORM", "CHAT_MSG_CHANNEL",
+    "CHAT_MSG_COMMUNITIES_CHANNEL",
 }
 
 local function Linkify(_, event, msg, author, ...)
@@ -259,15 +260,19 @@ if hooksecurefunc and SetItemRef then hooksecurefunc("SetItemRef", OnLink) end
 ----------------------------------------------------------------------
 
 local WIDTH = 400
-local BTN_W, BTN_GAP, PER_ROW = 86, 4, 4
+local BTN_W, BTN_GAP, PER_ROW = 118, 4, 3
 
 -- The channels a link can be posted to. `usable`: whether you can talk
 -- there right now.
 local CHANNELS = {
     { label = "Say", command = "/s" },
     { label = "Yell", command = "/y" },
+    { label = "Emote", command = "/e" },
     { label = "Party", command = "/p", usable = function() return IsInGroup() end },
     { label = "Raid", command = "/ra", usable = function() return IsInRaid() end },
+    { label = "Raid warning", command = "/rw", usable = function()
+        return IsInGroup() and (UnitIsGroupLeader("player") or UnitIsGroupAssistant("player"))
+    end },
     { label = "Instance", command = "/i", usable = function() return IsInGroup(LE_PARTY_CATEGORY_INSTANCE or 2) end },
     { label = "Guild", command = "/g", usable = function() return IsInGuild() end },
     { label = "Officer", command = "/o", usable = function()
@@ -275,20 +280,54 @@ local CHANNELS = {
     end },
 }
 
--- Channels you joined yourself, by number: not the game's zone and world
--- channels, nor communities.
+-- Channels and communities you joined yourself, by number: not the game's
+-- zone and world channels. A community's channel is named by the game as
+-- "Community:<ids>": it is shown under the community's own name.
 local function CustomChannels()
     local global = {}
     for _, name in ipairs(EnumerateServerChannels and { EnumerateServerChannels() } or {}) do global[name] = true end
+    local resolve = (ChatFrameUtil and ChatFrameUtil.ResolveChannelName) or ChatFrame_ResolveChannelName
     local out, list = {}, GetChannelList and { GetChannelList() } or {}
     for i = 1, #list, 3 do
         local id, name, disabled = list[i], list[i + 1], list[i + 2]
         if type(id) == "number" and type(name) == "string" and not disabled and not global[name]
-                and not GLOBAL_CHANNELS[name] and not name:find("^Community:") then
-            out[#out + 1] = { label = Short(name, 13), command = "/" .. id }
+                and not GLOBAL_CHANNELS[name] then
+            local label = name
+            if name:find("^Community:") then
+                label = resolve and resolve(name)
+                if type(label) ~= "string" or label:find("^Community:") then label = nil end -- not one we can name
+            end
+            if label then out[#out + 1] = { label = Short(label, 17), command = "/" .. id } end
         end
     end
     return out
+end
+
+-- Opens the chat box whispering `name`, with `text` in it. The target is
+-- set on the chat box itself rather than typed as "/w name": on Forever
+-- a name is two words, and the chat box would cut it at the space.
+local function OpenWhisper(name, text)
+    local choose = ChatEdit_ChooseBoxForSend or (ChatFrameUtil and ChatFrameUtil.ChooseBoxForSend)
+    local open = (ChatFrameUtil and ChatFrameUtil.OpenChat) or ChatFrame_OpenChat
+    local box = choose and choose()
+    if not (open and box and box.SetAttribute) then
+        if open then open("/w " .. name .. " " .. text) end -- the old way: fine for one-word names
+        return
+    end
+    open(text)
+    box:SetAttribute("chatType", "WHISPER")
+    box:SetAttribute("tellTarget", name)
+    local update = ChatEdit_UpdateHeader or (ChatFrameUtil and ChatFrameUtil.UpdateHeader)
+    if update then update(box) elseif box.UpdateHeader then box:UpdateHeader() end
+end
+
+-- The player you are targeting, if it is another player: offered as the
+-- one to whisper.
+local function TargetName()
+    if UnitIsPlayer("target") and not UnitIsUnit("target", "player") then
+        local name = GetUnitName("target", true)
+        if type(name) == "string" and not issecret(name) then return name end
+    end
 end
 
 local win, ui, title, skins = ns.MakeWindow("ThatLuckyBastardShareFrame", WIDTH, 300, "HIGH", true)
@@ -326,6 +365,36 @@ local function ChannelButton(i)
     return channelButtons[i]
 end
 
+-- Whisper: a box for the player's name, and its button.
+local nameBox = CreateFrame("EditBox", nil, ui, "InputBoxTemplate")
+nameBox:SetHeight(20)
+nameBox:SetAutoFocus(false)
+nameBox:SetMaxLetters(60)
+local namePrompt = nameBox:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+namePrompt:SetPoint("LEFT", 2, 0)
+namePrompt:SetText("Their full name")
+local function UpdatePrompt()
+    namePrompt:SetShown(nameBox:GetText() == "" and not nameBox:HasFocus())
+end
+nameBox:SetScript("OnTextChanged", UpdatePrompt)
+nameBox:SetScript("OnEditFocusGained", UpdatePrompt)
+nameBox:SetScript("OnEditFocusLost", UpdatePrompt)
+nameBox:SetScript("OnEscapePressed", nameBox.ClearFocus)
+
+local lastWhisper -- the name whispered last, offered again
+local function Whisper()
+    local s = shareRun
+    local name = (nameBox:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
+    if not s or name == "" then return nameBox:SetFocus() end
+    s.shared = true -- your addon answers clicks on this run's link from now on
+    lastWhisper = name
+    nameBox:ClearFocus()
+    OpenWhisper(name, ns.ShareTag(s))
+    win:Hide()
+end
+nameBox:SetScript("OnEnterPressed", Whisper)
+local whisperBtn = ns.MakeButton("Whisper", BTN_W, Whisper, ui)
+
 local codeBtn = ns.MakeButton("Show the code", 130, function() ns.ShowExport("code", shareRun) end, ui)
 local importBtn = ns.MakeButton("Shared runs", 130, function() ns.ToggleImport() end, ui)
 
@@ -358,7 +427,18 @@ local function Draw()
         b:Show()
     end
     for i = #channels + 1, #channelButtons do channelButtons[i]:Hide() end
-    y = y - math.ceil(#channels / PER_ROW) * 26 - 10
+    y = y - math.ceil(#channels / PER_ROW) * 26
+    -- Whisper row: the name box across two columns, the button in the third.
+    nameBox:ClearAllPoints()
+    nameBox:SetPoint("TOPLEFT", 22, y - 1)
+    nameBox:SetWidth(2 * BTN_W + BTN_GAP - 6)
+    nameBox:SetEnabled(own)
+    whisperBtn:ClearAllPoints()
+    whisperBtn:SetPoint("TOPLEFT", 16 + 2 * (BTN_W + BTN_GAP), y)
+    whisperBtn:SetFlat(flat)
+    whisperBtn:SetOn(own)
+    UpdatePrompt()
+    y = y - 26 - 10
     Place(codeHead, 16, 18)
     Place(codeHint, 16, 20)
     Place(codeBtn, 16, 34)
@@ -375,6 +455,7 @@ end
 function ns.ToggleShare(s)
     if win:IsShown() and shareRun == s then return win:Hide() end
     shareRun = s
+    nameBox:SetText(TargetName() or lastWhisper or "")
     win:Show()
     win:Raise()
     Draw()
