@@ -210,8 +210,9 @@ end
 local GRID_W = SIZE * CELL_W + (SIZE - 1) * GAP
 local GRID_H = SIZE * CELL_H + (SIZE - 1) * GAP
 
--- Not closed by Escape: the card is meant to stay open during a run.
-local frame, ui, title, skins = ns.MakeWindow("ThatLuckyBastardBingoFrame", GRID_W + 28, GRID_H + 100, "MEDIUM", false)
+-- Not closed by Escape: the card is meant to stay open during a run. On
+-- the same level as the addon's other windows, in front when it opens.
+local frame, ui, title, skins = ns.MakeWindow("ThatLuckyBastardBingoFrame", GRID_W + 28, GRID_H + 100, "HIGH", false)
 frame:SetPoint("RIGHT", UIParent, "RIGHT", -60, 60)
 
 local status = ui:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
@@ -349,6 +350,7 @@ function ns.ToggleBingo()
     else
         if ns.db.options.bingo then Evaluate() end -- deals the card if the run has none yet
         frame:Show()
+        frame:Raise()
     end
 end
 

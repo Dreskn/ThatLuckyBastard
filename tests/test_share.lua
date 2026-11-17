@@ -274,4 +274,52 @@ check(notices[#notices] and notices[#notices]:find("could not be read", 1, true)
       "a damaged answer is refused: " .. tostring(notices[#notices]))
 ns.Notice = realNotice
 
+print("-- shared runs take their place by date")
+wipe(db.shared)
+-- A copy of the run, as recorded by Lichy Val at another time.
+local function SharedAt(startedAt)
+    local savedStart, savedEnd, savedOwner = run.startedAt, run.endedAt, run.owner
+    run.startedAt, run.endedAt, run.owner = startedAt, startedAt + (run.endedAt - run.startedAt), "Lichy Val"
+    local theirCode = ns.EncodeRun(run)
+    run.startedAt, run.endedAt, run.owner = savedStart, savedEnd, savedOwner
+    return ns.ImportCode(theirCode)
+end
+local active = db.active
+check(ns.InProgress(active) and active.startedAt > run.startedAt, "(your run in progress started after your other run)")
+local between = SharedAt(math.floor((run.startedAt + active.startedAt) / 2))
+local newest = SharedAt(active.startedAt + 600)
+local oldest = SharedAt(run.startedAt - 600)
+local function position(s)
+    TEXTLOG = {}
+    ns.ShowRun(s)
+    for _, t in ipairs(TEXTLOG) do
+        local i, n = t:match("%((%d+)/(%d+)%)")
+        if i then return tonumber(i) .. "/" .. n end
+    end
+end
+check(position(active) == "1/5" and position(newest) == "2/5" and position(between) == "3/5"
+      and position(run) == "4/5" and position(oldest) == "5/5",
+      "newest first: your run in progress, then the rest by when they started, shared or not")
+TEXTLOG = {}
+ns.ToggleImport()
+local order = {}
+for _, t in ipairs(TEXTLOG) do
+    local date = t:match("^(%d+%-%d+%-%d+ %d+:%d+)   ")
+    if date then order[#order + 1] = date end
+end
+check(#order == 3 and order[1] > order[2] and order[2] > order[3], "the Shared runs list is in date order too")
+ns.ToggleImport()
+
+print("-- how many shared runs are kept")
+local ownBefore = #db.history
+db.options.maxHistory = 2
+ns.TrimHistory() -- as when a run ends
+check(#db.shared == 2 and db.shared[1] == oldest and db.shared[2] == newest and #db.history == ownBefore,
+      "a lower number of runs to keep drops the shared runs that arrived first, and none of yours")
+local latest = SharedAt(run.startedAt - 1200)
+check(#db.shared == 2 and db.shared[1] == latest and db.shared[2] == oldest, "importing past the number drops the first to arrive")
+db.options.maxHistory = 300
+for i = 1, 5 do SharedAt(run.startedAt - 1200 - i * 600) end
+check(#db.shared == 7, "with the default 300, they all stay")
+
 print(FAILED and (FAILED .. " check(s) FAILED") or "all checks passed (sharing)")

@@ -1,7 +1,7 @@
 local _, ns = ...
 
 -- Figures worked out from recorded runs, for the statistics panel, the
--- run details and the tooltips. Nothing here draws anything.
+-- run windows and the tooltips. Nothing here draws anything.
 --
 -- Two kinds of figures:
 --   * about one run, worked out when asked for: timeline, roll sheet,

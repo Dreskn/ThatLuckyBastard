@@ -10,9 +10,13 @@ local _, ns = ...
 --   roles     how shares turn out by role and class
 --   search    find an item in past runs: when it dropped and who got it
 --   awards    what every award means
+--   rolls     every roll of the run on show in the main window
+--   numbers   the numbers behind that run
 --
--- Each page is a table: a one-line description, a list of columns and a
--- function returning rows. A row is
+-- Rolls and numbers are pages drawn by RunPages.lua (ns.AddStatsPage), and
+-- follow the main window as it steps from run to run. Every other page is
+-- a table: a one-line description, a list of columns and a function
+-- returning rows. A row is
 --   { cells = { text, ... },      what is shown
 --     keys = { value, ... },      what each column sorts by (optional)
 --     link = item link for the tooltip, run = run to open on click,
@@ -21,7 +25,7 @@ local _, ns = ...
 -- sorted by clicking a column title.
 
 local WIDTH, HEIGHT = 900, 480
-local TAB_W = 92
+local TAB_W = 75 -- eleven tabs across the window
 local ROW_H = 18
 local MAX_ROWS = 300
 local MAX_COLS = 8
@@ -402,7 +406,13 @@ PAGES.awards = {
     end,
 }
 
-local PAGE_ORDER = { "dungeons", "records", "runs", "luck", "regulars", "drops", "roles", "search", "awards" }
+-- Pages about the run on show: their frame and draw function come from
+-- RunPages.lua.
+PAGES.rolls = { title = "Rolls" }
+PAGES.numbers = { title = "Numbers" }
+
+local PAGE_ORDER = { "dungeons", "records", "runs", "luck", "regulars", "drops", "roles", "search", "awards",
+                     "rolls", "numbers" }
 
 ----------------------------------------------------------------------
 -- Controls
@@ -434,6 +444,17 @@ search:SetScript("OnEnterPressed", search.ClearFocus)
 search:SetScript("OnEscapePressed", search.ClearFocus)
 
 local exportBtn = ns.MakeButton("Export all runs", 120, function() ns.ShowExport("all") end, ui)
+
+-- Where a page that draws itself goes, in place of the table.
+local pageHost = CreateFrame("Frame", nil, ui)
+ns.StatsPageParent = pageHost
+
+-- Gives page `key` the frame it is drawn in and draw(run).
+function ns.AddStatsPage(key, frame, draw)
+    PAGES[key].frame, PAGES[key].draw = frame, draw
+    frame:SetAllPoints(pageHost)
+    frame:Hide()
+end
 
 local scroll = CreateFrame("ScrollFrame", nil, ui, "UIPanelScrollFrameTemplate")
 local content = CreateFrame("Frame", nil, scroll)
@@ -543,6 +564,9 @@ local function ApplyTheme()
     exportBtn:ClearAllPoints()
     exportBtn:SetPoint("TOPRIGHT", -14, top - 26)
 
+    pageHost:ClearAllPoints()
+    pageHost:SetPoint("TOPLEFT", 12, top - 56)
+    pageHost:SetPoint("BOTTOMRIGHT", -12, 12)
     scroll:ClearAllPoints()
     scroll:SetPoint("TOPLEFT", 12, top - 72)
     scroll:SetPoint("BOTTOMRIGHT", -32, 12)
@@ -597,6 +621,24 @@ function Refresh()
         blurb:SetText(page.blurb)
     end
     blurb:SetPoint("RIGHT", exportBtn, "LEFT", -10, 0)
+
+    -- A page about the run on show draws itself in place of the table.
+    local s = page.draw and ns.ViewedRun()
+    for _, p in pairs(PAGES) do
+        if p.frame then p.frame:SetShown(p == page and s ~= nil) end
+    end
+    scroll:SetShown(not page.draw)
+    headerLine:SetShown(not page.draw)
+    if page.draw then
+        blurb:SetText(s and ("The run on show in the main window: %s, %s."):format(s.name or "Run", DateText(s.startedAt))
+                      or "No run to show yet.")
+        for k = 1, MAX_COLS do
+            headers[k]:Hide()
+            headerButtons[k]:Hide()
+        end
+        if s then page.draw(s) end
+        return
+    end
 
     local data = page.rows(search:GetText())
     local sortable = false
@@ -695,6 +737,11 @@ ns.OnRerender(function()
     if b:IsShown() then Refresh() end
 end)
 
+-- The run pages follow the main window from run to run.
+ns.OnRunShown(function()
+    if b:IsShown() and PAGES[mode].draw then Refresh() end
+end)
+
 -- page: one of the page names at the top of this file. query: text for
 -- the page's filter box.
 function ns.ShowBrowse(page, query)
@@ -707,7 +754,7 @@ function ns.ShowBrowse(page, query)
     else
         b:Show()
     end
-    b:Raise() -- above the main window and the run details, which share its level
+    b:Raise() -- above the main window and the run windows, which share its level
     if mode == "search" then search:SetFocus() end
 end
 

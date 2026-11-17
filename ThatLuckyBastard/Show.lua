@@ -1,15 +1,15 @@
 local _, ns = ...
 
--- The run details window. Two pages live here:
+-- Windows about one run each, opened by the main window's buttons and by
+-- /tlb podium, paper and timeline. Two live here:
 --   podium  the group's characters standing on blocks by rank, each
---           playing an emote that fits how they did
+--           playing an emote that fits how they did. Also opens by itself
+--           when a run ends (if the option is on), revealing the podium
+--           last place first.
 --   paper   a mock newspaper front page written from the run's awards
--- and other files add more with ns.AddShowPage (see RunPages.lua).
--- Opened from the main window, by /tlb details and the page names, and
--- (if the option is on) by itself when a run ends, revealing the podium
--- last place first.
+-- and RunPages.lua adds the timeline.
 
-local WIDTH, HEIGHT = 720, 540
+local WIDTH, HEIGHT = 720, 510
 local STAGE_W = WIDTH - 24
 local MAX_SLOTS = 5
 local SLOT_W, BLOCK_W = 132, 112
@@ -25,41 +25,60 @@ local MEDALS = ns.MEDALS -- gold, silver, bronze, then grey
 -- once and are replayed on every tick.
 local ANIM = { dance = 69, applaud = 80, wave = 67, cry = 77, kneel = 75 }
 
-local show, ui, title, skins = ns.MakeWindow("ThatLuckyBastardShowFrame", WIDTH, HEIGHT, "HIGH", true)
-show:SetPoint("CENTER", 0, 20)
+----------------------------------------------------------------------
+-- A window about one run
+----------------------------------------------------------------------
 
-local page = "podium"
-local run           -- the run on show
-local drawToken = 0 -- raised on every draw, so a stale reveal can tell it is stale
-local Draw
+local windows = {} -- [key] = run window
 
-local podiumTab = ns.MakeButton("Podium", 100, function() page = "podium"; Draw() end, ui)
-local paperTab = ns.MakeButton("Front page", 100, function() page = "paper"; Draw() end, ui)
-paperTab:SetPoint("LEFT", podiumTab, "RIGHT", 4, 0)
-podiumTab.isTab, paperTab.isTab = true, true
-
--- Pages added by other files: [key] = { frame, draw, tab }. A page is a
--- frame (a child of ns.ShowParent, placed by this window) and a function
--- that draws a run into it.
-local extra, extraList = {}, {}
-local lastTab = paperTab
-ns.ShowParent = ui
-
-function ns.AddShowPage(key, label, frame, draw)
-    local tab = ns.MakeButton(label, 100, function() page = key; Draw() end, ui)
-    tab:SetPoint("LEFT", lastTab, "RIGHT", 4, 0)
-    tab.isTab = true
-    lastTab = tab
-    extra[key] = { frame = frame, draw = draw, tab = tab }
-    extraList[#extraList + 1] = extra[key]
-    frame:Hide()
+-- Makes a window that shows one run and nothing else. draw(run, ceremony,
+-- top) fills it; `top` is where the content starts under the title. Its
+-- title names the run. Returns { frame, ui, run, Open }.
+function ns.MakeRunWindow(key, name, label, width, height, draw)
+    local w, ui, title, skins = ns.MakeWindow(name, width, height, "HIGH", true)
+    local rw = { frame = w, ui = ui }
+    function rw.Draw(ceremony)
+        local _, top = ns.ApplyWindowTheme(skins, title)
+        title:SetText(ns.Title(label .. (rw.run and ("  -  " .. (rw.run.name or "Run")) or "")))
+        draw(rw.run, ceremony, top)
+    end
+    function rw.Open(s, ceremony)
+        rw.run = s
+        w:Show()
+        w:Raise()
+        rw.Draw(ceremony)
+    end
+    windows[key] = rw
+    ns.OnRerender(function()
+        if w:IsShown() then rw.Draw() end
+    end)
+    return rw
 end
+
+-- Opens run window `key` ("podium", "paper" or "timeline") on run `s`.
+-- ceremony: reveal the podium one player at a time.
+function ns.OpenRunWindow(key, s, ceremony)
+    windows[key].Open(s, ceremony)
+end
+
+-- The main window's buttons: open the window on run `s`, or close it if
+-- it shows that run already.
+function ns.ToggleRunWindow(key, s)
+    local rw = windows[key]
+    if rw.frame:IsShown() and rw.run == s then rw.frame:Hide() else rw.Open(s) end
+end
+
+local drawToken = 0 -- raised on every podium draw, so a stale reveal can tell it is stale
+local DrawPodium, DrawPaper
+local podium = ns.MakeRunWindow("podium", "ThatLuckyBastardPodiumFrame", "Podium", WIDTH, HEIGHT,
+    function(s, ceremony, top) DrawPodium(s, ceremony, top) end)
+podium.frame:SetPoint("CENTER", 0, 20)
 
 ----------------------------------------------------------------------
 -- Podium
 ----------------------------------------------------------------------
 
-local stage = CreateFrame("Frame", nil, ui)
+local stage = CreateFrame("Frame", nil, podium.ui)
 
 local emptyText = stage:CreateFontString(nil, "OVERLAY", "GameFontDisable")
 emptyText:SetPoint("CENTER")
@@ -175,10 +194,30 @@ local function SetupPicture(slot)
     end
 end
 
-local function DrawPodium(ceremony)
+local drawnRun -- the run the slots were last set up for
+
+function DrawPodium(s, ceremony, top)
+    drawToken = drawToken + 1 -- calls off any reveal still in progress
     local token = drawToken
-    local sum = ns.Summarize(run)
-    local awards = ns.RunAwards(run, sum)
+    stage:ClearAllPoints()
+    stage:SetPoint("TOPLEFT", 12, top)
+    stage:SetPoint("BOTTOMRIGHT", -12, 12)
+    if s ~= drawnRun then
+        -- Another run: nothing the slots hold belongs to it.
+        for _, slot in ipairs(slots) do slot.modelFor = nil end
+        drawnRun = s
+    end
+    if not s then
+        for _, slot in ipairs(slots) do
+            slot.p = nil
+            slot:Hide()
+        end
+        emptyText:SetText("No run to show yet.")
+        emptyText:Show()
+        return
+    end
+    local sum = ns.Summarize(s)
+    local awards = ns.RunAwards(s, sum)
 
     -- The top five, in podium order.
     local ranked, top = {}, {}
@@ -214,7 +253,7 @@ local function DrawPodium(ceremony)
             -- Last place first, the winner last.
             slot:Hide()
             C_Timer.After(REVEAL_STEP * (count - p.rank + 1), function()
-                if token ~= drawToken or not show:IsShown() then return end
+                if token ~= drawToken or not podium.frame:IsShown() then return end
                 slot:Show()
                 SetupPicture(slot)
                 if sound then ns.PlayKit("IG_MAINMENU_OPTION_CHECKBOX_ON", 856) end
@@ -233,12 +272,12 @@ local function DrawPodium(ceremony)
         local length = REVEAL_STEP * count
         if sound then
             C_Timer.After(length + 0.3, function()
-                if token == drawToken and show:IsShown() then ns.PlayKit("IG_QUEST_LIST_COMPLETE", 878) end
+                if token == drawToken and podium.frame:IsShown() then ns.PlayKit("IG_QUEST_LIST_COMPLETE", 878) end
             end)
         end
         if ns.db.options.ceremonyScreenshot and Screenshot then
             C_Timer.After(length + 1.5, function()
-                if token == drawToken and show:IsShown() then Screenshot() end
+                if token == drawToken and podium.frame:IsShown() then Screenshot() end
             end)
         end
     end
@@ -252,7 +291,14 @@ local PAPER_W = WIDTH - 44
 local MARGIN = 22
 local INK = { 0.13, 0.10, 0.07 }
 
-local paperScroll = CreateFrame("ScrollFrame", nil, ui, "UIPanelScrollFrameTemplate")
+local paperWin = ns.MakeRunWindow("paper", "ThatLuckyBastardPaperFrame", "Front page", WIDTH, HEIGHT,
+    function(s, _, top) DrawPaper(s, top) end)
+paperWin.frame:SetPoint("CENTER", 30, 0)
+
+local paperScroll = CreateFrame("ScrollFrame", nil, paperWin.ui, "UIPanelScrollFrameTemplate")
+local paperNote = paperWin.ui:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+paperNote:SetPoint("CENTER")
+paperNote:SetText("No run to show yet.")
 local paper = CreateFrame("Frame", nil, paperScroll)
 paper:SetSize(PAPER_W, 1)
 paperScroll:SetScrollChild(paper)
@@ -530,8 +576,14 @@ local function Paper(s)
     return doc
 end
 
-local function DrawPaper()
-    local doc = Paper(run)
+function DrawPaper(s, top)
+    paperScroll:ClearAllPoints()
+    paperScroll:SetPoint("TOPLEFT", 12, top)
+    paperScroll:SetPoint("BOTTOMRIGHT", -32, 12)
+    paperScroll:SetShown(s ~= nil)
+    paperNote:SetShown(s == nil)
+    if not s then return end
+    local doc = Paper(s)
     local width = PAPER_W - 2 * MARGIN
 
     masthead:SetText(doc.masthead)
@@ -573,109 +625,23 @@ local function DrawPaper()
 end
 
 ----------------------------------------------------------------------
--- Window
+-- Keeping the podium alive
 ----------------------------------------------------------------------
 
-local function ApplyTheme()
-    local flat, top = ns.ApplyWindowTheme(skins, title)
-    podiumTab:ClearAllPoints()
-    podiumTab:SetPoint("TOPLEFT", 12, top)
-    podiumTab:SetFlat(flat)
-    paperTab:SetFlat(flat)
-
-    stage:ClearAllPoints()
-    stage:SetPoint("TOPLEFT", 12, top - 30)
-    stage:SetPoint("BOTTOMRIGHT", -12, 12)
-    paperScroll:ClearAllPoints()
-    paperScroll:SetPoint("TOPLEFT", 12, top - 30)
-    paperScroll:SetPoint("BOTTOMRIGHT", -32, 12)
-    for _, x in ipairs(extraList) do
-        x.tab:SetFlat(flat)
-        x.frame:ClearAllPoints()
-        x.frame:SetPoint("TOPLEFT", 12, top - 30)
-        x.frame:SetPoint("BOTTOMRIGHT", -12, 12)
-    end
-end
-
-function Draw(ceremony)
-    drawToken = drawToken + 1 -- cancels any reveal still in progress
-    ApplyTheme()
-    podiumTab:SetSelected(page == "podium")
-    paperTab:SetSelected(page == "paper")
-    for _, x in ipairs(extraList) do
-        x.tab:SetSelected(extra[page] == x)
-        x.frame:Hide()
-    end
-
-    if not run then
-        title:SetText(ns.Title("Run details"))
-        paperScroll:Hide()
-        stage:Show()
-        for _, slot in ipairs(slots) do
-            slot.p = nil
-            slot:Hide()
-        end
-        emptyText:SetText("No run to show yet.")
-        emptyText:Show()
-        return
-    end
-
-    title:SetText(ns.Title(run.name or "Run"))
-    if extra[page] then
-        stage:Hide()
-        paperScroll:Hide()
-        extra[page].frame:Show()
-        extra[page].draw(run)
-    elseif page == "paper" then
-        stage:Hide()
-        paperScroll:Show()
-        DrawPaper()
-    else
-        paperScroll:Hide()
-        stage:Show()
-        DrawPodium(ceremony)
-    end
-end
-
--- Keep the podium alive: bring in the models of players who have come
--- into view, and replay the one-shot emotes.
+-- Brings in the models of players who have come into view, and replays
+-- the one-shot emotes.
 local sinceTick = 0
-show:SetScript("OnUpdate", function(_, dt)
+podium.frame:SetScript("OnUpdate", function(_, dt)
     sinceTick = sinceTick + dt
     if sinceTick < TICK then return end
     sinceTick = 0
-    if page ~= "podium" then return end
     for _, slot in ipairs(slots) do
         if slot.p and slot:IsShown() then SetupPicture(slot) end
     end
 end)
 
-show:SetScript("OnHide", function()
+podium.frame:SetScript("OnHide", function()
     drawToken = drawToken + 1
-    -- Models are set up again from scratch the next time the show opens.
+    -- Models are set up again from scratch the next time the podium opens.
     for _, slot in ipairs(slots) do slot.modelFor = nil end
-end)
-
--- s: the run. ceremony: reveal the podium one player at a time.
--- which: "podium" (default), "paper", or a page added by another file.
-function ns.OpenShow(s, ceremony, which)
-    if s ~= run then
-        -- Another run: nothing the slots hold belongs to it.
-        for _, slot in ipairs(slots) do slot.modelFor = nil end
-    end
-    run = s
-    page = (which == "paper" or extra[which]) and which or "podium"
-    show:Show()
-    show:Raise()
-    Draw(ceremony)
-end
-
--- The Run details button: closes the window if it already shows run `s`,
--- and opens it on `s` otherwise.
-function ns.ToggleShow(s)
-    if show:IsShown() and run == s then show:Hide() else ns.OpenShow(s) end
-end
-
-ns.OnRerender(function()
-    if show:IsShown() then Draw() end
 end)

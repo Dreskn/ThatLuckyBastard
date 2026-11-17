@@ -26,7 +26,7 @@ check(old.players["Kett Longstride"].gear == nil and old.players["Mira Vale"].ra
 -- closed so that only the main window draws.)
 WORLD.inInstance, WORLD.visible = false, true
 Fire("PLAYER_ENTERING_WORLD", false, false)
-ThatLuckyBastardShowFrame:Hide()
+ThatLuckyBastardPodiumFrame:Hide()
 db.options.useColumns = true
 db.options.portrait = "3d"
 PICTURES = {}
@@ -52,7 +52,7 @@ end
 
 -- The podium likewise.
 PICTURES = {}
-ns.OpenShow(old, false, "podium")
+ns.OpenRunWindow("podium", old)
 check(drawn("class") == 4 and drawn("model:player") == 1, "podium, group gone: four class icons, and my own model")
 
 -- Saved looks from earlier versions are dropped when the addon loads.

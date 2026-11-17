@@ -23,6 +23,14 @@ Fire("PLAYER_ENTERING_WORLD", true, false)
 local db = ThatLuckyBastardDB
 db.options.ticker = false
 
+print("==== defaults ====")
+check(db.theme == "modern" and db.options.portrait == "2d" and db.options.sortPlayers == "podium",
+      "a new install starts in the Modern theme, with 2D portraits and players in podium order")
+db.theme = "classic"
+Fire("ADDON_LOADED", "ThatLuckyBastard")
+check(db.theme == "classic", "a player who chose Classic keeps it")
+db.theme = "modern"
+
 ITEMS[100] = { 2, 1500, 4, 2 }   -- green BoE
 ITEMS[103] = { 0, 300, 15, 0 }   -- junk
 ITEMS[104] = { 3, 12000, 2, 1 }  -- blue BoP
@@ -36,7 +44,7 @@ print("==== run boundaries ====")
 enter(1, "Keep")
 local first = db.active
 leave()
-check(not ThatLuckyBastardFrame:IsShown() and not ThatLuckyBastardShowFrame:IsShown(), "stepping in and out with no loot opens nothing")
+check(not ThatLuckyBastardFrame:IsShown() and not ThatLuckyBastardPodiumFrame:IsShown(), "stepping in and out with no loot opens nothing")
 NOW = NOW + 30
 enter(1, "Keep")
 check(db.active == first, "coming straight back continues the run")
@@ -311,15 +319,41 @@ ns.ToggleOptions()
 check(inFront(ThatLuckyBastardOptionsFrame, browse) and inFront(ThatLuckyBastardOptionsFrame, ThatLuckyBastardFrame),
       "the options stay in front of both")
 ns.ToggleOptions()
+ThatLuckyBastardBingoFrame:Hide()
+ns.ToggleBingo()
+check(inFront(ThatLuckyBastardBingoFrame, ThatLuckyBastardFrame) and inFront(ThatLuckyBastardBingoFrame, browse),
+      "the bingo card opens in front of the main window and the statistics")
+ns.ToggleBingo()
 
-print("==== the Run details and Statistics buttons close their window too ====")
-ThatLuckyBastardShowFrame:Hide()
+print("==== the buttons that open a window close it too ====")
+local podiumWin, paperWin, timelineWin = ThatLuckyBastardPodiumFrame, ThatLuckyBastardPaperFrame, ThatLuckyBastardTimelineFrame
+podiumWin:Hide()
 browse:Hide()
 ns.ShowRun(first)
-check(click("Run details") and ThatLuckyBastardShowFrame:IsShown(), "Run details opens")
-check(click("Run details") and not ThatLuckyBastardShowFrame:IsShown(), "and a second click closes it")
+check(click("Podium") and podiumWin:IsShown(), "Podium opens its window")
+check(click("Front page") and paperWin:IsShown() and podiumWin:IsShown(), "Front page opens its own, beside it")
+check(click("Timeline") and timelineWin:IsShown(), "so does Timeline")
+check(click("Podium") and not podiumWin:IsShown() and click("Front page") and not paperWin:IsShown()
+      and click("Timeline") and not timelineWin:IsShown(), "a second click closes each one")
 check(click("Statistics") and browse:IsShown(), "Statistics opens")
 check(click("Statistics") and not browse:IsShown(), "and a second click closes it")
+
+print("==== rolls and numbers: statistics tabs that follow the run on show ====")
+local function onShow(s)
+    return ("The run on show in the main window: %s, %s."):format(s.name, ns.DateText(s.startedAt))
+end
+ns.ShowBrowse("dungeons")
+TEXTLOG = {}
+check(click("Rolls") and drew(onShow(first)), "the Rolls tab is about the run on show")
+local another = db.history[1] ~= first and db.history[1] or db.history[2]
+TEXTLOG = {}
+ns.ShowRun(another)
+check(drew(onShow(another)), "and follows the main window to another run")
+TEXTLOG = {}
+check(click("Numbers") and drew(onShow(another)), "so does the Numbers tab")
+TEXTLOG = {}
+check(click("Dungeons") and not drew(onShow(another)), "the other tabs are about all your runs, as before")
+browse:Hide()
 
 print("==== a queue that pops inside a dungeon ====")
 WORLD.party = { { "Borin Oak", "WARRIOR", "TANK" }, { "Sela Marrow", "MAGE", "DAMAGER" },
@@ -334,13 +368,13 @@ local q1 = db.active
 Loot(("You receive loot: %s."):format(green))
 Loot(("%s receives loot: %s."):format("Borin Oak", epic))
 ThatLuckyBastardFrame:Hide()
-ThatLuckyBastardShowFrame:Hide()
+ThatLuckyBastardPodiumFrame:Hide()
 NOW = NOW + 600
 enter(11, "Queue Two") -- straight from one dungeon into the next
 RunTimers()
 check(db.active ~= q1 and db.active.instanceID == 11 and db.history[1] == q1 and q1.endedAt == NOW,
       "the first run ends as the second one starts")
-check(ThatLuckyBastardFrame:IsShown() and ThatLuckyBastardShowFrame:IsShown(), "the window and the podium open, as on leaving")
+check(ThatLuckyBastardFrame:IsShown() and ThatLuckyBastardPodiumFrame:IsShown(), "the window and the podium open, as on leaving")
 check(ns.ViewedRun() == q1, "on the run that just ended, not the new empty one")
 
 print("==== the streak notice, once per run ====")
@@ -401,7 +435,7 @@ local shots = 0
 local realScreenshot = Screenshot
 Screenshot = function() shots = shots + 1 end
 db.options.ceremonyScreenshot = true
-ThatLuckyBastardShowFrame:Hide()
+ThatLuckyBastardPodiumFrame:Hide()
 TIMERS = {}
 ns.ShowWindow(true, q1)
 RunTimers()

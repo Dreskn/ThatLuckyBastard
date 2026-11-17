@@ -1,15 +1,15 @@
 local _, ns = ...
 
--- Three more pages for the run details window (Show.lua), all about the
--- one run on show:
---   timeline  a chart of every player's running total through the run
+-- Three more views of one run:
+--   timeline  a chart of every player's running total through the run,
+--             in a window of its own (see ns.MakeRunWindow in Show.lua)
 --   rolls     every roll that was won: who rolled what
 --   numbers   fairness, where the loot came from, roll luck, the streak
 --             the run belongs to, today's prices and the award scores
--- The figures come from Data.lua.
+-- Rolls and numbers are tabs of the statistics window, for the run on
+-- show in the main window. The figures come from Data.lua.
 
-local parent = ns.ShowParent
-local PAGE_W = 696 -- the room a page gets in the window
+local PAGE_W = 696 -- the room a page gets: the timeline window's width, less its margins
 
 local function Clock(seconds)
     return ("%d:%02d"):format(math.floor(seconds / 60), seconds % 60)
@@ -60,7 +60,16 @@ local PALETTE = {
 }
 local MAX_SERIES = #PALETTE -- one colour per line
 
-local timeline = CreateFrame("Frame", nil, parent)
+local timeline, DrawTimeline
+local timelineWin = ns.MakeRunWindow("timeline", "ThatLuckyBastardTimelineFrame", "Timeline", PAGE_W + 24, 510,
+    function(s, _, top)
+        timeline:ClearAllPoints()
+        timeline:SetPoint("TOPLEFT", 12, top)
+        timeline:SetPoint("BOTTOMRIGHT", -12, 12)
+        DrawTimeline(s)
+    end)
+timelineWin.frame:SetPoint("CENTER", -30, -10)
+timeline = CreateFrame("Frame", nil, timelineWin.ui)
 
 local chart = CreateFrame("Frame", nil, timeline)
 chart:SetSize(CHART_W, CHART_H)
@@ -139,7 +148,7 @@ end
 
 local WHITE = { 1, 1, 1 }
 
-local function DrawTimeline(s)
+function DrawTimeline(s)
     for _, line in ipairs(segments) do line:Hide() end
     for _, fs in ipairs(bossTexts) do fs:Hide() end
     for _, row in ipairs(legend) do
@@ -149,7 +158,7 @@ local function DrawTimeline(s)
     end
     usedSegments = 0
 
-    local data = ns.Timeline(s)
+    local data = s and ns.Timeline(s)
     local has = data ~= nil
     chart:SetShown(has)
     caption:SetShown(has)
@@ -160,7 +169,8 @@ local function DrawTimeline(s)
     xEnd:SetShown(has)
     timelineNote:SetShown(not has)
     if not has then
-        timelineNote:SetText(s.example and "Example runs have no timeline."
+        timelineNote:SetText(not s and "No run to show yet."
+            or s.example and "Example runs have no timeline."
             or ((s.log or s == ns.db.active) and "Nothing has been picked up in this run."
                 or "No timeline: this run was recorded before pickup times were kept."))
         return
@@ -229,7 +239,7 @@ end
 local ROLL_ROW_H = 20
 local ROLL_COLS = { { "Time", 4, 46 }, { "Item", 54, 200 }, { "Won by", 262, 190 }, { "Others", 460, 206 } }
 
-local rollsPage = CreateFrame("Frame", nil, parent)
+local rollsPage = CreateFrame("Frame", nil, ns.StatsPageParent)
 
 local rollsSummary = rollsPage:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 rollsSummary:SetPoint("TOPLEFT", 4, -4)
@@ -344,7 +354,7 @@ end
 -- Numbers
 ----------------------------------------------------------------------
 
-local numbersPage = CreateFrame("Frame", nil, parent)
+local numbersPage = CreateFrame("Frame", nil, ns.StatsPageParent)
 
 local numbersScroll = CreateFrame("ScrollFrame", nil, numbersPage, "UIPanelScrollFrameTemplate")
 numbersScroll:SetPoint("TOPLEFT", 0, -2)
@@ -506,6 +516,5 @@ local function DrawNumbers(s)
     exportBtn:SetFlat(ns.db.theme == "modern")
 end
 
-ns.AddShowPage("timeline", "Timeline", timeline, DrawTimeline)
-ns.AddShowPage("rolls", "Rolls", rollsPage, DrawRolls)
-ns.AddShowPage("numbers", "Numbers", numbersPage, DrawNumbers)
+ns.AddStatsPage("rolls", rollsPage, DrawRolls)
+ns.AddStatsPage("numbers", numbersPage, DrawNumbers)

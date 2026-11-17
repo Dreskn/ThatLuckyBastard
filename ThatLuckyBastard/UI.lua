@@ -17,7 +17,7 @@ local THEMES = {
 
 -- The theme in force: the saved one, or Classic if that is not a theme.
 local function ThemeName()
-    return THEMES[ns.db.theme] and ns.db.theme or "classic"
+    return THEMES[ns.db.theme] and ns.db.theme or "modern"
 end
 
 local CATS = {
@@ -243,11 +243,20 @@ local function ClassColored(name, class)
     return name
 end
 
--- Every run the window can show: your own newest first, then those
--- shared with you, then the example runs.
+-- Every run the window can show: yours and those shared with you, newest
+-- first by when they started, then the example runs. Your run in
+-- progress stays first whatever the other player's clock said.
 local function Runs()
-    local runs = ns.AllRuns()
-    for _, s in ipairs(ns.db.shared) do runs[#runs + 1] = s end
+    local shared = ns.SharedByDate()
+    local runs, j = {}, 1
+    for _, s in ipairs(ns.AllRuns()) do
+        while shared[j] and not ns.InProgress(s) and (shared[j].startedAt or 0) > (s.startedAt or 0) do
+            runs[#runs + 1] = shared[j]
+            j = j + 1
+        end
+        runs[#runs + 1] = s
+    end
+    for k = j, #shared do runs[#runs + 1] = shared[k] end
     for _, s in ipairs(ns.exampleRuns) do runs[#runs + 1] = s end
     return runs
 end
@@ -266,7 +275,7 @@ end
 local f = CreateFrame("Frame", "ThatLuckyBastardFrame", UIParent)
 f:SetSize(WIDTH, HEIGHT)
 f:SetPoint("CENTER")
-f:SetFrameStrata("HIGH") -- shared with the run details and statistics (see ns.MakeWindow)
+f:SetFrameStrata("HIGH") -- shared with the run windows and statistics (see ns.MakeWindow)
 f:SetToplevel(true)
 f:SetMovable(true)
 f:SetResizable(true)
@@ -380,9 +389,9 @@ end
 -- text and its skins. `closeOnEscape` puts it among the windows Escape
 -- closes. The caller places it on the screen.
 --
--- The main window, the run details and the statistics share the HIGH
--- level: each comes to the front when it opens or is clicked. The options
--- sit above them, on DIALOG.
+-- The main window, the run windows, the statistics and the bingo card
+-- share the HIGH level: each comes to the front when it opens or is
+-- clicked. The options sit above them, on DIALOG.
 function ns.MakeWindow(name, width, height, strata, closeOnEscape)
     local w = CreateFrame("Frame", name, UIParent)
     w:SetSize(width, height)
@@ -512,7 +521,7 @@ local function RowOnClick(self, button)
         -- Switch this item between its auction and vendor price.
         if line.e and currentRun and ns.ToggleAuctionPrice(currentRun, line.e) then
             GameTooltip:Hide()
-            ns.Rerender() -- the run details and statistics show its value too
+            ns.Rerender() -- the run windows and statistics show its value too
         end
         return
     end
@@ -1500,6 +1509,8 @@ end
 -- `parent` defaults to this window, which then switches the button's
 -- variant itself. Other windows pass their own frame and call SetFlat
 -- when they apply the theme.
+local fontCount = 0 -- font objects made by SetTextColor, which each need a name
+
 local function MakeButton(text, width, onClick, parent)
     local b = CreateFrame("Frame", nil, parent or ui)
     b:SetSize(width, 22)
@@ -1548,6 +1559,21 @@ local function MakeButton(text, width, onClick, parent)
         self.tpl:SetShown(not flat)
         self.flat:SetShown(flat)
     end
+    -- Colours the label in both looks (a little lighter under the mouse on
+    -- the game-styled one, which keeps the game's grey while it is off).
+    function b:SetTextColor(r, g, bl)
+        self.flat.text:SetTextColor(r, g, bl)
+        if not CreateFont then return end
+        local function Tinted(base, lighten)
+            fontCount = fontCount + 1
+            local font = CreateFont("ThatLuckyBastardButtonFont" .. fontCount)
+            font:CopyFontObject(base)
+            font:SetTextColor(r + (1 - r) * lighten, g + (1 - g) * lighten, bl + (1 - bl) * lighten)
+            return font
+        end
+        self.tpl:SetNormalFontObject(Tinted(GameFontNormal, 0))
+        self.tpl:SetHighlightFontObject(Tinted(GameFontHighlight, 0.3))
+    end
     -- For tabs and toggles: marks the button as the current choice. The
     -- other buttons of the set stay fully readable.
     function b:SetSelected(selected)
@@ -1579,30 +1605,43 @@ local pinBtn = MakeButton("Pin", 60, function() ns.TogglePin(currentRun) end)
 pinBtn:SetPoint("LEFT", newer, "RIGHT", 12, 0)
 local deleteBtn = MakeButton("Delete", 60, function() ns.AskDeleteRun(currentRun) end)
 deleteBtn:SetPoint("LEFT", pinBtn, "RIGHT", 4, 0)
+deleteBtn:SetTextColor(1, 0.36, 0.32)
 
+local RIGHT_EDGE = -24 -- right margin of the buttons on the right, clear of the resize grip
 local optionsBtn = MakeButton("Options", 80, function() ns.ToggleOptions() end)
-optionsBtn:SetPoint("BOTTOMRIGHT", -24, 10)
+optionsBtn:SetPoint("BOTTOMRIGHT", RIGHT_EDGE, 10)
 
--- Top row: switch between all loot and Need-roll wins only (to see who
--- needed what). Placed by ApplyTheme.
-local needBtn = MakeButton("Need rolls only", 130, function()
+-- Top row, buttons of one size side by side (the first is placed by
+-- ApplyTheme):
+--   Need only    switches between all loot and Need-roll wins only (to
+--                see who needed what)
+--   Podium, Front page, Timeline
+--                a window of its own each, for the run on show (its
+--                rolls and numbers are tabs of Statistics)
+--   Statistics   the tables over all runs (dungeons, luck, drops, item
+--                search and so on)
+--   Bingo        your bingo card
+-- and on its own on the right, Share: the run on show as a link in chat
+-- or as a code (Share.lua). Each button closes its window again on a
+-- second click. Six of them and Share fit the narrowest window.
+local TOP_W, TOP_GAP = 80, 4
+local topRow = {}
+local function TopButton(label, onClick)
+    local b = MakeButton(label, TOP_W, onClick)
+    if topRow[1] then b:SetPoint("LEFT", topRow[#topRow], "RIGHT", TOP_GAP, 0) end
+    topRow[#topRow + 1] = b
+    return b
+end
+local needBtn = TopButton("Need only", function()
     needOnly = not needOnly
     Render()
 end)
-
--- The rest of the top row. Run details: everything about the run on
--- show (podium, front page, timeline, rolls, numbers). Statistics: the
--- tables over all runs (dungeons, luck, drops, item search and so on).
--- Share: the run on show as a link in chat or as a code (Share.lua).
--- Each button closes its window again on a second click.
-local detailsBtn = MakeButton("Run details", 100, function() ns.ToggleShow(ns.ViewedRun()) end)
-detailsBtn:SetPoint("LEFT", needBtn, "RIGHT", 12, 0)
-local statsBtn = MakeButton("Statistics", 90, function() ns.ToggleBrowse() end)
-statsBtn:SetPoint("LEFT", detailsBtn, "RIGHT", 4, 0)
-local bingoBtn = MakeButton("Bingo", 70, function() ns.ToggleBingo() end)
-bingoBtn:SetPoint("LEFT", statsBtn, "RIGHT", 12, 0)
-local shareBtn = MakeButton("Share", 70, function() ns.ToggleShare(ns.ViewedRun()) end)
-shareBtn:SetPoint("LEFT", bingoBtn, "RIGHT", 4, 0)
+TopButton("Podium", function() ns.ToggleRunWindow("podium", ns.ViewedRun()) end)
+TopButton("Front page", function() ns.ToggleRunWindow("paper", ns.ViewedRun()) end)
+TopButton("Timeline", function() ns.ToggleRunWindow("timeline", ns.ViewedRun()) end)
+TopButton("Statistics", function() ns.ToggleBrowse() end)
+TopButton("Bingo", function() ns.ToggleBingo() end)
+local shareBtn = MakeButton("Share", TOP_W, function() ns.ToggleShare(ns.ViewedRun()) end)
 
 local expandAll = MakeButton("Expand all", 90, function()
     local s = currentRun
@@ -1634,6 +1673,8 @@ local function ApplyTheme()
 
     needBtn:ClearAllPoints()
     needBtn:SetPoint("TOPLEFT", 12, theme.toolbarY)
+    shareBtn:ClearAllPoints()
+    shareBtn:SetPoint("TOPRIGHT", RIGHT_EDGE, theme.toolbarY)
 
     scroll:ClearAllPoints()
     scroll:SetPoint("TOPLEFT", 12, theme.scrollTop)
@@ -1665,6 +1706,13 @@ end
 -- Draws the list view: one row per line of BuildLines.
 local RenderList
 
+-- Windows that follow the run on show (the statistics' run pages), and
+-- the run they were last told about.
+local runFollowers, followedRun = {}, nil
+function ns.OnRunShown(fn)
+    runFollowers[#runFollowers + 1] = fn
+end
+
 function Render()
     local o = ns.db.options
     drawing = true
@@ -1687,8 +1735,7 @@ function Render()
     currentRun = s
     if s ~= revealRun then CancelReveal() end
 
-    needBtn:SetLabel(needOnly and "Show all loot" or "Need rolls only")
-    needBtn:SetSelected(needOnly)
+    needBtn:SetSelected(needOnly) -- lit while on; a second click shows all loot again
     older:SetOn(viewIndex < #runs)
     newer:SetOn(viewIndex > 1)
     local stored = s ~= nil and not s.example
@@ -1757,6 +1804,10 @@ function Render()
     end
     drawing = false
     wipe(drawCache)
+    if s ~= followedRun then
+        followedRun = s
+        for _, fn in ipairs(runFollowers) do fn(s) end
+    end
 end
 
 local PLAYER_ROW_EXTRA = 14 -- player rows are taller, to hold the picture

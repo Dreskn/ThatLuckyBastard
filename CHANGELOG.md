@@ -2,6 +2,9 @@
 
 ## Unreleased
 
+- New installs start with the Modern theme and players in podium order. Settings you already chose stay as they are.
+- The run details window is split up. Podium, Front page and Timeline are windows of their own, opened from the main window; Rolls and Numbers are tabs of the Statistics window, for the run on show.
+- The main window's top row has buttons of one size: Need only (was Need rolls only), Podium, Front page, Timeline, Statistics and Bingo, with Share on its own on the right. Delete is in red.
 - **Sharing runs.** The new Share button posts the run on show as a link in chat, in a channel you pick (never General, Trade or the other global channels); you send it yourself. Players with the addon click it to see the run. Or copy the run as a code to paste anywhere, and import codes in the new Shared runs window (`/tlb share`, `/tlb import`). Runs shared with you count in none of your statistics.
 - Players who are out of sight or gone from the group show their class icon. The stand-ins built from their race and gear looked wrong, and their saved looks are removed from your saved data.
 - Going straight from one dungeon into another (a queue that pops inside) now ends the first run like walking out: window, podium and streak notice.

@@ -62,7 +62,7 @@ ns.OPTION_DEFAULTS = {
     groupByCategory = true, -- off: every item in one list
     -- "role" (tank, healer, damage), "podium" (top looter in the middle),
     -- "value" or "name"
-    sortPlayers = "role",
+    sortPlayers = "podium",
     selfFirst = false,      -- always put you first (ignored in podium order)
     -- "game" (follow the game's My Secondary Name setting), "full" or "first"
     nameStyle = "game",
@@ -418,7 +418,8 @@ local function HasLoot(s)
 end
 
 -- Drops the oldest runs beyond the number to keep. Pinned runs are never
--- dropped and do not count towards that number.
+-- dropped and do not count towards that number. Runs shared with you are
+-- kept up to the same number, counted apart (see ns.TrimShared).
 function ns.TrimHistory()
     local unpinned = 0
     for _, s in ipairs(db.history) do
@@ -431,6 +432,7 @@ function ns.TrimHistory()
             unpinned = unpinned - 1
         end
     end
+    ns.TrimShared()
 end
 
 local PrintSummary -- defined below
@@ -562,7 +564,7 @@ end
 local function ShowRunEnd(s)
     local podium = db.options.podiumOnLeave
     if db.options.popupLeave then ns.ShowWindow(not podium, s) end
-    if podium then ns.OpenShow(s, true) end
+    if podium then ns.OpenRunWindow("podium", s, true) end
     if not s.streakShown then
         pcall(ns.StreakNotice, s)
         -- Only the run in progress can be left again: a closed one keeps no note.
@@ -1533,7 +1535,7 @@ function handlers.ADDON_LOADED(name)
     end
     if db.active then DropLooks(db.active) end
     for _, s in ipairs(db.history) do DropLooks(s) end
-    if db.theme ~= "modern" then db.theme = "classic" end
+    if db.theme ~= "classic" then db.theme = "modern" end -- Modern unless Classic was chosen
     for key, value in pairs(ns.OPTION_DEFAULTS) do
         if type(value) == "table" then
             if type(db.options[key]) ~= "table" then db.options[key] = {} end
@@ -1753,12 +1755,12 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
     elseif cmd == "stats" then
         ns.ShowBrowse("dungeons")
     elseif cmd == "dungeons" or cmd == "runs" or cmd == "luck" or cmd == "drops" or cmd == "roles"
-            or cmd == "regulars" or cmd == "records" or cmd == "awards" then
+            or cmd == "regulars" or cmd == "records" or cmd == "awards" or cmd == "rolls" or cmd == "numbers" then
         ns.ShowBrowse(cmd)
-    elseif cmd == "details" then
-        ns.OpenShow(ns.ViewedRun())
-    elseif cmd == "podium" or cmd == "paper" or cmd == "timeline" or cmd == "rolls" or cmd == "numbers" then
-        ns.OpenShow(ns.ViewedRun(), false, cmd)
+    elseif cmd == "podium" or cmd == "details" then
+        ns.OpenRunWindow("podium", ns.ViewedRun())
+    elseif cmd == "paper" or cmd == "timeline" then
+        ns.OpenRunWindow(cmd, ns.ViewedRun())
     elseif cmd == "export" then
         ns.ShowExport(arg == "all" and "all" or "run", ns.ViewedRun())
     elseif cmd == "share" then
@@ -1813,8 +1815,8 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
     else
         Print("/tlb - the breakdown window")
         Print("/tlb options")
-        Print("/tlb details - the run on show: podium, front page, timeline, rolls, numbers")
-        Print("/tlb stats - dungeons, records, runs, luck, regulars, drops, roles")
+        Print("/tlb podium, /tlb paper, /tlb timeline - those windows for the run on show")
+        Print("/tlb stats - dungeons, records, runs, luck, regulars, drops, roles, rolls, numbers")
         Print("/tlb search <item> - find an item in past runs")
         Print("/tlb awards - what each award means")
         Print("/tlb bingo - your bingo card")

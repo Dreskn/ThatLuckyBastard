@@ -12,26 +12,17 @@ Everything the addon does, page by page, with its commands, options and limits. 
 - **Under the breakdown:** run time, group loot per hour, a fairness score, any dungeon record the run set, how it compares with your average there, and the streak it belongs to.
 - **History:** past runs are kept and can be browsed. **Pin** a run and it is never deleted: not by the limit on runs to keep, not by `/tlb clear`. **Delete** removes just the run on show, after asking.
 
-## Run details
+## Podium, front page and timeline
 
-One window about the run on show, with five pages:
+Three windows about the run on show, opened from the main window's top row. Each closes again on a second click.
 
-- **Podium:** your group's characters stand on gold, silver and bronze blocks. The winner dances, last place cries, and the Ninja kneels.
+- **Podium:** your group's characters stand on gold, silver and bronze blocks. The winner dances, last place cries, and the Ninja kneels. It also opens by itself when a run ends (an option).
 - **Front page:** a mock newspaper written from the run, with a headline and a short story for every award.
 - **Timeline:** a chart of every player's running total through the run, with boss kills marked. You see when someone pulled ahead, and which drop did it.
-- **Rolls:** every roll that was won: the item, the winner, and what everyone else rolled.
-- **Numbers:**
-  - *Fairness*, from 0 (one player took everything) to 100 (everyone got the same).
-  - *Where the loot came from:* after a boss kill, profession materials, or trash.
-  - *Roll luck:* for each player, the rolls they entered, the wins they could expect, and the wins they had.
-  - *Streak:* standings over the runs you have done in a row with the same group or in the same dungeon.
-  - *At today's prices:* the run re-valued at current auction prices, against the prices recorded at the time.
-  - *Award scores:* how well each player fitted each award.
-  - A button to **export** the run as text for a spreadsheet.
 
 ## Statistics
 
-Tables over everything recorded. Click a column title to sort.
+Tables over everything recorded. Click a column title to sort. The last two tabs are about the run on show in the main window, and follow it from run to run.
 
 - **Dungeons:** per dungeon, the number of runs, average group loot, your average, average time, gold per hour for the group and for you, and average fairness. Sort by "Group / hour" to pick tonight's dungeon.
 - **Records:** your richest run, best personal haul, biggest single item and fastest run per dungeon.
@@ -42,6 +33,15 @@ Tables over everything recorded. Click a column title to sort.
 - **Roles:** how loot shares turn out by role and by class, against an equal share.
 - **Find item:** search past runs for an item to see when it dropped and who got it.
 - **Awards:** what every award means.
+- **Rolls:** every roll of the run on show that was won: the item, the winner, and what everyone else rolled.
+- **Numbers:** about the run on show:
+  - *Fairness*, from 0 (one player took everything) to 100 (everyone got the same).
+  - *Where the loot came from:* after a boss kill, profession materials, or trash.
+  - *Roll luck:* for each player, the rolls they entered, the wins they could expect, and the wins they had.
+  - *Streak:* standings over the runs you have done in a row with the same group or in the same dungeon.
+  - *At today's prices:* the run re-valued at current auction prices, against the prices recorded at the time.
+  - *Award scores:* how well each player fitted each award.
+  - A button to **export** the run as text for a spreadsheet.
 - **Export all runs:** one line per player of every run, as text for a spreadsheet.
 
 ## While you play
@@ -61,7 +61,7 @@ The **Share** button (or `/tlb share`) shares the run on show, in two ways:
 
 A click on a link asks the player who posted it for the run. Their addon sends it back through hidden addon messages, never through chat, at the pace the game allows: a few seconds to about 15. It works while they are online, and only for runs they posted a link to.
 
-Runs shared with you look as they did for their owner, prices included. They are listed in the Shared runs window, and after your own runs in the breakdown window, marked "shared by". They count in none of your statistics, records or streaks and cannot be pinned. The last 20 are kept.
+Runs shared with you look as they did for their owner, prices included. They are listed in the Shared runs window, and among your own runs in the breakdown window, by date, marked "shared by". They count in none of your statistics, records or streaks and cannot be pinned. They are kept up to your number of runs to keep, counted apart from your own runs: importing never costs you a run of yours. Past that number, the ones that arrived first go.
 
 ## How loot is valued
 
@@ -82,8 +82,8 @@ A run starts automatically when you enter a dungeon (and raids, if enabled). The
 | --- | --- |
 | `/tlb` or `/lucky` | Open or close the window |
 | `/tlb options` | Open the options |
-| `/tlb details` | Run details for the run on show (also `/tlb podium`, `paper`, `timeline`, `rolls`, `numbers`) |
-| `/tlb stats` | Statistics (also `/tlb dungeons`, `records`, `runs`, `luck`, `regulars`, `drops`, `roles`) |
+| `/tlb podium` | The podium of the run on show (also `/tlb paper`, `timeline`) |
+| `/tlb stats` | Statistics (also `/tlb dungeons`, `records`, `runs`, `luck`, `regulars`, `drops`, `roles`, `rolls`, `numbers`) |
 | `/tlb search <item name>` | Find an item in past runs |
 | `/tlb awards` | What every award means |
 | `/tlb export` | The run on show as text for a spreadsheet; `/tlb export all` for every run |
@@ -110,10 +110,10 @@ The minimap button does the same: left-click for the window, right-click for the
 
 ## Options
 
-- **Appearance:** two themes (Classic and Modern), player picture (3D model, 2D portrait, class icon or none), window scale.
+- **Appearance:** two themes (Modern, the default, and Classic), player picture (3D model, 2D portrait by default, class icon or none), window scale.
 - **Layout:** columns or list, group items by category, align the same item across players to compare line by line, and which details to show.
 - **Items and values:** switch categories on or off, auction or vendor-only pricing, show or hide silver and copper, item order.
-- **Players:** order by role (tank, healer, damage), podium (top looter in the middle), value or name; optionally always show yourself first. Names follow the game's "My Secondary Name" setting, or can be forced to full or first name only.
+- **Players:** order by podium (top looter in the middle, the default), role (tank, healer, damage), value or name; optionally always show yourself first. Names follow the game's "My Secondary Name" setting, or can be forced to full or first name only.
 - **Behaviour:** when the window opens by itself, raid tracking, a one-line chat summary, how many runs to keep, the minimap button.
 - **Extras:** the podium, awards and their sounds, run time and records, bingo, familiar faces, the streak recap, the two tooltip lines, and the live loot notices with their minimum value.
 

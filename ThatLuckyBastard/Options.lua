@@ -168,7 +168,7 @@ do
     for i, t in ipairs({ { "Classic", "classic" }, { "Modern", "modern" } }) do
         defs[i] = {
             t[1],
-            function() return (ns.db.theme or "classic") == t[2] end,
+            function() return (ns.db.theme or "modern") == t[2] end,
             function() ns.db.theme = t[2] end,
         }
     end
@@ -315,8 +315,8 @@ do
     Choices(p, "maxHistory", {
         { "10", 10 }, { "30", 30 }, { "100", 100 }, { "300", 300 }, { "Unlimited", 99999 },
     }, 2)
-    Hint(p, "About 25 to 150 KB per run in the saved file. Pinned runs come on top. "
-        .. "A lower number takes effect when the next run ends.")
+    Hint(p, "About 25 to 150 KB per run. Pinned runs come on top; shared runs are counted apart. "
+        .. "A lower number applies when the next run ends.")
     p.y = p.y - 4
 
     Section(p, "Minimap")

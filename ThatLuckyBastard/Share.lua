@@ -458,7 +458,7 @@ local function Row(i)
 end
 
 function DrawList()
-    local runs = ns.db.shared
+    local runs = ns.SharedByDate()
     for i, s in ipairs(runs) do
         local r = Row(i)
         r.run = s

@@ -123,6 +123,12 @@ function CreateFrame(kind, name, parent, template)
     return w
 end
 
+function CreateFont(name)
+    local font = NewWidget("Font", name)
+    _G[name] = font
+    return font
+end
+
 UIParent = NewWidget("UIParent")
 GameTooltip = NewWidget("GameTooltip")
 ItemRefTooltip = NewWidget("GameTooltip")

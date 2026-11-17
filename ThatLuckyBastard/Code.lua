@@ -24,7 +24,6 @@ local _, ns = ...
 
 local PREFIX = "TLB1!"
 local MAX_CODE = 200000 -- longest code accepted, in characters
-local SHARED_MAX = 20   -- runs received from other players that are kept
 local DAMAGED = "This code is incomplete or damaged. Copy all of it, and try again."
 
 local CATS = { "epic", "rare", "uncommon", "bop", "quest", "prof", "other", "junk" }
@@ -217,7 +216,7 @@ function ns.EncodeRun(s)
     local nameList = {}
     for i, name in ipairs(names) do nameList[i] = S(name) end
     local body = PREFIX .. table.concat({
-        Join({ S(s.name or "Run"), N(s.instanceID), N(s.startedAt), N(finish - (s.startedAt or finish)),
+        Join({ S(s.name or "Run"), N(s.instanceID), N(s.startedAt), N(math.max(finish - (s.startedAt or finish), 0)),
                N(owner), N(s.kills) }, ","),
         table.concat(nameList, ","),
         table.concat(tails, ","),
@@ -403,6 +402,22 @@ local function LoadNames(s)
     end
 end
 
+-- Runs shared with you are kept up to the number of runs to keep, counted
+-- apart from your own, so that importing never costs you a run of yours.
+-- They are stored in the order they arrived: the first to arrive go first.
+function ns.TrimShared()
+    local list = ns.db.shared
+    for i = #list, ns.db.options.maxHistory + 1, -1 do table.remove(list, i) end
+end
+
+-- The runs shared with you, newest first by when they started.
+function ns.SharedByDate()
+    local out = {}
+    for i, s in ipairs(ns.db.shared) do out[i] = s end
+    table.sort(out, function(a, b) return (a.startedAt or 0) > (b.startedAt or 0) end)
+    return out
+end
+
 -- One of your own runs: a code of it opens the run itself, not a copy.
 local function OwnRun(s)
     for _, run in ipairs(ns.AllRuns()) do
@@ -410,9 +425,9 @@ local function OwnRun(s)
     end
 end
 
--- Keeps a run read from a code, newest first, in place of an earlier copy
--- of it. `from`: who shared it, when known. Returns the run to show, or
--- nil and why not.
+-- Keeps a run read from a code, in place of an earlier copy of it.
+-- `from`: who shared it, when known. Returns the run to show, or nil and
+-- why not.
 function ns.ImportCode(code, from)
     local s, err = ns.DecodeRun(code)
     if not s then return nil, err end
@@ -424,7 +439,7 @@ function ns.ImportCode(code, from)
         if list[i].startedAt == s.startedAt and list[i].recordedBy == s.recordedBy then table.remove(list, i) end
     end
     table.insert(list, 1, s)
-    for i = #list, SHARED_MAX + 1, -1 do table.remove(list, i) end
+    ns.TrimShared()
     LoadNames(s)
     return s
 end
