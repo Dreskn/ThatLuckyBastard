@@ -1,8 +1,9 @@
 local _, ns = ...
 
--- Export window: a box of comma-separated text, already selected, to be
--- copied with Ctrl+C and pasted into a spreadsheet. Nothing is written
--- to disk and nothing is sent anywhere. The text comes from Data.lua.
+-- Export window: a box of text, already selected, to be copied with
+-- Ctrl+C. Comma-separated text for a spreadsheet (from Data.lua), or a
+-- run's share code (from Code.lua). Nothing is written to disk and
+-- nothing is sent anywhere.
 
 local WIDTH, HEIGHT = 640, 420
 
@@ -15,6 +16,7 @@ hint:SetJustifyH("LEFT")
 local scroll = CreateFrame("ScrollFrame", nil, ui, "UIPanelScrollFrameTemplate")
 local box = CreateFrame("EditBox", nil, scroll)
 box:SetMultiLine(true)
+box:SetMaxLetters(0) -- no limit: a code or an export can be long
 box:SetAutoFocus(false)
 box:SetFontObject("ChatFontNormal")
 box:SetWidth(WIDTH - 60)
@@ -36,21 +38,28 @@ local function ApplyTheme()
     scroll:SetPoint("BOTTOMRIGHT", -34, 16)
 end
 
--- kind: "run" (every item of the run `s`) or "all" (one line per player
--- of every run that is kept).
+-- kind: "run" (every item of the run `s`), "all" (one line per player of
+-- every run that is kept) or "code" (the share code of the run `s`).
 function ns.ShowExport(kind, s)
     local text
     if kind == "all" then
         text = ns.ExportAll()
         title:SetText(ns.Title("Export  -  all runs"))
+    elseif s and kind == "code" then
+        text = ns.EncodeRun(s)
+        title:SetText(ns.Title("Share code  -  " .. (s.name or "Run")))
     elseif s then
         text = ns.ExportRun(s)
         title:SetText(ns.Title("Export  -  " .. (s.name or "Run")))
     else
         return
     end
-    local _, lines = text:gsub("\n", "\n")
-    hint:SetText(("%d lines selected. |cffffd100Ctrl+C|r to copy."):format(lines + 1))
+    if kind == "code" then
+        hint:SetText(("%d characters selected. |cffffd100Ctrl+C|r to copy, then paste it anywhere."):format(#text))
+    else
+        local _, lines = text:gsub("\n", "\n")
+        hint:SetText(("%d lines selected. |cffffd100Ctrl+C|r to copy."):format(lines + 1))
+    end
     ApplyTheme()
     ex:Show()
     ex:Raise()

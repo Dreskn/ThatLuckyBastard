@@ -243,10 +243,11 @@ local function ClassColored(name, class)
     return name
 end
 
--- Every run the window can show, newest first: the real ones, then the
--- example runs.
+-- Every run the window can show: your own newest first, then those
+-- shared with you, then the example runs.
 local function Runs()
     local runs = ns.AllRuns()
+    for _, s in ipairs(ns.db.shared) do runs[#runs + 1] = s end
     for _, s in ipairs(ns.exampleRuns) do runs[#runs + 1] = s end
     return runs
 end
@@ -1592,6 +1593,7 @@ end)
 -- The rest of the top row. Run details: everything about the run on
 -- show (podium, front page, timeline, rolls, numbers). Statistics: the
 -- tables over all runs (dungeons, luck, drops, item search and so on).
+-- Share: the run on show as a link in chat or as a code (Share.lua).
 -- Each button closes its window again on a second click.
 local detailsBtn = MakeButton("Run details", 100, function() ns.ToggleShow(ns.ViewedRun()) end)
 detailsBtn:SetPoint("LEFT", needBtn, "RIGHT", 12, 0)
@@ -1599,6 +1601,8 @@ local statsBtn = MakeButton("Statistics", 90, function() ns.ToggleBrowse() end)
 statsBtn:SetPoint("LEFT", detailsBtn, "RIGHT", 4, 0)
 local bingoBtn = MakeButton("Bingo", 70, function() ns.ToggleBingo() end)
 bingoBtn:SetPoint("LEFT", statsBtn, "RIGHT", 12, 0)
+local shareBtn = MakeButton("Share", 70, function() ns.ToggleShare(ns.ViewedRun()) end)
+shareBtn:SetPoint("LEFT", bingoBtn, "RIGHT", 4, 0)
 
 local expandAll = MakeButton("Expand all", 90, function()
     local s = currentRun
@@ -1688,7 +1692,7 @@ function Render()
     older:SetOn(viewIndex < #runs)
     newer:SetOn(viewIndex > 1)
     local stored = s ~= nil and not s.example
-    pinBtn:SetOn(stored)
+    pinBtn:SetOn(stored and not s.sharedBy)
     pinBtn:SetLabel(s and s.pinned and "Unpin" or "Pin")
     pinOutline:SetShown(s ~= nil and s.pinned == true)
     deleteBtn:SetOn(stored and not s.pinned)
@@ -1698,6 +1702,8 @@ function Render()
         local tag = ""
         if s.example then
             tag = "  example data"
+        elseif s.sharedBy then
+            tag = "  shared by " .. ns.DisplayName(s.sharedBy)
         elseif ns.InProgress(s) then
             tag = "  in progress"
         end

@@ -4,7 +4,7 @@
 
 A World of Warcraft addon for **WoW Forever** that shows who got what in a dungeon run, and who got lucky.
 
-It records what every player in your group loots, puts a gold value on it, and shows the result when you leave the dungeon. Everything appears on your screen only: it never sends a chat message.
+It records what every player in your group loots, puts a gold value on it, and shows the result when you leave the dungeon. It never sends a chat message: what it shows stays on your screen unless you share a run.
 
 ![The breakdown window after a run of Uldaman](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/run.png)
 
@@ -16,6 +16,7 @@ It records what every player in your group loots, puts a gold value on it, and s
 - **Run details:** a podium with your group's characters, a mock newspaper, a timeline of the run, every roll, and the numbers behind it all.
 - **Statistics:** your dungeons, records, luck, the people you run with and what dropped where, with item search and an export for spreadsheets.
 - **While you play:** notices for valuable loot and familiar faces, one line in player and item tooltips, and a private loot bingo card.
+- **Sharing:** post a run as a link in chat, or copy it as a code to paste anywhere. Players with the addon open it.
 
 ## How loot is valued
 

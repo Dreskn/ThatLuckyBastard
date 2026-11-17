@@ -66,6 +66,9 @@ function known.SetText(self, text)
     if TEXTLOG and self.__text ~= "" then TEXTLOG[#TEXTLOG + 1] = self.__text end
 end
 function known.GetText(self) return self.__text end
+-- The edit box that has the keyboard, if any.
+function known.SetFocus(self) FOCUSED = self end
+function known.ClearFocus(self) if FOCUSED == self then FOCUSED = nil end end
 function known.SetWidth(self, w) self.__w = w end
 function known.SetHeight(self, h) self.__h = h end
 function known.SetSize(self, w, h) self.__w, self.__h = w, h end
@@ -195,17 +198,43 @@ function IsInGroup() return #WORLD.party > 0 end
 function IsInInstance() return WORLD.inInstance, WORLD.inInstance and "party" or "none" end
 function GetInstanceInfo() return WORLD.instance, "party", 1, "Normal", 5, 0, false, WORLD.instanceID end
 
--- Items: [id] = { quality, sell price, classID, bindType }
+-- Items: [id] = { quality, sell price, classID, bindType }. An item
+-- string (no link) gets a full link back, as in the game.
 ITEMS = {}
 function GetItemInfo(link)
     local id = tonumber(tostring(link):match("item:(%d+)"))
     local it = id and ITEMS[id]
     if not it then return end
+    if not tostring(link):find("|H", 1, true) then
+        link = ("|cnIQ%d:|H%s|h[Thing %d]|h|r"):format(it[1], link, id)
+    end
     return "Item " .. id, link, it[1], 30, 25, "Type", "Sub", 1, "", 134400, it[2], it[3], 0, it[4]
 end
 function ItemLink(id, name, quality)
     return ("|cnIQ%d:|Hitem:%d::::::::38:1489:::::::::|h[%s]|h|r"):format(quality or 1, id, name)
 end
+
+-- Chat and addon messages, recorded so the tests can deliver them.
+SENT = {}         -- addon messages: { prefix, text, channel, target }
+CHAT_FILTERS = {} -- [event] = the filter the addon added
+OPENED_CHAT = {}  -- text put in the chat box
+C_ChatInfo = {
+    RegisterAddonMessagePrefix = function() return true end,
+    SendAddonMessage = function(prefix, text, channel, target) SENT[#SENT + 1] = { prefix, text, channel, target } end,
+}
+function ChatFrame_AddMessageEventFilter(event, fn) CHAT_FILTERS[event] = fn end
+function ChatFrame_OpenChat(text) OPENED_CHAT[#OPENED_CHAT + 1] = text end
+function SetItemRef() end
+function hooksecurefunc(name, fn)
+    local real = _G[name]
+    _G[name] = function(...) real(...); fn(...) end
+end
+function Ambiguate(name) return name end
+function IsInGuild() return WORLD.guild == true end
+C_GuildInfo = { IsGuildOfficer = function() return WORLD.officer == true end }
+LE_PARTY_CATEGORY_INSTANCE = 2
+function EnumerateServerChannels() return "General", "Trade", "LocalDefense" end
+function GetChannelList() return 1, "General", false, 2, "Trade", false, 5, "Dungeon Pals", false end
 
 -- The modern client's wording for loot and roll messages.
 LOOT_ITEM = "%s receives loot: %s."

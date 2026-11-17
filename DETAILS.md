@@ -52,6 +52,17 @@ Tables over everything recorded. Click a column title to sort.
 - **Streak recap:** when you chain runs with mostly the same group, or in the same dungeon, each starting within half an hour of the one before, the end of a run brings a notice with the standings so far.
 - **Loot bingo:** a private 4x4 card dealt each run ("a blue item drops", "someone passes", "you die"...). Squares tick themselves off, and a completed line is announced on your screen.
 
+## Sharing a run
+
+The **Share** button (or `/tlb share`) shares the run on show, in two ways:
+
+- **A link in chat.** Pick a channel: say, yell, party, raid, instance, guild, officer, or a channel you joined. The link goes into your chat box and you send it yourself. Players with the addon click it to see the run; others see plain text. Global channels (General, Trade, LocalDefense and the like) are not offered, and links posted there stay plain text.
+- **A code.** The run as text to copy out of the game and paste anywhere: about 3,000 to 5,000 characters for a five-player dungeon. Anyone with the addon imports it in the **Shared runs** window (`/tlb import`).
+
+A click on a link asks the player who posted it for the run. Their addon sends it back through hidden addon messages, never through chat, at the pace the game allows: a few seconds to about 15. It works while they are online, and only for runs they posted a link to.
+
+Runs shared with you look as they did for their owner, prices included. They are listed in the Shared runs window, and after your own runs in the breakdown window, marked "shared by". They count in none of your statistics, records or streaks and cannot be pinned. The last 20 are kept.
+
 ## How loot is valued
 
 - **Vendor price** comes from the game.
@@ -76,6 +87,8 @@ A run starts automatically when you enter a dungeon (and raids, if enabled). The
 | `/tlb search <item name>` | Find an item in past runs |
 | `/tlb awards` | What every award means |
 | `/tlb export` | The run on show as text for a spreadsheet; `/tlb export all` for every run |
+| `/tlb share` | Share the run on show: a link in chat, or a code |
+| `/tlb import` | The Shared runs window: import a code, and the runs shared with you |
 | `/tlb bingo` | Your loot bingo card |
 | `/tlb theme classic` / `modern` | Change the look |
 | `/tlb start` | Track a run manually, outside a dungeon |
@@ -122,7 +135,7 @@ The minimap button does the same: left-click for the window, right-click for the
 
 ## Privacy
 
-That Lucky Bastard never sends chat messages and never shares anything with other players. Everything it shows, including the awards, the notices and what it knows about the people you run with, appears only on the screen of the player who has it installed. The export is text you copy yourself; nothing is written anywhere else.
+That Lucky Bastard never sends chat messages. Everything it shows, including the awards, the notices and what it knows about the people you run with, appears only on the screen of the player who has it installed. The one exception is a run you share: you post its link in chat yourself, and when someone with the addon clicks it, your addon sends them that run, and nothing else, through hidden addon messages. The export and the share code are text you copy yourself; nothing is written anywhere else.
 
 ## Compatibility
 
@@ -169,6 +182,10 @@ python tests/run_tests.py ThatLuckyBastard tests/test_looks.lua
 
 ```bash
 python tests/run_tests.py ThatLuckyBastard tests/test_audit.lua
+```
+
+```bash
+python tests/run_tests.py ThatLuckyBastard tests/test_share.lua
 ```
 
 `tools/make_logo.py` draws the addon's mark (needs Pillow); the brand colours live at the top of `ThatLuckyBastard/Core.lua`.

@@ -716,6 +716,7 @@ local function EntryKey(link)
     local itemString = link:match("|H(item:[^|]+)|h") or link
     return (itemString:gsub("^(item:%d+:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*:[^:]*):[^:]*:[^:]*", "%1::"))
 end
+ns.EntryKey = EntryKey
 
 local function RecordLoot(name, rawLink, count)
     local s = db.active
@@ -1511,6 +1512,7 @@ function handlers.ADDON_LOADED(name)
     ThatLuckyBastardDB = ThatLuckyBastardDB or {}
     db = ThatLuckyBastardDB
     db.history = db.history or {}
+    db.shared = db.shared or {}   -- runs other players shared with you (Code.lua)
     db.capture = db.capture or {}
     db.records = db.records or {} -- [instanceID] = dungeon records
     db.people = db.people or {}   -- [player name] = figures for people you have run with
@@ -1647,21 +1649,27 @@ end
 -- A pinned run is never deleted: not by the limit on runs to keep, not
 -- by /tlb clear, and not one at a time until it is unpinned. Deleting a
 -- run removes it from the history only: the long-term statistics have
--- already counted it and are left as they are.
+-- already counted it and are left as they are. Runs shared with you can
+-- be deleted, not pinned.
 ----------------------------------------------------------------------
+
+-- The saved list a run is in (db.history or db.shared), and where.
+local function ListOf(s)
+    for _, list in ipairs({ db.history, db.shared }) do
+        for i, run in ipairs(list) do
+            if run == s then return list, i end
+        end
+    end
+end
 
 local function IsStored(s)
     if not s or s.example then return false end
-    if s == db.active then return true end
-    for _, run in ipairs(db.history) do
-        if run == s then return true end
-    end
-    return false
+    return s == db.active or ListOf(s) ~= nil
 end
 
 -- Pins or unpins a run. Returns true when it did.
 function ns.TogglePin(s)
-    if not IsStored(s) then return false end
+    if not IsStored(s) or s.sharedBy then return false end
     s.pinned = (not s.pinned) or nil -- an unpinned run counts towards the limit again when the next run ends
     ns.Rerender()
     return true
@@ -1674,12 +1682,8 @@ function ns.DeleteRun(s)
         db.active = nil
         CheckZone() -- keep tracking if we are inside a dungeon
     else
-        for i, run in ipairs(db.history) do
-            if run == s then
-                table.remove(db.history, i)
-                break
-            end
-        end
+        local list, i = ListOf(s)
+        table.remove(list, i)
     end
     ns.Rerender()
     return true
@@ -1713,8 +1717,10 @@ function ns.AskDeleteRun(s)
     end
 end
 
--- Deletes every run that is not pinned. Returns how many were left.
+-- Deletes every run that is not pinned, shared ones included. Returns
+-- how many were left.
 local function ClearRuns()
+    wipe(db.shared)
     local left = 0
     if db.active then
         if db.active.pinned then left = left + 1 else db.active = nil end
@@ -1755,6 +1761,10 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
         ns.OpenShow(ns.ViewedRun(), false, cmd)
     elseif cmd == "export" then
         ns.ShowExport(arg == "all" and "all" or "run", ns.ViewedRun())
+    elseif cmd == "share" then
+        ns.ToggleShare(ns.ViewedRun())
+    elseif cmd == "import" then
+        ns.ToggleImport()
     elseif cmd == "bingo" then
         ns.ToggleBingo()
     elseif cmd == "capture" then
@@ -1809,6 +1819,8 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
         Print("/tlb awards - what each award means")
         Print("/tlb bingo - your bingo card")
         Print("/tlb export - the run on show as text (/tlb export all: every run)")
+        Print("/tlb share - share the run on show: a link in chat, or a code")
+        Print("/tlb import - open a run from a code, and the runs shared with you")
         Print("/tlb pin - pin or unpin the run on show; pinned runs are never deleted")
         Print("/tlb delete - delete the run on show")
         Print("/tlb clear - delete all runs except pinned ones")
