@@ -200,6 +200,62 @@ nameBox:SetText("")
 opened = #OPENED_CHAT
 click("Whisper")
 check(#OPENED_CHAT == opened and ThatLuckyBastardShareFrame:IsShown(), "with no name, nothing opens")
+
+print("-- names offered as you type")
+local partyWas = WORLD.party
+WORLD.party = { { "Borin Oak", "WARRIOR", "TANK" } }
+WORLD.friends = { "Bobby Tables", "Kett Longstride" }
+WORLD.guild, WORLD.roster = true, { { "Borax Stone", "MAGE" } }
+local peopleWas = db.people["Bob Builder"]
+db.people["Bob Builder"] = { runs = 3, value = 0, lucky = 0, ninja = 0, class = "PALADIN" }
+local function names(list)
+    local t = {}
+    for _, s in ipairs(list) do t[#t + 1] = s.name end
+    return t
+end
+local function has(list, name)
+    for _, n in ipairs(names(list)) do
+        if n == name then return true end
+    end
+    return false
+end
+local bo = names(ns.NameSuggestions("bo"))
+check(bo[1] == "Borin Oak" and bo[2] == "Bobby Tables" and bo[3] == "Borax Stone" and has(ns.NameSuggestions("bob b"), "Bob Builder"),
+      "your group first, then friends, guild, and the players you have run with: " .. table.concat(bo, ", "))
+check(#bo <= 5, "five names at most")
+check(has(ns.NameSuggestions("TAB"), "Bobby Tables"), "any word of the name, in any case")
+check(not has(ns.NameSuggestions("Borin Oak"), "Borin Oak"), "a name typed in full is not offered again")
+check(not has(ns.NameSuggestions("mira"), "Mira Vale") and #ns.NameSuggestions("") == 0, "never yourself, and nothing for an empty box")
+
+local suggest
+for _, w in ipairs(FRAMES) do
+    if rawget(w, "__strata") == "DIALOG" and rawget(w, "__parent") and rawget(w, "__parent").__parent == ThatLuckyBastardShareFrame then
+        suggest = w
+    end
+end
+local function typed(text)
+    nameBox:SetText(text)
+    nameBox.__scripts.OnTextChanged(nameBox, true)
+end
+TEXTLOG = {}
+typed("bob")
+check(suggest and suggest:IsShown() and drew("Bobby Tables"), "typing opens the list under the box")
+nameBox.__scripts.OnTabPressed(nameBox)
+check(nameBox:GetText() == "Bobby Tables" and not suggest:IsShown(), "Tab takes the first name")
+typed("bo")
+nameBox.__scripts.OnArrowPressed(nameBox, "DOWN")
+nameBox.__scripts.OnArrowPressed(nameBox, "DOWN")
+opened = #OPENED_CHAT
+nameBox.__scripts.OnEnterPressed(nameBox)
+check(nameBox:GetText() == bo[2] and #OPENED_CHAT == opened, "the arrow keys pick one, Enter takes it")
+nameBox.__scripts.OnEnterPressed(nameBox)
+check(#OPENED_CHAT == opened + 1 and CHAT_BOX:GetAttribute("tellTarget") == bo[2], "and Enter again whispers them")
+ns.ToggleShare(run)
+typed("bor")
+nameBox.__scripts.OnEscapePressed(nameBox)
+check(not suggest:IsShown(), "Escape closes the list")
+WORLD.party, WORLD.friends, WORLD.guild, WORLD.roster = partyWas, nil, nil, nil
+db.people["Bob Builder"] = peopleWas
 ns.ToggleShare(run)
 TEXTLOG = {}
 ns.ToggleShare(run)

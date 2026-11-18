@@ -267,6 +267,20 @@ end
 function Ambiguate(name) return name end
 function IsInGuild() return WORLD.guild == true end
 C_GuildInfo = { IsGuildOfficer = function() return WORLD.officer == true end }
+-- Friends and guild members: WORLD.friends = { name, ... }, WORLD.roster
+-- = { { name, classFile }, ... }.
+C_FriendList = {
+    GetNumFriends = function() return #(WORLD.friends or {}) end,
+    GetFriendInfoByIndex = function(i)
+        local name = (WORLD.friends or {})[i]
+        return name and { name = name, connected = true }
+    end,
+}
+function GetNumGuildMembers() return #(WORLD.roster or {}) end
+function GetGuildRosterInfo(i)
+    local m = (WORLD.roster or {})[i]
+    if m then return m[1], "Member", 1, 60, "Class", "Zone", "", "", true, 0, m[2] end
+end
 LE_PARTY_CATEGORY_INSTANCE = 2
 function EnumerateServerChannels() return "General", "Trade", "LocalDefense" end
 function GetChannelList()

@@ -79,6 +79,18 @@ local function Pickups(s)
     end
     return out
 end
+ns.Pickups = Pickups -- for the awards
+
+-- Where a pickup came from: "mats" for profession materials; of the rest,
+-- "boss" when picked up shortly after a boss kill, else "trash". That is
+-- a rule of thumb, not a fact from the game.
+function ns.PickupSource(s, pick)
+    if pick.e.cat == "prof" then return "mats" end
+    for _, boss in ipairs(s.bosses or {}) do
+        if boss.t and pick.t >= boss.t and pick.t - boss.t <= BOSS_WINDOW then return "boss" end
+    end
+    return "trash"
+end
 
 -- Each player's running total through the run, for the chart. Returns
 --   { series = { { name, class, total, points = { { t, v }, ... } }, ... },
@@ -116,23 +128,14 @@ function ns.Timeline(s)
     }
 end
 
--- The run's loot by where it came from: { boss, mats, trash, total }, in
--- copper, or nil when there is no log. Profession materials are their
--- own group; of the rest, what was picked up shortly after a boss kill
--- counts as boss loot. That is a rule of thumb, not a fact from the game.
+-- The run's loot by where it came from (see ns.PickupSource): { boss,
+-- mats, trash, total }, in copper, or nil when there is no log.
 function ns.Sources(s)
     local pickups = Pickups(s)
     if not pickups or #pickups == 0 then return end
     local out = { boss = 0, mats = 0, trash = 0, total = 0 }
     for _, pick in ipairs(pickups) do
-        local source = "trash"
-        if pick.e.cat == "prof" then
-            source = "mats"
-        else
-            for _, boss in ipairs(s.bosses or {}) do
-                if boss.t and pick.t >= boss.t and pick.t - boss.t <= BOSS_WINDOW then source = "boss" end
-            end
-        end
+        local source = ns.PickupSource(s, pick)
         out[source] = out[source] + pick.value
         out.total = out.total + pick.value
     end

@@ -1095,6 +1095,13 @@ local VENDOR_MIN_ITEMS = 4   -- items needed for Vendor's Friend
 local VENDOR_SHARE = 0.95    -- and this much of their loot's value is its vendor value
 local ERRAND_MIN_QUEST = 3
 local EPIC = 4               -- item quality
+local UNCOMMON = 2           -- item quality: green
+local HEARTBREAK_MIN = 95    -- a roll lost with this number or more
+local LOWBALL_MAX = 5        -- a roll won with this number or less
+local HOT_STREAK = 3         -- rolls won in a row
+local DRY_SPELL = 12         -- rolls lost in a row
+local NEMESIS_MIN = 4        -- rolls lost to the same player
+local OVERKILL_MAX = 100     -- copper: a Need win worth less than this is Overkill
 
 -- How well `v` fits a scale on which `lo` just qualifies and `hi` is
 -- remarkable: 0.3 at `lo`, 1 at `hi`, and on up to about 2 for values far
@@ -1102,6 +1109,25 @@ local EPIC = 4               -- item quality
 local function Fit(v, lo, hi)
     if v < lo then return end
     return 0.3 + 0.7 * math.min((v - lo) / (hi - lo), 2.5)
+end
+
+-- A consolation prize's fit: 0.25 for the best of the group at it, down
+-- towards 0.1 for the others. Below the 0.3 that every other award needs,
+-- so it only goes to a player that nothing else fits. Nil without `v`.
+local function Ranked(v, best)
+    if not v or v <= 0 or not best or best <= 0 then return end
+    return 0.1 + 0.15 * v / best
+end
+
+-- How close an average roll is to the middle, for Average Joe: 30 at
+-- exactly 50.5, nothing beyond 30 points away. Five rolls at least.
+local function Middling(x)
+    if x.rolls < 5 then return end
+    return 30 - math.abs(x.avgRoll - 50.5)
+end
+
+local function Plural(n, one, many)
+    return n == 1 and ("1 " .. one) or (n .. " " .. many)
 end
 
 -- How far an average of `n` rolls is from what chance gives, in standard
@@ -1233,11 +1259,11 @@ local AWARDS = {
           return Fit(quest / (g.quest / g.n), 1.5, 3)
       end,
       detail = function(p) return { text = ("Picked up %d quest items"):format(p.cats.quest.count) } end },
-    { key = "nat100", title = "Natural 100", icon = "INV_Crown_01",
+    { key = "nat100", title = "Natural 100", icon = "INV_Crown_01", group = "moment",
       how = "Rolled a 100.",
       fit = function(_, x) return x.high == 100 and 0.75 or nil end,
       detail = function() return { text = "Rolled a 100" } end },
-    { key = "snakeeyes", title = "Snake Eyes", icon = "INV_Misc_Bone_HumanSkull_01",
+    { key = "snakeeyes", title = "Snake Eyes", icon = "INV_Misc_Bone_HumanSkull_01", group = "moment",
       how = "Rolled a 1.",
       fit = function(_, x) return x.low == 1 and 0.75 or nil end,
       detail = function() return { text = "Rolled a 1" } end },
@@ -1260,18 +1286,268 @@ local AWARDS = {
       how = "Passed on 2 or more rolls.",
       fit = function(_, x) return Fit(x.passes, 2, 8) end,
       detail = function(_, x) return { text = ("Passed on %d rolls"):format(x.passes) } end },
+
+    -- Moments: odd things the dice did (figures from Moments below).
+    { key = "heartbreak", title = "Heartbreak", icon = "Spell_BrokenHeart", group = "moment",
+      how = "Lost a roll with 95 or more.",
+      fit = function(_, x) return x.lost >= HEARTBREAK_MIN and Fit(x.lost, HEARTBREAK_MIN, 99) or nil end,
+      detail = function(_, x) return { text = ("Lost a roll with a %d"):format(x.lost), link = x.lostLink } end },
+    { key = "lowball", title = "Lowball", icon = "INV_Misc_Ticket_Tarot_Maelstrom_01", group = "moment",
+      how = "Won a roll with 5 or less, against at least one other roll.",
+      fit = function(_, x)
+          if not x.won or x.won > LOWBALL_MAX then return end
+          return Fit(LOWBALL_MAX + 1 - x.won, 1, LOWBALL_MAX)
+      end,
+      detail = function(_, x) return { text = ("Won a roll with a %d"):format(x.won), link = x.wonLink } end },
+    { key = "photo", title = "Photo Finish", icon = "INV_Misc_PocketWatch_01", group = "moment",
+      how = "Won a roll by a single point.",
+      fit = function(_, x) return x.photo and 0.4 or nil end,
+      detail = function(_, x) return { text = "Won a roll " .. x.photo, link = x.photoLink } end },
+    { key = "dejavu", title = "Deja Vu", icon = "Spell_Holy_MindVision", group = "moment",
+      how = "Rolled the same number twice in a row.",
+      fit = function(_, x) return x.repeated and 0.5 or nil end,
+      detail = function(_, x) return { text = ("Rolled %d twice in a row"):format(x.repeated) } end },
+    { key = "hotstreak", title = "Hot Streak", icon = "Spell_Fire_Fireball02", group = "moment",
+      how = "Won 3 rolls in a row.",
+      fit = function(_, x) return Fit(x.winRun, HOT_STREAK, 6) end,
+      detail = function(_, x) return { text = ("Won %d rolls in a row"):format(x.winRun) } end },
+    { key = "dryspell", title = "Dry Spell", icon = "Spell_Frost_ChainsOfIce", group = "moment",
+      how = "Lost 12 rolls in a row.",
+      fit = function(_, x) return Fit(x.loseRun, DRY_SPELL, 20) end,
+      detail = function(_, x) return { text = ("Lost %d rolls in a row"):format(x.loseRun) } end },
+    { key = "nemesis", title = "Nemesis", icon = "Spell_Shadow_PsychicHorrors", group = "moment",
+      how = "Lost 4 or more rolls to one player, who won most of the rolls you both entered.",
+      fit = function(_, x) return x.nemesis > 0 and Fit(x.nemesis, NEMESIS_MIN, 8) or nil end,
+      detail = function(_, x)
+          return { text = ("Lost %d rolls to %s"):format(x.nemesis, ns.DisplayName(x.nemesisName)) }
+      end },
+    { key = "overkill", title = "Overkill", icon = "Ability_Warrior_SavageBlow", group = "moment",
+      how = "Won a Need roll on something worth less than 1s.",
+      fit = function(_, x) return x.overkill and 0.4 or nil end,
+      detail = function(_, x)
+          return { text = "Won on Need, worth next to nothing", link = x.overkillLink, amount = x.overkill }
+      end },
+
+    -- Consolation prizes: scored below 0.3 (see Ranked), so they only go
+    -- to players that nothing above fits, the best of them first.
+    { key = "collector", title = "Collector", icon = "INV_Box_01", group = "consolation",
+      how = "Won the most rolls.",
+      fit = function(p, _, g)
+          local wins = p.needWins + p.greedWins
+          return wins >= 2 and Ranked(wins, g.most.wins) or nil
+      end,
+      detail = function(p) return { text = ("Won %d rolls"):format(p.needWins + p.greedWins) } end },
+    { key = "busy", title = "Busy Hands", icon = "INV_Gauntlets_04", group = "consolation",
+      how = "Entered the most rolls.",
+      fit = function(_, x, g) return x.rolls >= 3 and Ranked(x.rolls, g.most.rolls) or nil end,
+      detail = function(_, x) return { text = ("Entered %d rolls"):format(x.rolls) } end },
+    { key = "second", title = "Always Second", icon = "INV_Misc_Coin_03", group = "consolation",
+      how = "Had the second best roll most often.",
+      fit = function(_, x, g) return x.second >= 2 and Ranked(x.second, g.most.second) or nil end,
+      detail = function(_, x) return { text = ("Second best roll %d times"):format(x.second) } end },
+    { key = "avgjoe", title = "Average Joe", icon = "Achievement_Character_Human_Male", group = "consolation",
+      how = "Rolled closest to an average of 50.",
+      fit = function(_, x, g) return Ranked(Middling(x), g.most.middling) end,
+      detail = function(_, x) return { text = ("Average roll of %.0f over %d rolls"):format(x.avgRoll, x.rolls) } end },
+    { key = "magpie", title = "Magpie", icon = "INV_Misc_Gem_Crystal_02", group = "consolation",
+      how = "Picked up the most green or better items.",
+      fit = function(_, x, g) return x.magpie >= 2 and Ranked(x.magpie, g.most.magpie) or nil end,
+      detail = function(_, x) return { text = ("%d green or better items"):format(x.magpie) } end },
+    { key = "bossmagnet", title = "Boss Magnet", icon = "INV_Misc_Head_Dragon_01", group = "consolation",
+      how = "Got the most loot from bosses.",
+      fit = function(_, x, g) return Ranked(x.boss, g.most.boss) end,
+      detail = function(_, x) return { text = "Loot from bosses", amount = x.boss } end },
+    { key = "trashpanda", title = "Trash Panda", icon = "Ability_Druid_Cower", group = "consolation",
+      how = "Got the most loot from trash.",
+      fit = function(_, x, g) return Ranked(x.trash, g.most.trash) end,
+      detail = function(_, x) return { text = "Loot from trash", amount = x.trash } end },
+    { key = "leftovers", title = "Leftovers", icon = "INV_Misc_Food_15", group = "consolation",
+      how = "Won the most items nobody else rolled on.",
+      fit = function(_, x, g) return Ranked(x.leftovers, g.most.leftovers) end,
+      detail = function(_, x)
+          return { text = "Won " .. Plural(x.leftovers, "item", "items") .. " nobody else rolled on" }
+      end },
+    { key = "booby", title = "Booby Prize", icon = "INV_Misc_Gift_01", group = "consolation",
+      how = "Got the run's cheapest item.",
+      fit = function(_, x, g) return x.cheapest and Ranked(g.cheapest / x.cheapest, 1) or nil end,
+      detail = function(_, x, g)
+          return { text = x.cheapest == g.cheapest and "Cheapest item of the run" or "Their cheapest item",
+                   link = x.cheapestLink, amount = x.cheapest }
+      end },
+    { key = "runnerup", title = "Runner-up", icon = "Ability_Rogue_Sprint", group = "consolation", minPlayers = 3,
+      how = "Got the second most loot.",
+      fit = function(p) return p.rank == 2 and p.market > 0 and 0.15 or nil end,
+      detail = function(p) return { text = "Second most loot", amount = p.market } end },
+    { key = "firstdibs", title = "First Dibs", icon = "Ability_Druid_Dash", group = "consolation",
+      how = "Picked up the run's first item.",
+      fit = function(p, _, g) return g.first and g.first.name == p.name and 0.1 or nil end,
+      detail = function(_, _, g) return { text = "First item of the run", link = g.first.link } end },
+    { key = "lastcall", title = "Last Call", icon = "INV_Drink_07", group = "consolation",
+      how = "Picked up the run's last item.",
+      fit = function(p, _, g) return g.last and g.last.name == p.name and 0.1 or nil end,
+      detail = function(_, _, g) return { text = "Last item of the run", link = g.last.link } end },
 }
 
-local TOURIST = { key = "tourist", title = "Tourist", icon = "INV_Misc_Map_01",
+local TOURIST = { key = "tourist", title = "Tourist", icon = "INV_Misc_Map_01", group = "consolation",
                   how = "Fitted nothing else." }
 
--- Every award there is, in the order of the guide. Each has key, title,
--- icon and how (the rest of an entry is for working the awards out).
+-- Every award there is, in the order of the guide: the awards, then the
+-- moments, then the consolation prizes and Tourist. Each has key, title,
+-- icon, how and group (nil for the awards; the rest of an entry is for
+-- working the awards out).
 function ns.AwardGuide()
     local list = {}
-    for _, def in ipairs(AWARDS) do list[#list + 1] = def end
+    for _, group in ipairs({ false, "moment", "consolation" }) do
+        for _, def in ipairs(AWARDS) do
+            if (def.group or false) == group then list[#list + 1] = def end
+        end
+    end
     list[#list + 1] = TOURIST
     return list
+end
+
+-- The figures behind the moments and the consolation prizes, from the
+-- roll log, the pickup log and the items. Adds to each player's roll
+-- figures `x`:
+--   lost, lostLink      their best number in a roll they lost
+--   won, wonLink        their lowest winning number, beating another number
+--   photo, photoLink    a roll won by one point, as "54 to 53"
+--   repeated            a number they rolled twice in a row
+--   winRun, loseRun     most rolls won, and lost, in a row
+--   nemesis, nemesisName  rolls lost to the player who beat them most, if
+--                       that player won over half the rolls they both entered
+--   second              rolls where theirs was the second best number
+--   leftovers           rolls won that nobody else rolled on
+--   overkill, overkillLink  their cheapest Need win below OVERKILL_MAX
+--   cheapest, cheapestLink  their cheapest item
+--   boss, trash         loot value picked up after a boss kill, and elsewhere
+--   magpie              items of uncommon quality or better
+-- and to the group's `g`: the best of each figure (g.most), the cheapest
+-- item of the run (g.cheapest), and the first and last pickups (g.first,
+-- g.last: { name, link }). Runs without a log simply have none of it.
+local function Moments(s, sum, extra, g)
+    for _, x in pairs(extra) do
+        x.lost, x.second, x.leftovers, x.winRun, x.loseRun, x.nemesis = 0, 0, 0, 0, 0, 0
+        x.boss, x.trash, x.magpie = 0, 0, 0
+    end
+
+    -- Rolls, in the order they were won.
+    local streak, lostTo, together, lastNumber = {}, {}, {}, {}
+    for name in pairs(extra) do
+        streak[name], lostTo[name], together[name] = { win = 0, lose = 0 }, {}, {}
+    end
+    for _, r in ipairs(ns.RunRolls(s)) do
+        local winner = extra[r.winner]
+        local entered, numbers, passes, wnum = {}, {}, 0, nil
+        for _, roll in ipairs(r.rolls) do
+            if roll.choice == "pass" then
+                passes = passes + 1
+            elseif extra[roll.name] then
+                entered[#entered + 1] = roll.name
+            end
+            -- Those who rolled the same way as the winner: the numbers that
+            -- decided it. RunRolls lists them highest first.
+            if roll.choice == r.method and roll.roll then numbers[#numbers + 1] = roll end
+            if roll.name == r.winner then wnum = roll.roll end
+            local x = extra[roll.name]
+            if x and roll.roll then
+                if lastNumber[roll.name] == roll.roll then x.repeated = roll.roll end
+                lastNumber[roll.name] = roll.roll
+            end
+        end
+        for _, a in ipairs(entered) do
+            local x, run = extra[a], streak[a]
+            if a == r.winner then
+                run.win, run.lose = run.win + 1, 0
+            else
+                run.win, run.lose = 0, run.lose + 1
+                lostTo[a][r.winner] = (lostTo[a][r.winner] or 0) + 1
+            end
+            x.winRun, x.loseRun = math.max(x.winRun, run.win), math.max(x.loseRun, run.lose)
+            for _, b in ipairs(entered) do
+                if b ~= a then together[a][b] = (together[a][b] or 0) + 1 end
+            end
+        end
+        local runnerUp
+        for _, roll in ipairs(numbers) do
+            local x = extra[roll.name]
+            if x and roll.name ~= r.winner then
+                runnerUp = runnerUp or roll
+                if roll.roll > x.lost then
+                    local e = ns.RollItem(s, r)
+                    x.lost, x.lostLink = roll.roll, e and e.link
+                end
+            end
+        end
+        if winner and wnum and runnerUp then
+            local e
+            if not winner.won or wnum < winner.won then
+                e = ns.RollItem(s, r)
+                winner.won, winner.wonLink = wnum, e and e.link
+            end
+            if wnum - runnerUp.roll == 1 and not winner.photo then
+                e = e or ns.RollItem(s, r)
+                winner.photo, winner.photoLink = ("%d to %d"):format(wnum, runnerUp.roll), e and e.link
+            end
+        end
+        if runnerUp and #numbers >= 3 and extra[runnerUp.name] then
+            extra[runnerUp.name].second = extra[runnerUp.name].second + 1
+        end
+        if winner and #entered == 1 and entered[1] == r.winner and passes >= 2 then
+            winner.leftovers = winner.leftovers + 1
+        end
+    end
+    for a, beaten in pairs(lostTo) do
+        local x = extra[a]
+        for b, n in pairs(beaten) do
+            if n >= NEMESIS_MIN and n / (together[a][b] or n) > 0.5 and n > x.nemesis then
+                x.nemesis, x.nemesisName = n, b
+            end
+        end
+    end
+
+    -- Items: the cheapest, the cheapest won on Need, and the green ones.
+    for _, p in ipairs(sum.players) do
+        local x = extra[p.name]
+        for _, e in ipairs(p.all.items) do
+            local unit = EntryMarket(e) / e.count
+            if Quality(e) >= UNCOMMON then x.magpie = x.magpie + e.count end
+            if unit > 0 then
+                if not x.cheapest or unit < x.cheapest then x.cheapest, x.cheapestLink = unit, e.link end
+                if (e.need or 0) > 0 and unit < OVERKILL_MAX and (not x.overkill or unit < x.overkill) then
+                    x.overkill, x.overkillLink = unit, e.link
+                end
+            end
+        end
+    end
+
+    -- Pickups: boss loot and trash, and who picked up first and last.
+    local picks = ns.Pickups(s) or {}
+    for _, pick in ipairs(picks) do
+        local x = extra[pick.name]
+        local source = ns.PickupSource(s, pick)
+        if x and source == "boss" then x.boss = x.boss + pick.value end
+        if x and source == "trash" then x.trash = x.trash + pick.value end
+    end
+    if #picks > 0 then
+        g.first = { name = picks[1].name, link = picks[1].e.link }
+        g.last = { name = picks[#picks].name, link = picks[#picks].e.link }
+    end
+
+    g.most = { wins = 0, rolls = 0, second = 0, middling = 0, magpie = 0, boss = 0, trash = 0, leftovers = 0 }
+    local most = g.most
+    for _, p in ipairs(sum.players) do
+        local x = extra[p.name]
+        most.wins = math.max(most.wins, p.needWins + p.greedWins)
+        most.rolls = math.max(most.rolls, x.rolls)
+        most.second = math.max(most.second, x.second)
+        most.middling = math.max(most.middling, Middling(x) or 0)
+        most.magpie = math.max(most.magpie, x.magpie)
+        most.boss = math.max(most.boss, x.boss)
+        most.trash = math.max(most.trash, x.trash)
+        most.leftovers = math.max(most.leftovers, x.leftovers)
+        if x.cheapest then g.cheapest = math.min(g.cheapest or x.cheapest, x.cheapest) end
+    end
 end
 
 -- Works out how well every player fits every award. Returns the fits,
@@ -1309,6 +1585,7 @@ local function AwardFits(s, sum)
             passes = st and st.passes or 0,
         }
     end
+    Moments(s, sum, extra, g)
 
     -- Every award a player qualifies for, best fit first. Equal fits are
     -- settled by the order of the list above, then by who looted more, so
@@ -1838,12 +2115,14 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
     elseif cmd == "stats" then
         ns.ShowBrowse("dungeons")
     elseif cmd == "dungeons" or cmd == "runs" or cmd == "luck" or cmd == "drops" or cmd == "roles"
-            or cmd == "regulars" or cmd == "records" or cmd == "awards" or cmd == "rolls" or cmd == "numbers" then
+            or cmd == "regulars" or cmd == "records" or cmd == "awards" then
         ns.ShowBrowse(cmd)
     elseif cmd == "podium" or cmd == "details" then
         ns.OpenRunWindow("podium", ns.ViewedRun())
-    elseif cmd == "paper" or cmd == "timeline" then
-        ns.OpenRunWindow(cmd, ns.ViewedRun())
+    elseif cmd == "paper" then
+        ns.OpenRunWindow("paper", ns.ViewedRun())
+    elseif cmd == "analysis" or cmd == "timeline" or cmd == "rolls" or cmd == "numbers" then
+        ns.ShowAnalysis(cmd ~= "analysis" and cmd or nil, ns.ViewedRun())
     elseif cmd == "export" then
         ns.ShowExport(arg == "all" and "all" or "run", ns.ViewedRun())
     elseif cmd == "share" then
@@ -1898,8 +2177,9 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
     else
         Print("/tlb - the breakdown window")
         Print("/tlb options")
-        Print("/tlb podium, /tlb paper, /tlb timeline - those windows for the run on show")
-        Print("/tlb stats - dungeons, records, runs, luck, regulars, drops, roles, rolls, numbers")
+        Print("/tlb podium, /tlb paper - those windows for the run on show")
+        Print("/tlb analysis - its timeline, rolls and numbers (also /tlb timeline, rolls, numbers)")
+        Print("/tlb stats - dungeons, records, runs, luck, regulars, drops, roles")
         Print("/tlb search <item> - find an item in past runs")
         Print("/tlb awards - what each award means")
         Print("/tlb bingo - your bingo card")

@@ -8,21 +8,33 @@ Everything the addon does, page by page, with its commands, options and limits. 
 - **Per item:** every item with its count and value, grouped by category: epic, blue and green BoE, Bind on Pickup, quest items, profession materials, other, junk.
 - **Two layouts:** one column per player for groups of five or fewer (with portraits), and an expandable list for larger groups.
 - **Need rolls:** a button at the top switches the window to show only what each player won on Need rolls. Hovering an item shows whether it was won on Need or Greed, and everyone's roll on it.
-- **Awards:** when a run ends, each player gets one light-hearted award, revealed one by one: the one that fits them best out of about twenty, such as Jackpot, Lion's Share, Fair Share, Loaded Dice, Natural 100, Window Shopper, The Farmer, The Saint or Empty Pockets. The further a player is from normal, the stronger the fit: an average roll of 51 earns nothing, an average of 95 is hard to miss. **Ninja** (most value won on Need rolls) and **Luckiest** (most value won on Greed rolls) count for more than the others, but a more striking award can take their place. Hover an award to see the rule behind it, or click it for the list of all awards.
+- **Awards:** when a run ends, each player gets one light-hearted award, revealed one by one: the one that fits them best out of about forty, such as Jackpot, Lion's Share, Fair Share, Loaded Dice, Window Shopper, The Farmer, The Saint or Empty Pockets. The further a player is from normal, the stronger the fit: an average roll of 51 earns nothing, an average of 95 is hard to miss. **Ninja** (most value won on Need rolls) and **Luckiest** (most value won on Greed rolls) count for more than the others, but a more striking award can take their place. Hover an award to see the rule behind it, or click it for the list of all awards.
+  - *Moments* are odd things the dice did: Natural 100, Snake Eyes, Heartbreak (lost with 95 or more), Lowball (won with 5 or less), Photo Finish (won by one point), Deja Vu (the same number twice in a row), Hot Streak, Dry Spell, Nemesis and Overkill (a Need win worth under 1s).
+  - *Consolation prizes* go only to players nothing else fits, the best of them first: Collector, Busy Hands, Always Second, Average Joe, Magpie, Boss Magnet, Trash Panda, Leftovers, Booby Prize, Runner-up, First Dibs and Last Call. They score below 0.3, so they never take another award's place. A player left with nothing at all is a Tourist.
 - **Under the breakdown:** run time, group loot per hour, a fairness score, any dungeon record the run set, how it compares with your average there, and the streak it belongs to.
 - **History:** past runs are kept and can be browsed. **Pin** a run and it is never deleted: not by the limit on runs to keep, not by `/tlb clear`. **Delete** removes just the run on show, after asking.
 
-## Podium, front page and timeline
+## Podium, front page and analysis
 
 Three windows about the run on show, opened from the main window's top row. Each closes again on a second click.
 
 - **Podium:** your group's characters stand on gold, silver and bronze blocks. The winner dances, last place cries, and the Ninja kneels. It also opens by itself when a run ends (an option).
 - **Front page:** a mock newspaper written from the run, with a headline and a short story for every award.
-- **Timeline:** a chart of every player's running total through the run, with boss kills marked. You see when someone pulled ahead, and which drop did it.
+- **Analysis:** three tabs about the run, following the main window from run to run:
+  - *Timeline:* a chart of every player's running total through the run, with boss kills marked. You see when someone pulled ahead, and which drop did it.
+  - *Rolls:* every roll that was won: the item, the winner, and what everyone else rolled.
+  - *Numbers:*
+    - *Fairness*, from 0 (one player took everything) to 100 (everyone got the same).
+    - *Where the loot came from:* after a boss kill, profession materials, or trash.
+    - *Roll luck:* for each player, the rolls they entered, the wins they could expect, and the wins they had.
+    - *Streak:* standings over the runs you have done in a row with the same group or in the same dungeon.
+    - *At today's prices:* the run re-valued at current auction prices, against the prices recorded at the time.
+    - *Award scores:* how well each player fitted each award.
+    - A button to **export** the run as text for a spreadsheet.
 
 ## Statistics
 
-Tables over everything recorded. Click a column title to sort. The last two tabs are about the run on show in the main window, and follow it from run to run.
+Tables over all your runs. Click a column title to sort.
 
 - **Dungeons:** per dungeon, the number of runs, average group loot, your average, average time, gold per hour for the group and for you, and average fairness. Sort by "Group / hour" to pick tonight's dungeon.
 - **Records:** your richest run, best personal haul, biggest single item and fastest run per dungeon.
@@ -33,15 +45,6 @@ Tables over everything recorded. Click a column title to sort. The last two tabs
 - **Roles:** how loot shares turn out by role and by class, against an equal share.
 - **Find item:** search past runs for an item to see when it dropped and who got it.
 - **Awards:** what every award means.
-- **Rolls:** every roll of the run on show that was won: the item, the winner, and what everyone else rolled.
-- **Numbers:** about the run on show:
-  - *Fairness*, from 0 (one player took everything) to 100 (everyone got the same).
-  - *Where the loot came from:* after a boss kill, profession materials, or trash.
-  - *Roll luck:* for each player, the rolls they entered, the wins they could expect, and the wins they had.
-  - *Streak:* standings over the runs you have done in a row with the same group or in the same dungeon.
-  - *At today's prices:* the run re-valued at current auction prices, against the prices recorded at the time.
-  - *Award scores:* how well each player fitted each award.
-  - A button to **export** the run as text for a spreadsheet.
 - **Export all runs:** one line per player of every run, as text for a spreadsheet.
 
 ## While you play
@@ -56,7 +59,7 @@ Tables over everything recorded. Click a column title to sort. The last two tabs
 
 The **Share** button (or `/tlb share`) shares the run on show, in three ways:
 
-- **A link in chat.** Pick a channel: say, yell, emote, party, raid, raid warning, instance, guild, officer, a channel or community you joined, or a whisper to a player whose full name you type. The link goes into your chat box and you send it yourself. Players with the addon click it to see the run; others see plain text. Global channels (General, Trade, LocalDefense and the like) are not offered, and links posted there stay plain text.
+- **A link in chat.** Pick a channel: say, yell, emote, party, raid, raid warning, instance, guild, officer, a channel or community you joined, or a whisper to a player whose full name you type (names are suggested as you type: your group, friends, guild, and the players you have run with). The link goes into your chat box and you send it yourself. Players with the addon click it to see the run; others see plain text. Global channels (General, Trade, LocalDefense and the like) are not offered, and links posted there stay plain text.
 - **A summary in chat** anyone can read, like a damage meter's report. Choose **Summary** in the Share window, check the lines, and click a channel to post them. A first line names the run, then one line per player, most loot first. Options › Share sets how many players (5 by default) and what the lines show. Emote and raid warning are not offered for a summary.
 - **A code.** The run as text to copy out of the game and paste anywhere: about 3,000 to 5,000 characters for a five-player dungeon. Anyone with the addon imports it in the **Shared runs** window (`/tlb import`).
 
@@ -83,8 +86,9 @@ A run starts automatically when you enter a dungeon (and raids, if enabled). The
 | --- | --- |
 | `/tlb` or `/lucky` | Open or close the window |
 | `/tlb options` | Open the options |
-| `/tlb podium` | The podium of the run on show (also `/tlb paper`, `timeline`) |
-| `/tlb stats` | Statistics (also `/tlb dungeons`, `records`, `runs`, `luck`, `regulars`, `drops`, `roles`, `rolls`, `numbers`) |
+| `/tlb podium` | The podium of the run on show (also `/tlb paper`) |
+| `/tlb analysis` | Its timeline, rolls and numbers (also `/tlb timeline`, `rolls`, `numbers`) |
+| `/tlb stats` | Statistics (also `/tlb dungeons`, `records`, `runs`, `luck`, `regulars`, `drops`, `roles`) |
 | `/tlb search <item name>` | Find an item in past runs |
 | `/tlb awards` | What every award means |
 | `/tlb export` | The run on show as text for a spreadsheet; `/tlb export all` for every run |
@@ -206,6 +210,10 @@ python tests/run_tests.py ThatLuckyBastard tests/test_summary.lua
 
 ```bash
 python tests/run_tests.py ThatLuckyBastard tests/test_regulars.lua
+```
+
+```bash
+python tests/run_tests.py ThatLuckyBastard tests/test_awards.lua
 ```
 
 `tools/make_logo.py` draws the addon's mark (needs Pillow); the brand colours live at the top of `ThatLuckyBastard/Core.lua`. `tools/make_receipt_edge.py` draws the torn edge of the Receipt theme's receipts.

@@ -500,21 +500,211 @@ namePrompt:SetText("Their full name")
 local function UpdatePrompt()
     namePrompt:SetShown(nameBox:GetText() == "" and not nameBox:HasFocus())
 end
-nameBox:SetScript("OnTextChanged", UpdatePrompt)
-nameBox:SetScript("OnEditFocusGained", UpdatePrompt)
-nameBox:SetScript("OnEditFocusLost", UpdatePrompt)
-nameBox:SetScript("OnEscapePressed", nameBox.ClearFocus)
 
 local lastWhisper -- the name whispered last, offered again
+
+-- Names to whisper, as you type: like the game's own chat box, from your
+-- group, friends and guild, and also from the players you have run with.
+local MAX_SUGGESTIONS = 5
+local SUGGEST_H = 18 -- a row of the list
+
+-- Everyone you might whisper, best first: your group, the name you
+-- whispered last, friends, Battle.net friends in the game, your guild,
+-- then the players you have run with, most runs first. Each is { name,
+-- class } (the class file name, when known).
+local function Candidates()
+    local out, seen = {}, {}
+    local function Add(name, class)
+        if type(name) ~= "string" or issecret(name) or name == "" then return end
+        if Ambiguate then name = Ambiguate(name, "none") end
+        local key = name:lower()
+        if seen[key] or IsMe(name) then return end
+        seen[key] = true
+        out[#out + 1] = { name = name, class = class }
+    end
+    local raid = IsInRaid()
+    for i = 1, GetNumGroupMembers() do
+        local unit = (raid and "raid" or "party") .. i
+        if UnitExists(unit) and not UnitIsUnit(unit, "player") then
+            Add(GetUnitName(unit, true), select(2, UnitClass(unit)))
+        end
+    end
+    Add(lastWhisper)
+    if C_FriendList and C_FriendList.GetNumFriends then
+        for i = 1, C_FriendList.GetNumFriends() or 0 do
+            local info = C_FriendList.GetFriendInfoByIndex(i)
+            if info then Add(info.name) end
+        end
+    end
+    if BNGetNumFriends and C_BattleNet and C_BattleNet.GetFriendNumGameAccounts then
+        local wow, home = BNET_CLIENT_WOW or "WoW", GetRealmName and GetRealmName()
+        for i = 1, (BNGetNumFriends()) or 0 do
+            for j = 1, C_BattleNet.GetFriendNumGameAccounts(i) or 0 do
+                local game = C_BattleNet.GetFriendGameAccountInfo(i, j)
+                local name, realm = game and game.characterName, game and game.realmName
+                if name and game.clientProgram == wow then
+                    -- Another realm's player is whispered as Name-Realm.
+                    if realm and realm ~= "" and realm ~= home then name = name .. "-" .. (realm:gsub("%s", "")) end
+                    Add(name)
+                end
+            end
+        end
+    end
+    if IsInGuild() and GetNumGuildMembers and GetGuildRosterInfo then
+        for i = 1, (GetNumGuildMembers()) or 0 do
+            local name, _, _, _, _, _, _, _, _, _, class = GetGuildRosterInfo(i)
+            Add(name, class)
+        end
+    end
+    local regulars = {}
+    for name, who in pairs(ns.db.people) do regulars[#regulars + 1] = { name = name, who = who } end
+    table.sort(regulars, function(a, b)
+        if (a.who.runs or 0) ~= (b.who.runs or 0) then return (a.who.runs or 0) > (b.who.runs or 0) end
+        return a.name < b.name
+    end)
+    for _, r in ipairs(regulars) do Add(r.name, r.who.class) end
+    return out
+end
+
+-- The names that `text` could be the start of: of the whole name, or of
+-- one of its words ("ee" finds "Duke Ee"), ignoring case. A name typed in
+-- full is not offered again. At most `max` of them.
+function ns.NameSuggestions(text, max)
+    text = (text or ""):gsub("^%s+", "")
+    text = text:gsub("%s+", " "):lower()
+    local out = {}
+    if text == "" then return out end
+    local ok, list = pcall(Candidates) -- a fault in a list of names must never break the box
+    if not ok then return out end
+    for _, c in ipairs(list) do
+        local lower = c.name:lower()
+        local fits = lower ~= text and lower:sub(1, #text) == text
+        if not fits and lower ~= text then
+            for at in lower:gmatch("[ %-]()") do
+                if lower:sub(at, at + #text - 1) == text then fits = true end
+            end
+        end
+        if fits then
+            out[#out + 1] = c
+            if #out >= (max or MAX_SUGGESTIONS) then break end
+        end
+    end
+    return out
+end
+
+-- The list under the box. Tab or a click takes a name; the arrow keys
+-- pick one, which Enter then takes; Escape closes the list.
+local suggest = CreateFrame("Frame", nil, ui)
+suggest:SetFrameStrata("DIALOG")
+suggest:Hide()
+local suggestEdge = suggest:CreateTexture(nil, "BACKGROUND")
+suggestEdge:SetPoint("TOPLEFT", -1, 1)
+suggestEdge:SetPoint("BOTTOMRIGHT", 1, -1)
+suggestEdge:SetColorTexture(1, 1, 1, 0.18)
+local suggestBg = suggest:CreateTexture(nil, "BORDER")
+suggestBg:SetAllPoints()
+suggestBg:SetColorTexture(0.06, 0.06, 0.08, 0.97)
+
+local suggestions, picked = {}, 0 -- what is listed, and the row picked with the arrow keys
+local suggestRows = {}
+local function PaintSuggestions()
+    for i, row in ipairs(suggestRows) do row.lit:SetShown(i == picked) end
+end
+local function HideSuggestions()
+    suggestions, picked = {}, 0
+    suggest:Hide()
+end
+-- Puts suggestion `i` in the box. False when there is none.
+local function TakeSuggestion(i)
+    local s = suggestions[i]
+    if not s then return false end
+    nameBox:SetText(s.name)
+    HideSuggestions()
+    return true
+end
+local function SuggestRow(i)
+    local row = suggestRows[i]
+    if row then return row end
+    row = CreateFrame("Button", nil, suggest)
+    row:SetHeight(SUGGEST_H)
+    row:SetPoint("TOPLEFT", 0, -2 - (i - 1) * SUGGEST_H)
+    row:SetPoint("TOPRIGHT", 0, -2 - (i - 1) * SUGGEST_H)
+    local hl = row:CreateTexture(nil, "HIGHLIGHT")
+    hl:SetAllPoints()
+    hl:SetColorTexture(1, 1, 1, 0.08)
+    row.lit = row:CreateTexture(nil, "ARTWORK")
+    row.lit:SetAllPoints()
+    row.lit:SetColorTexture(1, 1, 1, 0.14)
+    row.label = row:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    row.label:SetPoint("LEFT", 8, 0)
+    row.label:SetPoint("RIGHT", -8, 0)
+    row.label:SetJustifyH("LEFT")
+    row.label:SetWordWrap(false)
+    row:SetScript("OnClick", function()
+        TakeSuggestion(i)
+        nameBox:SetFocus() -- Enter then whispers them
+    end)
+    suggestRows[i] = row
+    return row
+end
+local function ShowSuggestions()
+    suggestions, picked = ns.NameSuggestions(nameBox:GetText(), MAX_SUGGESTIONS), 0
+    for i, s in ipairs(suggestions) do
+        local row = SuggestRow(i)
+        row.label:SetText(ns.ClassColored(s.name, s.class))
+        row:Show()
+    end
+    for i = #suggestions + 1, #suggestRows do suggestRows[i]:Hide() end
+    suggest:ClearAllPoints()
+    suggest:SetPoint("TOPLEFT", nameBox, "BOTTOMLEFT", -6, -2)
+    suggest:SetPoint("TOPRIGHT", nameBox, "BOTTOMRIGHT", 0, -2)
+    suggest:SetHeight(#suggestions * SUGGEST_H + 4)
+    suggest:SetShown(#suggestions > 0)
+    PaintSuggestions()
+end
+
+nameBox:SetScript("OnTextChanged", function(_, userInput)
+    UpdatePrompt()
+    if userInput then ShowSuggestions() end
+end)
+nameBox:SetScript("OnEditFocusGained", UpdatePrompt)
+nameBox:SetScript("OnEditFocusLost", function()
+    UpdatePrompt()
+    -- Not at once: a click on the list takes the focus away first.
+    C_Timer.After(0.2, function()
+        if not nameBox:HasFocus() then HideSuggestions() end
+    end)
+end)
+nameBox:SetScript("OnEscapePressed", function()
+    if suggest:IsShown() then HideSuggestions() else nameBox:ClearFocus() end
+end)
+nameBox:SetScript("OnTabPressed", function()
+    if suggest:IsShown() then TakeSuggestion(picked > 0 and picked or 1) end
+end)
+nameBox:SetScript("OnArrowPressed", function(_, key)
+    local n = #suggestions
+    if not suggest:IsShown() or n == 0 then return end
+    if key == "DOWN" then
+        picked = picked % n + 1
+    elseif key == "UP" then
+        picked = (picked - 2) % n + 1
+    end
+    PaintSuggestions()
+end)
+
 local function Whisper()
     local s = shareRun
     local name = (nameBox:GetText() or ""):gsub("^%s+", ""):gsub("%s+$", ""):gsub("%s+", " ")
+    HideSuggestions()
     if not s or name == "" then return nameBox:SetFocus() end
     lastWhisper = name
     nameBox:ClearFocus()
     Post(s, nil, name)
 end
-nameBox:SetScript("OnEnterPressed", Whisper)
+-- Enter takes the name picked in the list, if any; otherwise it whispers.
+nameBox:SetScript("OnEnterPressed", function()
+    if not (suggest:IsShown() and picked > 0 and TakeSuggestion(picked)) then Whisper() end
+end)
 local whisperBtn = ns.MakeButton("Whisper", BTN_W, Whisper, ui)
 
 local codeBtn = ns.MakeButton("Show the code", 130, function() ns.ShowExport("code", shareRun) end, ui)
@@ -599,6 +789,7 @@ function ns.ToggleShare(s)
     if win:IsShown() and shareRun == s then return win:Hide() end
     shareRun = s
     nameBox:SetText(TargetName() or lastWhisper or "")
+    HideSuggestions()
     win:Show()
     win:Raise()
     Draw()

@@ -326,34 +326,58 @@ check(inFront(ThatLuckyBastardBingoFrame, ThatLuckyBastardFrame) and inFront(Tha
 ns.ToggleBingo()
 
 print("==== the buttons that open a window close it too ====")
-local podiumWin, paperWin, timelineWin = ThatLuckyBastardPodiumFrame, ThatLuckyBastardPaperFrame, ThatLuckyBastardTimelineFrame
+local podiumWin, paperWin, analysisWin = ThatLuckyBastardPodiumFrame, ThatLuckyBastardPaperFrame,
+                                         ThatLuckyBastardAnalysisFrame
 podiumWin:Hide()
 browse:Hide()
 ns.ShowRun(first)
 check(click("Podium") and podiumWin:IsShown(), "Podium opens its window")
 check(click("Front page") and paperWin:IsShown() and podiumWin:IsShown(), "Front page opens its own, beside it")
-check(click("Timeline") and timelineWin:IsShown(), "so does Timeline")
+check(click("Analysis") and analysisWin:IsShown(), "so does Analysis")
 check(click("Podium") and not podiumWin:IsShown() and click("Front page") and not paperWin:IsShown()
-      and click("Timeline") and not timelineWin:IsShown(), "a second click closes each one")
+      and click("Analysis") and not analysisWin:IsShown(), "a second click closes each one")
 check(click("Statistics") and browse:IsShown(), "Statistics opens")
 check(click("Statistics") and not browse:IsShown(), "and a second click closes it")
 
-print("==== rolls and numbers: statistics tabs that follow the run on show ====")
-local function onShow(s)
-    return ("The run on show in the main window: %s, %s."):format(s.name, ns.DateText(s.startedAt))
+print("==== the Analysis window: timeline, rolls and numbers of the run on show ====")
+-- Text drawn somewhere in a font string (drew wants the whole text).
+local function shows(text)
+    for _, t in ipairs(TEXTLOG) do
+        if t:find(text, 1, true) then return true end
+    end
+    return false
 end
-ns.ShowBrowse("dungeons")
+local function titled(s) return shows("Analysis  -  " .. s.name) end
 TEXTLOG = {}
-check(click("Rolls") and drew(onShow(first)), "the Rolls tab is about the run on show")
+check(click("Analysis") and titled(first), "it opens on the run on show")
+check(click("Rolls") and shows("Hover a line for every roll."), "its Rolls tab")
 local another = db.history[1] ~= first and db.history[1] or db.history[2]
 TEXTLOG = {}
 ns.ShowRun(another)
-check(drew(onShow(another)), "and follows the main window to another run")
+-- (that one has no rolls)
+check(titled(another) and shows("Nothing has been rolled for in this run."),
+      "follows the main window to another run, on the same tab")
 TEXTLOG = {}
-check(click("Numbers") and drew(onShow(another)), "so does the Numbers tab")
+check(click("Numbers") and shows("Export this run"), "its Numbers tab")
 TEXTLOG = {}
-check(click("Dungeons") and not drew(onShow(another)), "the other tabs are about all your runs, as before")
-browse:Hide()
+check(click("Timeline") and shows("Running totals."), "and back to the Timeline")
+local function within(w, root)
+    while w do
+        if w == root then return true end
+        w = rawget(w, "__parent")
+    end
+    return false
+end
+local statsTabs = {}
+for _, w in ipairs(FRAMES) do
+    -- A button's label is on its inner button; the tab mark on the frame around it.
+    local t, outer = rawget(w, "text"), rawget(w, "__parent")
+    if type(t) == "table" and outer and rawget(outer, "isTab") and within(w, browse) then statsTabs[t.__text] = true end
+end
+check(statsTabs.Dungeons and statsTabs.Awards and not statsTabs.Rolls and not statsTabs.Numbers,
+      "Statistics keeps the tabs about all your runs, and no longer has Rolls or Numbers")
+click("Analysis")
+check(not analysisWin:IsShown(), "a second click on Analysis closes it")
 
 print("==== a queue that pops inside a dungeon ====")
 WORLD.party = { { "Borin Oak", "WARRIOR", "TANK" }, { "Sela Marrow", "MAGE", "DAMAGER" },

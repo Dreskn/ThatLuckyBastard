@@ -7,7 +7,7 @@ local _, ns = ...
 --           when a run ends (if the option is on), revealing the podium
 --           last place first.
 --   paper   a mock newspaper front page written from the run's awards
--- and RunPages.lua adds the timeline.
+-- and RunPages.lua adds the Analysis window (timeline, rolls, numbers).
 
 local WIDTH, HEIGHT = 720, 510
 local STAGE_W = WIDTH - 24
@@ -55,7 +55,7 @@ function ns.MakeRunWindow(key, name, label, width, height, draw)
     return rw
 end
 
--- Opens run window `key` ("podium", "paper" or "timeline") on run `s`.
+-- Opens run window `key` ("podium", "paper" or "analysis") on run `s`.
 -- ceremony: reveal the podium one player at a time.
 function ns.OpenRunWindow(key, s, ceremony)
     windows[key].Open(s, ceremony)
@@ -480,6 +480,128 @@ local STORIES = {
             local got = ns.MoneyPlain(a.amount)
             return ("%s leaves with %s. A collection has not been started.")
                 :format(who, got == "-" and "nothing" or got)
+        end,
+    },
+    heartbreak = {
+        heads = { "SO CLOSE, YET SO FAR", "HEARTBREAK AT THE LOOT TABLE" },
+        body = function(who, a)
+            return ("%s %s. Friends say they are \"fine, honestly, totally fine\"."):format(who, LowerFirst(a.text))
+        end,
+    },
+    lowball = {
+        heads = { "WINS WITH A WHAT?", "THE LOWEST WINNING ROLL" },
+        body = function(who, a)
+            return ("%s %s. Mathematicians are looking into it."):format(who, LowerFirst(a.text))
+        end,
+    },
+    photo = {
+        heads = { "PHOTO FINISH", "BY A SINGLE POINT" },
+        body = function(who, a)
+            return ("%s %s. The other side has asked for a recount."):format(who, LowerFirst(a.text))
+        end,
+    },
+    dejavu = {
+        heads = { "HAVEN'T WE BEEN HERE BEFORE?", "GLITCH IN THE DICE" },
+        body = function(who, a)
+            return ("%s %s. Scholars suspect a glitch in reality."):format(who, LowerFirst(a.text))
+        end,
+    },
+    hotstreak = {
+        heads = { "ON FIRE", "CAN'T STOP WINNING" },
+        body = function(who, a)
+            return ("%s %s. The others are thinking of not rolling against them."):format(who, LowerFirst(a.text))
+        end,
+    },
+    dryspell = {
+        heads = { "STILL WAITING", "THE LONG DROUGHT" },
+        body = function(who, a)
+            return ("%s %s. Their dice have been seen weeping."):format(who, LowerFirst(a.text))
+        end,
+    },
+    nemesis = {
+        heads = { "A RIVALRY IS BORN", "\"IT'S PERSONAL NOW\"" },
+        body = function(who, a)
+            return ("%s %s. A rematch has been demanded."):format(who, LowerFirst(a.text))
+        end,
+    },
+    overkill = {
+        heads = { "NEEDED IT. REALLY NEEDED IT.", "A NEED ROLL FOR THE AGES" },
+        body = function(who, a)
+            return ("%s rolled Need on %s, worth %s. No regrets."):format(who, ItemName(a.link), ns.MoneyPlain(a.amount))
+        end,
+    },
+    collector = {
+        heads = { "THE WINS ADD UP", "A LITTLE OF EVERYTHING" },
+        body = function(who, a)
+            return ("%s %s. None of it was much, but all of it was theirs."):format(who, LowerFirst(a.text))
+        end,
+    },
+    busy = {
+        heads = { "ROLLS ON EVERYTHING", "NO ROLL LEFT BEHIND" },
+        body = function(who, a)
+            return ("%s %s. Their keyboard is said to be tired."):format(who, LowerFirst(a.text))
+        end,
+    },
+    second = {
+        heads = { "ALWAYS THE BRIDESMAID", "SILVER, AGAIN" },
+        body = function(who, a)
+            return ("%s: %s. Close is not a prize, but here is one anyway."):format(who, LowerFirst(a.text))
+        end,
+    },
+    avgjoe = {
+        heads = { "PERFECTLY AVERAGE", "MIDDLE OF THE ROAD" },
+        body = function(who, a)
+            return ("%s: %s. Statisticians call it beautiful."):format(who, LowerFirst(a.text))
+        end,
+    },
+    magpie = {
+        heads = { "OOH, SHINY", "AN EYE FOR COLOUR" },
+        body = function(who, a)
+            return ("%s collected %s. Not a single grey among them."):format(who, LowerFirst(a.text))
+        end,
+    },
+    bossmagnet = {
+        heads = { "THE BOSSES PAID", "BIG GAME HUNTER" },
+        body = function(who, a)
+            return ("%s took %s from the bosses alone. The trash was beneath them."):format(who, ns.MoneyPlain(a.amount))
+        end,
+    },
+    trashpanda = {
+        heads = { "ONE MOB'S TRASH...", "KING OF THE TRASH" },
+        body = function(who, a)
+            return ("%s made %s from trash, and checked every corpse twice."):format(who, ns.MoneyPlain(a.amount))
+        end,
+    },
+    leftovers = {
+        heads = { "NOBODY WANTED IT", "WASTE NOT, WANT NOT" },
+        body = function(who, a)
+            return ("%s %s. Someone had to."):format(who, LowerFirst(a.text))
+        end,
+    },
+    booby = {
+        heads = { "THE BOOBY PRIZE", "IT'S THE THOUGHT THAT COUNTS" },
+        body = function(who, a)
+            return ("%s got %s, worth %s. It will have pride of place at home.")
+                :format(who, ItemName(a.link), ns.MoneyPlain(a.amount))
+        end,
+    },
+    runnerup = {
+        heads = { "SO NEAR THE TOP", "SECOND IS THE NEW FIRST" },
+        body = function(who, a)
+            return ("%s finished with %s, the second most. Nobody remembers second place, except this paper.")
+                :format(who, ns.MoneyPlain(a.amount))
+        end,
+    },
+    firstdibs = {
+        heads = { "FIRST IN LINE", "THE EARLY BIRD GETS THE LOOT" },
+        body = function(who, a)
+            return ("%s picked up the first item of the run, %s. Off to a flying start."):format(who, ItemName(a.link))
+        end,
+    },
+    lastcall = {
+        heads = { "LAST ONE OUT", "THE FINAL WORD" },
+        body = function(who, a)
+            return ("%s picked up the last item of the run, %s, and turned off the lights."):format(who, ItemName(a.link))
         end,
     },
     tourist = {

@@ -1,15 +1,74 @@
 local _, ns = ...
 
--- Three more views of one run:
---   timeline  a chart of every player's running total through the run,
---             in a window of its own (see ns.MakeRunWindow in Show.lua)
+-- The Analysis window (see ns.MakeRunWindow in Show.lua): three tabs about
+-- the run on show in the main window, which it follows from run to run.
+--   timeline  a chart of every player's running total through the run
 --   rolls     every roll that was won: who rolled what
 --   numbers   fairness, where the loot came from, roll luck, the streak
 --             the run belongs to, today's prices and the award scores
--- Rolls and numbers are tabs of the statistics window, for the run on
--- show in the main window. The figures come from Data.lua.
+-- The figures come from Data.lua.
 
-local PAGE_W = 696 -- the room a page gets: the timeline window's width, less its margins
+local PAGE_W = 696 -- the room a page gets: the window's width, less its margins
+local TAB_W, TAB_H = 90, 30 -- the tabs, and the room they take above the page
+local TABS = { { "timeline", "Timeline" }, { "rolls", "Rolls" }, { "numbers", "Numbers" } }
+
+local pages, draws, tabButtons = {}, {}, {}
+local tab = "timeline" -- the tab on show
+
+local emptyNote
+local analysis = ns.MakeRunWindow("analysis", "ThatLuckyBastardAnalysisFrame", "Analysis", PAGE_W + 24, 540,
+    function(s, _, top)
+        for i, t in ipairs(TABS) do
+            local b = tabButtons[i]
+            b:ClearAllPoints()
+            if i == 1 then b:SetPoint("TOPLEFT", 12, top) else b:SetPoint("LEFT", tabButtons[i - 1], "RIGHT", 4, 0) end
+            b:SetFlat(ns.db.theme ~= "classic") -- Modern and Receipt are both flat
+            b:SetSelected(t[1] == tab)
+        end
+        for key, page in pairs(pages) do
+            page:ClearAllPoints()
+            page:SetPoint("TOPLEFT", 12, top - TAB_H)
+            page:SetPoint("BOTTOMRIGHT", -12, 12)
+            page:SetShown(s ~= nil and key == tab)
+        end
+        emptyNote:SetShown(s == nil)
+        if s then draws[tab](s) end
+    end)
+analysis.frame:SetPoint("CENTER", -30, -10)
+emptyNote = analysis.ui:CreateFontString(nil, "OVERLAY", "GameFontDisable")
+emptyNote:SetPoint("CENTER")
+emptyNote:SetText("No run to show yet.")
+for i, t in ipairs(TABS) do
+    local b = ns.MakeButton(t[2], TAB_W, function()
+        tab = t[1]
+        analysis.Draw()
+    end, analysis.ui)
+    b.isTab = true
+    tabButtons[i] = b
+end
+
+-- A tab's page: drawn by draws[key](run), set further down.
+local function Page(key)
+    local frame = CreateFrame("Frame", nil, analysis.ui)
+    frame:Hide()
+    pages[key] = frame
+    return frame
+end
+
+-- Opens the Analysis window on run `s`, at tab `key` ("timeline", "rolls"
+-- or "numbers"; nil keeps the last one).
+function ns.ShowAnalysis(key, s)
+    if pages[key] then tab = key end
+    analysis.Open(s)
+end
+
+-- It follows the main window from run to run.
+ns.OnRunShown(function(s)
+    if analysis.frame:IsShown() and analysis.run ~= s then
+        analysis.run = s
+        analysis.Draw()
+    end
+end)
 
 local function Clock(seconds)
     return ("%d:%02d"):format(math.floor(seconds / 60), seconds % 60)
@@ -60,16 +119,8 @@ local PALETTE = {
 }
 local MAX_SERIES = #PALETTE -- one colour per line
 
-local timeline, DrawTimeline
-local timelineWin = ns.MakeRunWindow("timeline", "ThatLuckyBastardTimelineFrame", "Timeline", PAGE_W + 24, 510,
-    function(s, _, top)
-        timeline:ClearAllPoints()
-        timeline:SetPoint("TOPLEFT", 12, top)
-        timeline:SetPoint("BOTTOMRIGHT", -12, 12)
-        DrawTimeline(s)
-    end)
-timelineWin.frame:SetPoint("CENTER", -30, -10)
-timeline = CreateFrame("Frame", nil, timelineWin.ui)
+local DrawTimeline
+local timeline = Page("timeline")
 
 local chart = CreateFrame("Frame", nil, timeline)
 chart:SetSize(CHART_W, CHART_H)
@@ -239,7 +290,7 @@ end
 local ROLL_ROW_H = 20
 local ROLL_COLS = { { "Time", 4, 46 }, { "Item", 54, 200 }, { "Won by", 262, 190 }, { "Others", 460, 206 } }
 
-local rollsPage = CreateFrame("Frame", nil, ns.StatsPageParent)
+local rollsPage = Page("rolls")
 
 local rollsSummary = rollsPage:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 rollsSummary:SetPoint("TOPLEFT", 4, -4)
@@ -354,7 +405,7 @@ end
 -- Numbers
 ----------------------------------------------------------------------
 
-local numbersPage = CreateFrame("Frame", nil, ns.StatsPageParent)
+local numbersPage = Page("numbers")
 
 local numbersScroll = CreateFrame("ScrollFrame", nil, numbersPage, "UIPanelScrollFrameTemplate")
 numbersScroll:SetPoint("TOPLEFT", 0, -2)
@@ -480,7 +531,7 @@ local function NumberLines(s)
                 awards[p.name] and awards[p.name].title or "-",
                 #parts > 0 and ("fits: " .. table.concat(parts, ", ")) or "nothing fitted"))
         end
-        note("0.3 just qualifies, 1 is remarkable, 2 extraordinary.")
+        note("0.3 just qualifies, 1 is remarkable, 2 extraordinary. Below 0.3: a consolation prize.")
     end
 
     if #lines == 0 then
@@ -516,5 +567,4 @@ local function DrawNumbers(s)
     exportBtn:SetFlat(ns.db.theme ~= "classic") -- Modern and Receipt are both flat
 end
 
-ns.AddStatsPage("rolls", rollsPage, DrawRolls)
-ns.AddStatsPage("numbers", numbersPage, DrawNumbers)
+draws.timeline, draws.rolls, draws.numbers = DrawTimeline, DrawRolls, DrawNumbers

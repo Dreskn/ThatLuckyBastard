@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **Twenty new awards, so Tourist becomes rare.** Moments for odd things the dice did: Heartbreak, Lowball, Photo Finish, Deja Vu, Hot Streak, Dry Spell, Nemesis and Overkill. Consolation prizes for players nothing else fits: Collector, Busy Hands, Always Second, Average Joe, Magpie, Boss Magnet, Trash Panda, Leftovers, Booby Prize, Runner-up, First Dibs and Last Call. Each has a Front page story. Statistics › Awards lists them in three parts.
+- **Analysis replaces Timeline** in the main window: one window with three tabs about the run on show, Timeline, Rolls and Numbers, following the main window from run to run. Statistics is now only about all your runs.
+- **The whisper box suggests names** as you type, like the chat box: your group, friends, Battle.net friends in the game, guild, and the players you have run with. Tab or a click takes one; the arrow keys and Enter work too.
+
 ## 0.4.5
 
 - **Regulars** show each player's total loot in your runs together and yours beside it, with the difference; so do player tooltips. Your side is worked out once from your kept runs.

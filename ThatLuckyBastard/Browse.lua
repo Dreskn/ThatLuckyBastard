@@ -10,13 +10,11 @@ local _, ns = ...
 --   roles     how shares turn out by role and class
 --   search    find an item in past runs: when it dropped and who got it
 --   awards    what every award means
---   rolls     every roll of the run on show in the main window
---   numbers   the numbers behind that run
+-- (What is about one run only, its rolls and its numbers, is in the
+-- Analysis window: RunPages.lua.)
 --
--- Rolls and numbers are pages drawn by RunPages.lua (ns.AddStatsPage), and
--- follow the main window as it steps from run to run. Every other page is
--- a table: a one-line description, a list of columns and a function
--- returning rows. A row is
+-- Every page is a table: a one-line description, a list of columns and a
+-- function returning rows. A row is
 --   { cells = { text, ... },      what is shown
 --     keys = { value, ... },      what each column sorts by (optional)
 --     link = item link for the tooltip, run = run to open on click,
@@ -25,7 +23,7 @@ local _, ns = ...
 -- sorted by clicking a column title.
 
 local WIDTH, HEIGHT = 900, 480
-local TAB_W = 75 -- eleven tabs across the window
+local TAB_W = 90 -- nine tabs across the window
 local ROW_H = 18
 local MAX_ROWS = 300
 local MAX_COLS = 8
@@ -400,6 +398,12 @@ PAGES.search = {
     end,
 }
 
+-- The awards list in three parts: the awards, then these.
+local AWARD_GROUPS = {
+    moment = { "Moments", "Odd things the dice did." },
+    consolation = { "Consolation", "For players nothing else fits." },
+}
+
 PAGES.awards = {
     title = "Awards",
     blurb = "Each player gets the award that fits them best: the further from normal, the stronger the fit.",
@@ -408,7 +412,14 @@ PAGES.awards = {
         local rows = {
             { note = "One award per player, one player per award. Ninja and Luckiest weigh more." },
         }
+        local group = false
         for _, award in ipairs(ns.AwardGuide()) do
+            local head = AWARD_GROUPS[award.group or false]
+            if (award.group or false) ~= group and head then
+                group = award.group
+                rows[#rows + 1] = { note = " " }
+                rows[#rows + 1] = { cells = { "|cffffffff" .. head[1] .. "|r", "|cff909090" .. head[2] .. "|r" } }
+            end
             rows[#rows + 1] = { cells = {
                 ("|TInterface\\Icons\\%s:14:14|t  |cffffd100%s|r"):format(award.icon, award.title),
                 award.how,
@@ -418,13 +429,7 @@ PAGES.awards = {
     end,
 }
 
--- Pages about the run on show: their frame and draw function come from
--- RunPages.lua.
-PAGES.rolls = { title = "Rolls" }
-PAGES.numbers = { title = "Numbers" }
-
-local PAGE_ORDER = { "dungeons", "records", "runs", "luck", "regulars", "drops", "roles", "search", "awards",
-                     "rolls", "numbers" }
+local PAGE_ORDER = { "dungeons", "records", "runs", "luck", "regulars", "drops", "roles", "search", "awards" }
 
 ----------------------------------------------------------------------
 -- Controls
@@ -456,17 +461,6 @@ search:SetScript("OnEnterPressed", search.ClearFocus)
 search:SetScript("OnEscapePressed", search.ClearFocus)
 
 local exportBtn = ns.MakeButton("Export all runs", 120, function() ns.ShowExport("all") end, ui)
-
--- Where a page that draws itself goes, in place of the table.
-local pageHost = CreateFrame("Frame", nil, ui)
-ns.StatsPageParent = pageHost
-
--- Gives page `key` the frame it is drawn in and draw(run).
-function ns.AddStatsPage(key, frame, draw)
-    PAGES[key].frame, PAGES[key].draw = frame, draw
-    frame:SetAllPoints(pageHost)
-    frame:Hide()
-end
 
 local scroll = CreateFrame("ScrollFrame", nil, ui, "UIPanelScrollFrameTemplate")
 local content = CreateFrame("Frame", nil, scroll)
@@ -576,9 +570,6 @@ local function ApplyTheme()
     exportBtn:ClearAllPoints()
     exportBtn:SetPoint("TOPRIGHT", -14, top - 26)
 
-    pageHost:ClearAllPoints()
-    pageHost:SetPoint("TOPLEFT", 12, top - 56)
-    pageHost:SetPoint("BOTTOMRIGHT", -12, 12)
     scroll:ClearAllPoints()
     scroll:SetPoint("TOPLEFT", 12, top - 72)
     scroll:SetPoint("BOTTOMRIGHT", -32, 12)
@@ -633,24 +624,6 @@ function Refresh()
         blurb:SetText(page.blurb)
     end
     blurb:SetPoint("RIGHT", exportBtn, "LEFT", -10, 0)
-
-    -- A page about the run on show draws itself in place of the table.
-    local s = page.draw and ns.ViewedRun()
-    for _, p in pairs(PAGES) do
-        if p.frame then p.frame:SetShown(p == page and s ~= nil) end
-    end
-    scroll:SetShown(not page.draw)
-    headerLine:SetShown(not page.draw)
-    if page.draw then
-        blurb:SetText(s and ("The run on show in the main window: %s, %s."):format(s.name or "Run", DateText(s.startedAt))
-                      or "No run to show yet.")
-        for k = 1, MAX_COLS do
-            headers[k]:Hide()
-            headerButtons[k]:Hide()
-        end
-        if s then page.draw(s) end
-        return
-    end
 
     local data = page.rows(search:GetText())
     local sortable = false
@@ -747,11 +720,6 @@ end)
 ns.OnRerender(function()
     wipe(runFigures)
     if b:IsShown() then Refresh() end
-end)
-
--- The run pages follow the main window from run to run.
-ns.OnRunShown(function()
-    if b:IsShown() and PAGES[mode].draw then Refresh() end
 end)
 
 -- page: one of the page names at the top of this file. query: text for

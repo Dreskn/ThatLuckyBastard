@@ -28,7 +28,8 @@ local QUALITY_INK = {
     [4] = "|cff6a2c9e", [5] = "|cffa0520a", [6] = "|cff8a6d1f", [7] = "|cff1d6f8a",
 }
 -- Awards stamped in red; the others in blue.
-local RED_STAMPS = { ninja = true, lionshare = true, empty = true, snakeeyes = true, colddice = true, window = true }
+local RED_STAMPS = { ninja = true, lionshare = true, empty = true, snakeeyes = true, colddice = true, window = true,
+                     heartbreak = true, dryspell = true, nemesis = true, overkill = true, booby = true }
 
 local MEDIA = "Interface\\AddOns\\ThatLuckyBastard\\Media\\"
 local function ReceiptFont(name, file, size, color)
@@ -2051,9 +2052,9 @@ versionLabel:SetText(ns.VERSION ~= "" and ("v" .. ns.VERSION) or "")
 -- ApplyTheme):
 --   Need only    switches between all loot and Need-roll wins only (to
 --                see who needed what)
---   Podium, Front page, Timeline
---                a window of its own each, for the run on show (its
---                rolls and numbers are tabs of Statistics)
+--   Podium, Front page, Analysis
+--                a window of its own each, for the run on show
+--                (Analysis: its timeline, rolls and numbers)
 --   Statistics   the tables over all runs (dungeons, luck, drops, item
 --                search and so on)
 --   Bingo        your bingo card (not there while bingo is switched off)
@@ -2074,7 +2075,7 @@ local needBtn = TopButton("Need only", function()
 end)
 TopButton("Podium", function() ns.ToggleRunWindow("podium", ns.ViewedRun()) end)
 TopButton("Front page", function() ns.ToggleRunWindow("paper", ns.ViewedRun()) end)
-TopButton("Timeline", function() ns.ToggleRunWindow("timeline", ns.ViewedRun()) end)
+TopButton("Analysis", function() ns.ToggleRunWindow("analysis", ns.ViewedRun()) end)
 TopButton("Statistics", function() ns.ToggleBrowse() end)
 local bingoBtn = TopButton("Bingo", function() ns.ToggleBingo() end)
 local shareBtn = MakeButton("Share", TOP_W, function() ns.ToggleShare(ns.ViewedRun()) end)
@@ -2144,7 +2145,7 @@ end
 -- Draws the list view: one row per line of BuildLines.
 local RenderList
 
--- Windows that follow the run on show (the statistics' run pages), and
+-- Windows that follow the run on show (the Analysis window), and
 -- the run they were last told about.
 local runFollowers, followedRun = {}, nil
 function ns.OnRunShown(fn)

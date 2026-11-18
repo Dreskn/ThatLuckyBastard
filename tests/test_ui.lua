@@ -46,20 +46,22 @@ step("statistics via slash commands", function()
 end)
 
 print("-- the run windows")
-for _, key in ipairs({ "podium", "paper", "timeline" }) do
+for _, key in ipairs({ "podium", "paper", "analysis" }) do
     show(step(key .. " window (finished run)", function() ns.OpenRunWindow(key, old) end), 70)
     step(key .. " window (run in progress)", function() ns.OpenRunWindow(key, cur) end)
     step(key .. " window with no run", function() ns.OpenRunWindow(key, nil) end)
 end
 
-print("-- the run pages of the statistics")
-for _, page in ipairs({ "rolls", "numbers" }) do
+print("-- the tabs of the Analysis window")
+for _, tab in ipairs({ "timeline", "rolls", "numbers" }) do
     ns.ShowRun(old)
-    show(step("statistics: " .. page .. " (finished run)", function() ns.ShowBrowse(page) end), 70)
-    step("statistics: " .. page .. " (run in progress)", function() ns.ShowRun(cur) end)
+    show(step("analysis: " .. tab .. " (finished run)", function() ns.ShowAnalysis(tab, old) end), 70)
+    step("analysis: " .. tab .. " (run in progress)", function() ns.ShowRun(cur) end)
 end
-step("run windows and pages via slash commands", function()
-    for _, cmd in ipairs({ "details", "podium", "paper", "timeline", "rolls", "numbers" }) do SlashCmdList.THATLUCKYBASTARD(cmd) end
+step("run windows and tabs via slash commands", function()
+    for _, cmd in ipairs({ "details", "podium", "paper", "analysis", "timeline", "rolls", "numbers" }) do
+        SlashCmdList.THATLUCKYBASTARD(cmd)
+    end
 end)
 
 print("-- export")
