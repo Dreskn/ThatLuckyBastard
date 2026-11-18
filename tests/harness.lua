@@ -74,6 +74,12 @@ function known.GetAttribute(self, key) return self.__attributes and self.__attri
 -- The edit box that has the keyboard, if any.
 function known.SetFocus(self) FOCUSED = self end
 function known.ClearFocus(self) if FOCUSED == self then FOCUSED = nil end end
+-- Anchors, as { point, relativeTo, relativePoint, x, y }.
+function known.SetPoint(self, point, rel, relPoint, x, y)
+    self.__points = self.__points or {}
+    self.__points[#self.__points + 1] = { point, rel, relPoint, x, y }
+end
+function known.ClearAllPoints(self) self.__points = {} end
 function known.SetWidth(self, w) self.__w = w end
 function known.SetHeight(self, h) self.__h = h end
 function known.SetSize(self, w, h) self.__w, self.__h = w, h end

@@ -339,6 +339,25 @@ check(click("Podium") and not podiumWin:IsShown() and click("Front page") and no
 check(click("Statistics") and browse:IsShown(), "Statistics opens")
 check(click("Statistics") and not browse:IsShown(), "and a second click closes it")
 
+-- The main window's button with this label (the frame around it).
+local function mainButton(label)
+    for _, w in ipairs(FRAMES) do
+        local t, outer = rawget(w, "text"), rawget(w, "__parent")
+        if type(t) == "table" and t.__text == label and outer and rawget(outer, "__parent")
+                and rawget(outer, "__parent").__parent == ThatLuckyBastardFrame then
+            return outer
+        end
+    end
+end
+local function anchor(w) return w and w.__points and w.__points[1] or {} end
+local stats, options = mainButton("Statistics"), mainButton("Options")
+check(stats and anchor(stats)[1] == "RIGHT" and anchor(stats)[2] == options and anchor(stats)[3] == "LEFT",
+      "Statistics sits at the bottom, beside Options: what is about all your runs")
+local expand, bingo, analysis = mainButton("Expand all"), mainButton("Bingo"), mainButton("Analysis")
+check(expand and (anchor(expand)[2] == bingo or anchor(expand)[2] == analysis)
+      and anchor(bingo)[2] == analysis,
+      "the top row is about the run on show: ... Analysis, Bingo, Expand all")
+
 print("==== the Analysis window: timeline, rolls and numbers of the run on show ====")
 -- Text drawn somewhere in a font string (drew wants the whole text).
 local function shows(text)

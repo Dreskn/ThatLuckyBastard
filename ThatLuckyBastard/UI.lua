@@ -2039,25 +2039,28 @@ local deleteBtn = MakeButton("Delete", 60, function() ns.AskDeleteRun(currentRun
 deleteBtn:SetPoint("LEFT", pinBtn, "RIGHT", 4, 0)
 deleteBtn:SetTextColor(1, 0.36, 0.32)
 
+-- Bottom right, what is about the whole addon rather than the run on
+-- show: Statistics (the tables over all runs) and Options, with the
+-- addon's version quietly beside them.
 local RIGHT_EDGE = -24 -- right margin of the buttons on the right, clear of the resize grip
 local optionsBtn = MakeButton("Options", 80, function() ns.ToggleOptions() end)
 optionsBtn:SetPoint("BOTTOMRIGHT", RIGHT_EDGE, 10)
+local statsBtn = MakeButton("Statistics", 80, function() ns.ToggleBrowse() end)
+statsBtn:SetPoint("RIGHT", optionsBtn, "LEFT", -4, 0)
 
--- The addon's version, quietly, beside Options.
 local versionLabel = ui:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
-versionLabel:SetPoint("RIGHT", optionsBtn, "LEFT", -10, 0)
+versionLabel:SetPoint("RIGHT", statsBtn, "LEFT", -10, 0)
 versionLabel:SetText(ns.VERSION ~= "" and ("v" .. ns.VERSION) or "")
 
--- Top row, buttons of one size side by side (the first is placed by
--- ApplyTheme):
+-- Top row, all about the run on show: buttons of one size side by side
+-- (the first is placed by ApplyTheme):
 --   Need only    switches between all loot and Need-roll wins only (to
 --                see who needed what)
 --   Podium, Front page, Analysis
---                a window of its own each, for the run on show
---                (Analysis: its timeline, rolls and numbers)
---   Statistics   the tables over all runs (dungeons, luck, drops, item
---                search and so on)
+--                a window of its own each (Analysis: its timeline, rolls
+--                and numbers)
 --   Bingo        your bingo card (not there while bingo is switched off)
+--   Expand all   opens every player's loot (only in the list view)
 -- and on its own on the right, Share: the run on show as a link in chat
 -- or as a code (Share.lua). Each button closes its window again on a
 -- second click. Six of them and Share fit the narrowest window.
@@ -2075,13 +2078,13 @@ local needBtn = TopButton("Need only", function()
 end)
 TopButton("Podium", function() ns.ToggleRunWindow("podium", ns.ViewedRun()) end)
 TopButton("Front page", function() ns.ToggleRunWindow("paper", ns.ViewedRun()) end)
-TopButton("Analysis", function() ns.ToggleRunWindow("analysis", ns.ViewedRun()) end)
-TopButton("Statistics", function() ns.ToggleBrowse() end)
+local analysisBtn = TopButton("Analysis", function() ns.ToggleRunWindow("analysis", ns.ViewedRun()) end)
 local bingoBtn = TopButton("Bingo", function() ns.ToggleBingo() end)
 local shareBtn = MakeButton("Share", TOP_W, function() ns.ToggleShare(ns.ViewedRun()) end)
 shareBtn.loud = true -- a red key in the Receipt theme
 
-local expandAll = MakeButton("Expand all", 90, function()
+-- Placed in Render, after the last button shown: Bingo may be hidden.
+local expandAll = MakeButton("Expand all", TOP_W, function()
     local s = currentRun
     if not s then return end
     local anyClosed = false
@@ -2091,11 +2094,10 @@ local expandAll = MakeButton("Expand all", 90, function()
     for name in pairs(s.players) do expanded[name] = anyClosed or nil end
     Render()
 end)
-expandAll:SetPoint("RIGHT", versionLabel, "LEFT", -10, 0)
 
 local runLabel = ui:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 runLabel:SetPoint("LEFT", deleteBtn, "RIGHT", 10, 0)
-runLabel:SetPoint("RIGHT", expandAll, "LEFT", -10, 0)
+runLabel:SetPoint("RIGHT", versionLabel, "LEFT", -10, 0)
 runLabel:SetJustifyH("LEFT")
 runLabel:SetWordWrap(false)
 
@@ -2228,6 +2230,8 @@ function Render()
     headers.share:SetShown(not useColumns and showShare)
     headers.diff:SetShown(not useColumns and showShare)
     expandAll:SetShown(not useColumns)
+    expandAll:ClearAllPoints()
+    expandAll:SetPoint("LEFT", bingoBtn:IsShown() and bingoBtn or analysisBtn, "RIGHT", TOP_GAP, 0)
     -- Receipt theme: receipts come out of a printer slot; the list is
     -- printed on one long sheet.
     local paper = theme.paper and true or false

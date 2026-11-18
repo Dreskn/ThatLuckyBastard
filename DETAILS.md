@@ -34,7 +34,7 @@ Three windows about the run on show, opened from the main window's top row. Each
 
 ## Statistics
 
-Tables over all your runs. Click a column title to sort.
+Tables over all your runs, from the Statistics button beside Options. Click a column title to sort.
 
 - **Dungeons:** per dungeon, the number of runs, average group loot, your average, average time, gold per hour for the group and for you, and average fairness. Sort by "Group / hour" to pick tonight's dungeon.
 - **Records:** your richest run, best personal haul, biggest single item and fastest run per dungeon.
