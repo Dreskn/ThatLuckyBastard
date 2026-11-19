@@ -425,4 +425,118 @@ db.options.maxHistory = 300
 for i = 1, 5 do SharedAt(run.startedAt - 1200 - i * 600) end
 check(#db.shared == 7, "with the default 300, they all stay")
 
+print("-- codes written to waste time")
+-- A code comes from someone else. These are made by hand, with a checksum
+-- that fits, the way someone who means harm would make them.
+local B64 = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ+/"
+local function Base64(n)
+    local out = ""
+    repeat
+        local d = n % 64
+        out = B64:sub(d + 1, d + 1) .. out
+        n = (n - d) / 64
+    until n == 0
+    return out
+end
+-- `code` with some of its eight sections replaced: Forge(code, { [7] = "..." }).
+local function Forge(from, sections)
+    local parts = {}
+    for part in (from:match("^(.*)![%w+/]+$") .. "!"):gmatch("(.-)!") do parts[#parts + 1] = part end
+    for i, text in pairs(sections) do parts[i + 1] = text end -- parts[1] is the "TLB1" in front
+    local body, sum = table.concat(parts, "!"), 0
+    for i = 1, #body do sum = (sum * 31 + body:byte(i)) % 16777213 end
+    return body .. "!" .. Base64(sum)
+end
+-- What reading `text` gives, and whether it took under a second.
+local function Timed(text)
+    local t0 = os.clock()
+    local s, why = ns.DecodeRun(text)
+    return s, why, os.clock() - t0 < 1
+end
+check(ns.DecodeRun(Forge(code, {})) ~= nil, "a code put together by hand reads like the real one")
+
+local s1, why1, fast1 = Timed("TLB" .. (" "):rep(150000) .. "x")
+check(s1 == nil and fast1, "150,000 spaces in a code: refused at once (" .. tostring(why1) .. ")")
+local s2, why2, fast2 = Timed(("x"):rep(1000000))
+check(s2 == nil and fast2 and why2 == "This is too long to be a run's code.", "a megabyte of text: " .. tostring(why2))
+local s3, why3, fast3 = Timed("TLB1!" .. ("a"):rep(210000))
+check(s3 == nil and fast3 and why3 == "This is too long to be a run's code.", "a code past 200,000 characters: too long")
+
+-- Bosses: sixty at most.
+local sixty = ns.DecodeRun(Forge(code, { [7] = ("1,"):rep(59) .. "1" }))
+check(sixty and #sixty.bosses == 60, "sixty boss kills are read")
+local s4, _, fast4 = Timed(Forge(code, { [7] = ("1,"):rep(60) .. "1" }))
+check(s4 == nil and fast4, "sixty-one are not")
+local s5, _, fast5 = Timed(Forge(code, { [7] = ("1,"):rep(90000) .. "1" }))
+check(s5 == nil and fast5, "ninety thousand: refused at once")
+
+-- Items: one player holding the same item again and again. Reading used
+-- to take the square of their number.
+local function Hoard(n) return Forge(code, { [4] = "1.MAGE" .. (",.1"):rep(n), [5] = "", [6] = "" }) end
+local some, _, fast6 = Timed(Hoard(3000))
+local held = 0
+for _ in pairs(some and some.players["Mira Vale"].items or {}) do held = held + 1 end
+check(some and held == 3000 and fast6, "three thousand entries of one item: read, each kept, in no time")
+local s7, _, fast7 = Timed(Hoard(6001))
+check(s7 == nil and fast7, "six thousand and one item entries: refused")
+local s8, _, fast8 = Timed(Hoard(60000))
+check(s8 == nil and fast8, "sixty thousand: refused at once")
+
+-- Rolls: a player is in a roll once.
+check(ns.DecodeRun(Forge(code, { [5] = "", [6] = "1.0.1.n,1(5,2(7" })) ~= nil, "a roll with two players reads")
+check(ns.DecodeRun(Forge(code, { [5] = "", [6] = "1.0.1.n,1(5,1(7" })) == nil, "the same player twice in a roll: refused")
+local crowd = {}
+for i = 1, 30000 do crowd[i] = "1(5" end
+local s9, _, fast9 = Timed(Forge(code, { [5] = "", [6] = "1.0.1.n," .. table.concat(crowd, ",") }))
+check(s9 == nil and fast9, "a roll with thirty thousand entries: refused at once")
+
+-- None of this is too strict for a raid: forty players, thirteen bosses,
+-- some two thousand items and two hundred rolls.
+local raid = { name = "Big Raid", instanceID = 409, startedAt = NOW - 4 * 3600, endedAt = NOW - 600, players = {},
+               names = {}, log = {}, rollLog = {}, bosses = {}, rollStats = {}, kills = 13 }
+local entry, pick = 0, 0
+for i = 1, 40 do
+    local name = ("Raider Number%02d"):format(i)
+    raid.names[i] = name
+    raid.players[name] = { class = "MAGE", role = "DAMAGER", items = {} }
+    raid.rollStats[name] = { sum = 50 * 40, n = 40, passes = 3, high = 99, low = 2 }
+    for k = 1, 55 do
+        entry = entry + 1
+        local link = ItemLink(40000 + (i * 7 + k * 13) % 400, "Thing", 2)
+        local key = ns.EntryKey(link)
+        if not raid.players[name].items[key] then
+            raid.players[name].items[key] = { link = link, id = entry, count = 2, vendor = 1200 + k, ah = 30000 + k,
+                                             cat = "uncommon", quality = 2, resolved = true }
+            pick = pick + 1
+            raid.log[pick] = ("%d:%d:%d:2"):format(pick * 4, i, entry)
+        end
+    end
+end
+raid.owner = raid.names[1]
+for b = 1, 13 do raid.bosses[b] = { t = b * 1000, name = "Boss Number " .. b } end
+for r = 1, 200 do
+    local parts = {}
+    for i = 1, 25 do parts[i] = ((r + i) % 40 + 1) .. "n" .. ((r * i) % 100 + 1) end
+    raid.rollLog[r] = { k = tostring(40000 + r), t = r * 60, w = (r + 1) % 40 + 1, m = "n", r = table.concat(parts, ",") }
+end
+local raidCode = ns.EncodeRun(raid)
+local raidBack, raidWhy, raidFast = Timed(raidCode)
+local raidItems = 0
+for _, p in pairs(raidBack and raidBack.players or {}) do
+    for _ in pairs(p.items) do raidItems = raidItems + 1 end
+end
+print(("        a raid's code: %d characters, %d link messages"):format(#raidCode, math.ceil(#raidCode / 236)))
+check(raidBack and raidFast and raidItems == pick and #raidBack.log == pick and #raidBack.rollLog == 200
+      and #raidBack.bosses == 13, ("a raid of forty reads back whole: %d items, 200 rolls, 13 bosses (%s)")
+          :format(raidItems, tostring(raidWhy)))
+check(#raidCode < 600 * 236, "and its code fits what a link carries (600 messages, 141,600 characters)")
+-- Ten thousand roll entries in all: forty players in 250 rolls, not 251.
+local everyone = {}
+for i = 1, 40 do everyone[i] = Base64(i) .. "(5" end
+local function Rolls(n) return Forge(raidCode, { [6] = (("1.0.1.n," .. table.concat(everyone, ",") .. ";"):rep(n)):sub(1, -2) }) end
+local full, _, fast10 = Timed(Rolls(250))
+check(full and #full.rollLog == 250 and fast10, "forty players in 250 rolls: read")
+local s11, _, fast11 = Timed(Rolls(251))
+check(s11 == nil and fast11, "one roll more is over the limit on entries: refused")
+
 print(FAILED and (FAILED .. " check(s) FAILED") or "all checks passed (sharing)")

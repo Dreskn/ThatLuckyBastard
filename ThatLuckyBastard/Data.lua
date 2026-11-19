@@ -82,12 +82,13 @@ end
 ns.Pickups = Pickups -- for the awards
 
 -- Where a pickup came from: "mats" for profession materials; of the rest,
--- "boss" when picked up shortly after a boss kill, else "trash". That is
--- a rule of thumb, not a fact from the game.
+-- "boss" when picked up shortly after a boss kill (then also which boss:
+-- its place in s.bosses), else "trash". That is a rule of thumb, not a
+-- fact from the game.
 function ns.PickupSource(s, pick)
     if pick.e.cat == "prof" then return "mats" end
-    for _, boss in ipairs(s.bosses or {}) do
-        if boss.t and pick.t >= boss.t and pick.t - boss.t <= BOSS_WINDOW then return "boss" end
+    for i, boss in ipairs(s.bosses or {}) do
+        if boss.t and pick.t >= boss.t and pick.t - boss.t <= BOSS_WINDOW then return "boss", i end
     end
     return "trash"
 end
@@ -257,11 +258,11 @@ function ns.Reprice(s)
         for _, e in pairs(p.items) do
             if Counted(e) then
                 ns.MarkPrice(s, e)
-                local was = ns.EntryMarket(e)
+                local was = ns.EntryRecorded(e)
                 local unit = e.vendor
                 if ns.CanAuction(e) and not e.noAH then
                     -- No price today says nothing: the recorded one stands.
-                    unit = ns.AuctionPrice(e.link) or e.ah or e.vendor
+                    unit = ns.TodaysPrice(e.link) or e.ah or e.vendor
                 end
                 local now = unit * e.count
                 out.was, out.now = out.was + was, out.now + now

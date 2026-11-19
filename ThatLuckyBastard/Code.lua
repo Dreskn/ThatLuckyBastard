@@ -17,14 +17,33 @@ local _, ns = ...
 -- safe in game chat and in Discord, which would turn *, _, ~, | and
 -- :word: into formatting. `check` is a checksum of the rest: a code cut
 -- short is refused rather than read wrong. A five-player dungeon run
--- takes about 3,000 to 5,000 characters.
+-- takes about 3,000 to 6,000 characters; a raid of forty with ten bosses
+-- or more, 30,000 to 65,000.
+--
+-- A code comes from someone else, so reading one never trusts it: it is
+-- text taken apart, never run. Its length is checked before anything
+-- else is done with it, every list it holds has a limit well above what
+-- a raid needs (see the MAX_ constants), and no step takes longer than
+-- the code is long. What a code can cost is thereby bounded, whoever
+-- wrote it.
 --
 -- Runs received from other players are kept in db.shared, apart from
 -- your own: they count in none of your statistics.
 
 local PREFIX = "TLB1!"
 local MAX_CODE = 200000 -- longest code accepted, in characters
+-- Longest text looked at: a code, with room for the line breaks and
+-- spaces a chat program may have put around and into it.
+local MAX_TEXT = MAX_CODE + 20000
+-- The most a run may hold. A busy raid of forty has some 2,200 items,
+-- 2,800 pickups, 170 rolls with 4,200 entries, and 13 bosses.
+local MAX_ITEMS = 6000         -- item entries, all players together
+local MAX_PICKUPS = 5000
+local MAX_ROLLS = 2000
+local MAX_ROLL_ENTRIES = 10000 -- players' entries, all rolls together
+local MAX_BOSSES = 60
 local DAMAGED = "This code is incomplete or damaged. Copy all of it, and try again."
+local TOO_LONG = "This is too long to be a run's code."
 
 local CATS = { "epic", "rare", "uncommon", "bop", "quest", "prof", "other", "junk" }
 local CAT_INDEX = {}
@@ -267,9 +286,11 @@ local function Build(sec)
     s.recordedBy = NameAt(head[5])
 
     local tails = Split(sec[3], ",")
+    assert(#tails <= MAX_ITEMS, "tails")
     for _, tail in ipairs(tails) do assert(#tail <= 200 and tail:match("^[%d%-']+$"), "tail") end
 
     local whose = {} -- item entry id -> the number of the player it belongs to
+    local items = 0
     for _, record in ipairs(Split(sec[4], ";")) do
         local fields = Split(record, ",")
         local h = Split(fields[1], ".")
@@ -283,6 +304,9 @@ local function Build(sec)
             s.rollStats[name] = { sum = Num(h[4], 0, 1e7) or 0, n = Num(h[5], 0, 1e5), high = Num(h[6], 0, 100),
                                   low = Num(h[7], 0, 100), passes = Num(h[8], 0, 1e5) or 0 }
         end
+        items = items + #fields - 1
+        assert(items <= MAX_ITEMS, "items")
+        local copies = {} -- [item string] = entries of it so far, for this player
         for i = 2, #fields do
             local f = Split(fields[i], ".")
             local entryId, id = Num(f[1], 1, 1e5), Num(f[2], 1, 1e8)
@@ -291,11 +315,11 @@ local function Build(sec)
             assert(id and not (entryId and whose[entryId]), "item")
             local itemString = "item:" .. id .. (tail and (":" .. tails[tail]:gsub("'", ":")) or "")
             local quality = kind % 8
-            local key, n = itemString, 1
-            while p.items[key] do -- two entries of one item, from an older version's keys
-                n = n + 1
-                key = itemString .. "#" .. n
-            end
+            -- Two entries of one item, from an older version's keys: the
+            -- second is filed as "<item>#2".
+            local nth = (copies[itemString] or 0) + 1
+            copies[itemString] = nth
+            local key = nth == 1 and itemString or (itemString .. "#" .. nth)
             p.items[key] = {
                 id = entryId, count = Num(f[3], 0, 1e6) or 1, vendor = Num(f[4], 0, 1e10) or 0,
                 cat = CATS[math.floor(kind / 8) + 1], quality = quality, ah = Num(f[6], 0, 1e11),
@@ -315,35 +339,41 @@ local function Build(sec)
         local f = Split(text, ".")
         t = t + (Num(f[1], -1e6, 1e6) or 0)
         local id = Num(f[2], 1, 1e5)
-        assert(id and whose[id] and t >= 0 and #log < 5000, "pickup")
+        assert(id and whose[id] and t >= 0 and #log < MAX_PICKUPS, "pickup")
         log[#log + 1] = ("%d:%d:%d:%d"):format(t, whose[id], id, Num(f[3], 1, 1e6) or 1)
     end
 
-    local rollLog = {}
+    local rollLog, entries = {}, 0
     for _, record in ipairs(Split(sec[6], ";")) do
         local fields = Split(record, ",")
         local h = Split(fields[1], ".")
-        local parts = {}
+        local parts, inRoll = {}, {}
+        entries = entries + #fields - 1
+        assert(#fields - 1 <= #names and entries <= MAX_ROLL_ENTRIES, "roll")
         for i = 2, #fields do
             local who, mark, num = fields[i]:match("^([%w+/]+)([%(%)=])([%w+/]*)$")
             who = Num(who, 1, #names)
-            assert(who, "roll")
+            assert(who and not inRoll[who], "roll") -- a player is in a roll once
+            inRoll[who] = true
             parts[#parts + 1] = who .. MARK_CHOICE[mark] .. (Num(num, 1, 100) or "")
         end
         local k, w = Num(h[1], 1, 1e8), Num(h[3], 1, #names)
-        assert(k and w and #rollLog < 2000, "roll")
+        assert(k and w and #rollLog < MAX_ROLLS, "roll")
         rollLog[#rollLog + 1] = { k = tostring(k), t = Num(h[2], 0, 1e6) or 0, w = w, m = h[4] == "n" and "n" or "g",
                                   r = table.concat(parts, ",") }
     end
 
     local bosses = {}
     for _, text in ipairs(Split(sec[7], ",")) do
+        assert(#bosses < MAX_BOSSES, "boss")
         local f = Split(text, ".")
         local name = ReadS(f[2], 80)
         bosses[#bosses + 1] = { t = Num(f[1], 0, 1e6) or 0, name = name ~= "" and name or nil }
     end
 
-    for _, text in ipairs(Split(sec[8], ".")) do
+    local switched = Split(sec[8], ".")
+    assert(#switched <= MAX_ITEMS, "switched")
+    for _, text in ipairs(switched) do
         s.priceSwitched = s.priceSwitched or {}
         s.priceSwitched[tostring(Num(text, 1, 1e8))] = true
     end
@@ -358,12 +388,20 @@ end
 
 -- The run in a code, or nil and why not.
 function ns.DecodeRun(code)
-    code = tostring(code or ""):gsub("[\r\n]", ""):match("^%s*(.-)%s*$")
+    code = tostring(code or "")
+    -- Its length, before anything else looks at it.
+    if #code > MAX_TEXT then return nil, TOO_LONG end
+    code = code:gsub("[\r\n]", "")
+    -- The spaces around it, found from each end. (A pattern doing both in
+    -- one go takes the square of the length on a long run of spaces.)
+    local first, last = code:find("%S"), #code
+    while last > 0 and code:find("^%s", last) do last = last - 1 end
+    code = first and code:sub(first, last) or ""
     if code:sub(1, 3) ~= "TLB" then return nil, "This is not a That Lucky Bastard code." end
     if code:sub(1, #PREFIX) ~= PREFIX then
         return nil, "This code was made by a newer version of That Lucky Bastard. Update the addon."
     end
-    if #code > MAX_CODE then return nil, DAMAGED end
+    if #code > MAX_CODE then return nil, TOO_LONG end
     local body, check = code:match("^(.*)!([%w+/]+)$")
     if not body or not pcall(function() assert(Num(check, 0, 16777213) == Checksum(body)) end) then
         return nil, DAMAGED
@@ -383,21 +421,28 @@ end
 -- link replaces it as each one arrives.
 local function LoadNames(s)
     if not (Item and Item.CreateFromItemID) then return end
+    -- One request per item, however many players have it.
+    local waiting = {} -- [item id] = { { e, itemString }, ... }
     for _, p in pairs(s.players) do
         for _, e in pairs(p.items) do
             local itemString = e.link:match("|H(item:[^|]+)|h%[Item %d+%]|h")
-            if itemString then
-                local item = Item:CreateFromItemID(tonumber(itemString:match("^item:(%d+)")))
-                if not item:IsItemEmpty() then
-                    item:ContinueOnItemLoad(function()
-                        local _, link = GetItemInfo(itemString)
-                        if link then
-                            e.link = link
-                            ns.Refresh()
-                        end
-                    end)
-                end
+            local id = itemString and tonumber(itemString:match("^item:(%d+)"))
+            if id then
+                waiting[id] = waiting[id] or {}
+                waiting[id][#waiting[id] + 1] = { e, itemString }
             end
+        end
+    end
+    for id, list in pairs(waiting) do
+        local item = Item:CreateFromItemID(id)
+        if not item:IsItemEmpty() then
+            item:ContinueOnItemLoad(function()
+                for _, entry in ipairs(list) do
+                    local _, link = GetItemInfo(entry[2])
+                    if link then entry[1].link = link end
+                end
+                ns.Refresh()
+            end)
         end
     end
 end

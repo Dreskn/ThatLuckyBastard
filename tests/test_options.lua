@@ -74,7 +74,8 @@ for _, label in ipairs({
     "Run total and equal split", "Run time, records and averages", "12g 34s 56c", "12g 34s", "12g",
     "2D portrait", "3D model", "Class icon", "None", "As the game shows them", "Full name", "First name only",
     "Podium (top looter in the middle)", "Loot value", "Role (tank, healer, damage)", "Put me first",
-    "Auction price, vendor when there is none", "Vendor price only", "Vendor totals too", "Epic BoE", "Quest items",
+    "Auction price, vendor when there is none", "Vendor price only", "Historical auction prices",
+    "Current auction prices", "Vendor totals too", "Epic BoE", "Quest items",
     "Hidden ones still count in totals", "The breakdown and the podium", "The breakdown", "The podium", "Nothing",
     "Hand out awards (Ninja, Jackpot and more)", "Sounds", "Screenshot at the end",
     "Streak recap after back-to-back runs", "A line in my chat window (only I see it)",
@@ -132,7 +133,13 @@ check(o.sortPlayers == "value" and not greyed("Put me first"), "it works in any 
 click("Podium (top looter in the middle)")
 click("Vendor price only")
 check(o.valueMode == "vendor" and greyed("Vendor totals too"), "vendor totals mean nothing with vendor prices only")
+check(greyed("Historical auction prices") and greyed("Current auction prices"), "nor does the day of an auction price")
 click("Auction price, vendor when there is none")
+check(o.priceTime == "then" and not greyed("Current auction prices"), "auction prices are the recorded ones unless chosen otherwise")
+click("Current auction prices")
+check(o.priceTime == "now", "current prices can be chosen")
+click("Historical auction prices")
+check(o.priceTime == "then", "and historical ones again")
 check(greyed("Hidden ones still count in totals"), "with every category shown, nothing is hidden to count")
 click("Junk")
 check(o.cats.junk == false and not greyed("Hidden ones still count in totals"), "unticking one makes it count")

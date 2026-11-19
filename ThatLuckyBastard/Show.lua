@@ -83,6 +83,15 @@ local stage = CreateFrame("Frame", nil, podium.ui)
 local emptyText = stage:CreateFontString(nil, "OVERLAY", "GameFontDisable")
 emptyText:SetPoint("CENTER")
 
+-- The bench: whoever comes after the podium's five, in a line or two
+-- under the stage. A raid's bench names the first few and counts the rest.
+local BENCH_H = 34      -- room the bench takes under the stage
+local BENCH_NAMED = 8
+local benchText = podium.ui:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+benchText:SetPoint("BOTTOMLEFT", 16, 12)
+benchText:SetPoint("BOTTOMRIGHT", -16, 12)
+benchText:SetJustifyH("CENTER")
+
 local slots = {}
 
 -- Tooltip for a player on the podium: their award (slot.won), with the
@@ -202,6 +211,7 @@ function DrawPodium(s, ceremony, top)
     stage:ClearAllPoints()
     stage:SetPoint("TOPLEFT", 12, top)
     stage:SetPoint("BOTTOMRIGHT", -12, 12)
+    benchText:SetText("")
     if s ~= drawnRun then
         -- Another run: nothing the slots hold belongs to it.
         for _, slot in ipairs(slots) do slot.modelFor = nil end
@@ -225,6 +235,19 @@ function DrawPodium(s, ceremony, top)
     local count = math.min(#ranked, MAX_SLOTS)
     for rank = 1, count do top[rank] = ranked[rank] end
     local order = ns.PodiumOrder(top)
+
+    local seated = {}
+    for rank = MAX_SLOTS + 1, math.min(#ranked, MAX_SLOTS + BENCH_NAMED) do
+        local p = ranked[rank]
+        seated[#seated + 1] = ("|cff909090%d.|r %s %s"):format(rank,
+            ns.ClassColored(ns.DisplayName(p.name), p.class), ns.Money(p.market))
+    end
+    if #seated > 0 then
+        local more = #ranked - MAX_SLOTS - #seated
+        benchText:SetText(table.concat(seated, "    ")
+            .. (more > 0 and ("    |cff909090and %d more|r"):format(more) or ""))
+        stage:SetPoint("BOTTOMRIGHT", -12, 12 + BENCH_H) -- the stage makes room
+    end
 
     emptyText:SetText("Nobody to put on the podium for this run.")
     emptyText:SetShown(count == 0)
@@ -530,6 +553,67 @@ local STORIES = {
             return ("%s rolled Need on %s, worth %s. No regrets."):format(who, ItemName(a.link), ns.MoneyPlain(a.amount))
         end,
     },
+    afk = {
+        heads = { "PRESENT, TECHNICALLY", "BE RIGHT BACK" },
+        body = function(who)
+            return ("%s picked up nothing and rolled on nothing. Reports of a pulse are unconfirmed."):format(who)
+        end,
+    },
+    hunterloot = {
+        heads = { "THAT'S A HUNTER WEAPON", "HUNTER LOOT, OBVIOUSLY" },
+        body = function(who, a)
+            return ("%s: %s. Experts agree that everything is hunter loot."):format(who, LowerFirst(a.text))
+        end,
+    },
+    needfirst = {
+        heads = { "NEED FIRST, ASK LATER", "THE NEED BUTTON, WORN OUT" },
+        body = function(who, a)
+            return ("%s %s. The Greed button is said to be in mint condition."):format(who, LowerFirst(a.text))
+        end,
+    },
+    dkp = {
+        heads = { "THAT'S A 50 DKP MINUS", "MINUS FIFTY, AGAIN" },
+        body = function(who, a)
+            return ("%s %s. The raid leader was heard from three zones away."):format(who, LowerFirst(a.text))
+        end,
+    },
+    tanktax = {
+        heads = { "THE TANK TAX IS DUE", "REPAIR BILLS, PAID IN FULL" },
+        body = function(who, a)
+            return ("%s ended %s. Taking the hits has its perks."):format(who, a.text)
+        end,
+    },
+    healertip = {
+        heads = { "TIP YOUR HEALER", "GRATITUDE, IN GOLD" },
+        body = function(who, a)
+            return ("%s ended %s. Somebody remembered who kept them alive."):format(who, a.text)
+        end,
+    },
+    topdps = {
+        heads = { "TOP OF THE OTHER METER", "BIG NUMBERS, BIG BAGS" },
+        body = function(who, a)
+            return ("%s ended %s. The damage meter was not consulted."):format(who, a.text)
+        end,
+    },
+    classact = {
+        heads = { "A CLASS ACT", "TOP OF THE CLASS" },
+        body = function(who, a)
+            return ("%s ended %s. The others are taking notes."):format(who, a.text)
+        end,
+    },
+    classclown = {
+        heads = { "CLASS CLOWN", "BOTTOM OF THE CLASS" },
+        body = function(who, a)
+            return ("%s ended %s. The class trainer has been informed."):format(who, a.text)
+        end,
+    },
+    bosspet = {
+        heads = { "TEACHER'S PET", "THE BOSS PLAYS FAVOURITES" },
+        body = function(who, a)
+            return ("%s: %s, worth %s. A thank-you note is in the mail.")
+                :format(who, LowerFirst(a.text), ns.MoneyPlain(a.amount))
+        end,
+    },
     collector = {
         heads = { "THE WINS ADD UP", "A LITTLE OF EVERYTHING" },
         body = function(who, a)
@@ -632,8 +716,9 @@ local function Paper(s)
         ranked[p.rank] = p
         local a = awards[p.name]
         if p.rank == 1 then top = p end
-        if a and a.key == "ninja" then ninja = p end
-        if a and a.key == "jackpot" then jackpot = p end
+        -- The headline is about the first of them, not a "Ninja II".
+        if a and a.key == "ninja" and a.place == 1 then ninja = ninja or p end
+        if a and a.key == "jackpot" and a.place == 1 then jackpot = jackpot or p end
     end
 
     local doc = { stories = {} }

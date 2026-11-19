@@ -11,7 +11,7 @@ It records what every player in your group loots, puts a gold value on it, and s
 ## What you get
 
 - **The breakdown:** each player's total, their share of the run and how far they are from an equal split, with every item they looted.
-- **Awards:** one per player when the run ends, out of about forty: Jackpot, Ninja, Luckiest, Heartbreak, Empty Pockets... Hover one to see its rule.
+- **Awards:** one per player when the run ends, out of about fifty: Jackpot, Ninja, Luckiest, Heartbreak, Empty Pockets... In raids an award can go to two or three players. Hover one to see its rule.
 - **Need rolls:** one button shows only what was won on Need. Hover an item to see everyone's roll on it.
 - **Podium, front page, analysis:** your group's characters on a podium, a mock newspaper, and the run's timeline, rolls and numbers, each in its own window.
 - **Statistics:** your dungeons, records, luck, the people you run with and what dropped where, with item search and an export for spreadsheets.

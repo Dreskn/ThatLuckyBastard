@@ -302,6 +302,14 @@ do
     Choices(p, "valueMode", {
         { "Auction price, vendor when there is none", "market" }, { "Vendor price only", "vendor" },
     })
+    -- Auction prices as recorded when the loot dropped, or as they are today.
+    local function Auction() return Opt().valueMode ~= "vendor" end
+    Group(p, {
+        { "Historical auction prices", function() return Opt().priceTime ~= "now" end,
+          function() Opt().priceTime = "then" end, Auction },
+        { "Current auction prices", function() return Opt().priceTime == "now" end,
+          function() Opt().priceTime = "now" end, Auction },
+    }, 2, true)
     Toggles(p, { { "Vendor totals too", "showVendor", function() return Opt().valueMode ~= "vendor" end } })
     local source = Hint(p, "")
     live[#live + 1] = function()

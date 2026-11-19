@@ -1,5 +1,19 @@
 # Changelog
 
+## Unreleased
+
+- **Awards for raids.** An award now goes to one player in a party, two in a group of up to ten and three in anything bigger, numbered from the second: Hoarder, Hoarder II, Hoarder III.
+- **Ten new awards,** for groups of any size: AFK, Hunter Loot, Need Before Greed, 50 DKP Minus, Tank Tax, Healer's Tip, Top DPS, Class Act, Class Clown and Boss's Pet (one per boss; one in all in a party).
+- **Ties are shared.** Two players with the same score and the same loot both get the award; before, the name that came first had it.
+- **Hot Streak, Loaded Dice and Cursed Dice count contested rolls only.** A win nobody rolled against, or a Greed number against someone's Need, no longer counts. The dice awards also ask for more: five rolls, and an average of about 65 (or 36) over 15 rolls. Before, fair dice qualified someone in two runs out of three.
+- **Codes from other players are read with care.** A code's length is checked before anything else, every list in it has a limit (well above what a raid of forty needs), and reading one no longer slows down with its size: a code written to freeze the game is refused at once. A link now carries up to 141,600 characters, room for a busy raid.
+- **A bench for bigger groups.** A run of more than five players keeps its columns: the top five by loot get one each, and the others sit on a bench under them, with a List button to see that run as a list (and Columns to come back). The Podium names them under the stage too. Before, a sixth player turned the whole window into a list.
+- **Historical or current prices.** A new choice under Options › Loot: runs keep the auction prices recorded when their loot dropped (the default), or are valued at today's.
+- **Coming back to life outside ends the run on screen.** Leaving dead used to show nothing, ever; the window and the podium now open once you are alive again outside the dungeon.
+- **Another group is another run.** A group that forms while you are still inside, or that you come back in with, is no longer added to the run before it. Players replaced one or two at a time stay one run. Whoever joined in a run's last two minutes and did nothing is left out.
+- **"Earlier runs" are the earlier ones.** A run is compared with the dungeon's average as it stood before it, not with runs made since.
+- **Consolation prizes say what the player did** ("Won 2 rolls or more"), since whoever gets one is not always the best of the group at it.
+
 ## 0.4.6
 
 - **Twenty new awards, so Tourist becomes rare.** Moments for odd things the dice did: Heartbreak, Lowball, Photo Finish, Deja Vu, Hot Streak, Dry Spell, Nemesis and Overkill. Consolation prizes for players nothing else fits: Collector, Busy Hands, Always Second, Average Joe, Magpie, Boss Magnet, Trash Panda, Leftovers, Booby Prize, Runner-up, First Dibs and Last Call. Each has a Front page story. Statistics › Awards lists them in three parts.

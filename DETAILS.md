@@ -6,19 +6,21 @@ Everything the addon does, page by page, with its commands, options and limits. 
 
 - **Per player:** total value, vendor value, share of the run, and how far above or below an equal split they are.
 - **Per item:** every item with its count and value, grouped by category: epic, blue and green BoE, Bind on Pickup, quest items, profession materials, other, junk.
-- **Two layouts:** one column per player for groups of five or fewer (with portraits), and an expandable list for larger groups.
+- **Two layouts:** one column per player (with portraits), or an expandable list. A group of more than five gets columns for its top five by loot, and the others on a *bench* under them: place, name, loot and award. The bench's **List** button shows that run as a list without touching the option, and **Columns** at the top of the list brings the columns back.
 - **Need rolls:** a button at the top switches the window to show only what each player won on Need rolls. Hovering an item shows whether it was won on Need or Greed, and everyone's roll on it.
-- **Awards:** when a run ends, each player gets one light-hearted award, revealed one by one: the one that fits them best out of about forty, such as Jackpot, Lion's Share, Fair Share, Loaded Dice, Window Shopper, The Farmer, The Saint or Empty Pockets. The further a player is from normal, the stronger the fit: an average roll of 51 earns nothing, an average of 95 is hard to miss. **Ninja** (most value won on Need rolls) and **Luckiest** (most value won on Greed rolls) count for more than the others, but a more striking award can take their place. Hover an award to see the rule behind it, or click it for the list of all awards.
-  - *Moments* are odd things the dice did: Natural 100, Snake Eyes, Heartbreak (lost with 95 or more), Lowball (won with 5 or less), Photo Finish (won by one point), Deja Vu (the same number twice in a row), Hot Streak, Dry Spell, Nemesis and Overkill (a Need win worth under 1s).
+- **Awards:** when a run ends, each player gets one light-hearted award, revealed one by one: the one that fits them best out of about fifty, such as Jackpot, Lion's Share, Fair Share, Loaded Dice, Window Shopper, The Farmer, The Saint or Empty Pockets. The further a player is from normal, the stronger the fit: an average roll of 51 earns nothing, an average of 95 is hard to miss. **Ninja** (most value won on Need rolls) and **Luckiest** (most value won on Greed rolls) count for more than the others, but a more striking award can take their place. Hover an award to see the rule behind it, or click it for the list of all awards.
+  - *How many players can have one award:* one in a party of up to five, two in a group of up to ten, three in anything bigger. The second and third are numbered: Hoarder, Hoarder II, Hoarder III. Players with the same score share a place (three players who each rolled a 100 are all Natural 100), and two players with the same score and the same loot share the award whatever the limit.
+  - *Moments* are odd things the dice did: Natural 100, Snake Eyes, Heartbreak (lost with 95 or more), Lowball (won with 5 or less), Photo Finish (won by one point), Deja Vu (the same number twice in a row), Hot Streak, Dry Spell, Nemesis and Overkill (a Need win worth under 1s). Hot Streak, Loaded Dice and Cursed Dice only count rolls that were a contest: a win nobody rolled against, or a Greed number against someone's Need, decides nothing. The dice awards need five such rolls and an average far from 50: about 65 (or 36) over 15 rolls, 76 (or 25) over 5.
+  - *From WoW lore, and for roles, classes and bosses:* AFK (picked up nothing, rolled on nothing), Hunter Loot (a hunter who won on Need), Need Before Greed (chose Need on two rolls more than the group's average), 50 DKP Minus (lost three rolls more than the group's average), Tank Tax, Healer's Tip and Top DPS (one and a half times the average of their role, two or more of it), Class Act and Class Clown (one and a half times, or half, the average of their class, three or more of it), and Boss's Pet (loot from a boss: one player per boss, one in all in a party; it ranks just above the consolation prizes).
   - *Consolation prizes* go only to players nothing else fits, the best of them first: Collector, Busy Hands, Always Second, Average Joe, Magpie, Boss Magnet, Trash Panda, Leftovers, Booby Prize, Runner-up, First Dibs and Last Call. They score below 0.3, so they never take another award's place. A player left with nothing at all is a Tourist.
-- **Under the breakdown:** run time, group loot per hour, a fairness score, any dungeon record the run set, how it compares with your average there, and the streak it belongs to.
+- **Under the breakdown:** run time, group loot per hour, a fairness score, any dungeon record the run set, how it compares with your average over the earlier runs there, and the streak it belongs to.
 - **History:** past runs are kept and can be browsed. **Pin** a run and it is never deleted: not by the limit on runs to keep, not by `/tlb clear`. **Delete** removes just the run on show, after asking.
 
 ## Podium, front page and analysis
 
 Three windows about the run on show, opened from the main window's top row. Each closes again on a second click.
 
-- **Podium:** your group's characters stand on gold, silver and bronze blocks. The winner dances, last place cries, and the Ninja kneels. It also opens by itself when a run ends (an option).
+- **Podium:** your group's characters stand on gold, silver and bronze blocks. The winner dances, last place cries, and the Ninja kneels. The podium holds the top five; anyone after them is named on a bench under it (the first eight, then a count). It also opens by itself when a run ends (an option).
 - **Front page:** a mock newspaper written from the run, with a headline and a short story for every award.
 - **Analysis:** three tabs about the run, following the main window from run to run:
   - *Timeline:* a chart of every player's running total through the run, with boss kills marked. You see when someone pulled ahead, and which drop did it.
@@ -61,17 +63,20 @@ The **Share** button (or `/tlb share`) shares the run on show, in three ways:
 
 - **A link in chat.** Pick a channel: say, yell, emote, party, raid, raid warning, instance, guild, officer, a channel or community you joined, or a whisper to a player whose full name you type (names are suggested as you type: your group, friends, guild, and the players you have run with). The link goes into your chat box and you send it yourself. Players with the addon click it to see the run; others see plain text. Global channels (General, Trade, LocalDefense and the like) are not offered, and links posted there stay plain text.
 - **A summary in chat** anyone can read, like a damage meter's report. Choose **Summary** in the Share window, check the lines, and click a channel to post them. A first line names the run, then one line per player, most loot first. Options › Share sets how many players (5 by default) and what the lines show. Emote and raid warning are not offered for a summary.
-- **A code.** The run as text to copy out of the game and paste anywhere: about 3,000 to 5,000 characters for a five-player dungeon. Anyone with the addon imports it in the **Shared runs** window (`/tlb import`).
+- **A code.** The run as text to copy out of the game and paste anywhere: about 3,000 to 6,000 characters for a five-player dungeon, and 30,000 to 80,000 for a raid of forty. Anyone with the addon imports it in the **Shared runs** window (`/tlb import`).
 
-A click on a link asks the player who posted it for the run. Their addon sends it back through hidden addon messages, never through chat, at the pace the game allows: a few seconds to about 15. It works while they are online, and only for runs they posted a link to.
+A click on a link asks the player who posted it for the run. Their addon sends it back through hidden addon messages, never through chat, at the pace the game allows: a few seconds to about 15 for a dungeon, a few minutes for a raid. It works while they are online, and only for runs they posted a link to.
 
-Runs shared with you look as they did for their owner, prices included. They are listed in the Shared runs window, and among your own runs in the breakdown window, by date, marked "shared by". They count in none of your statistics, records or streaks and cannot be pinned. They are kept up to your number of runs to keep, counted apart from your own runs: importing never costs you a run of yours. Past that number, the ones that arrived first go.
+A code or a link from another player is read as data, never run. Its length is checked first, and one that holds more than a raid could (items, pickups, rolls, bosses) is refused, so a code written to slow the game down is turned away at once.
+
+Runs shared with you keep the prices their owner recorded. The totals and awards are worked out on your side, with your own options (categories shown, auction or vendor prices), so they can differ from what the owner sees. They are listed in the Shared runs window, and among your own runs in the breakdown window, by date, marked "shared by". They count in none of your statistics, records or streaks and cannot be pinned. They are kept up to your number of runs to keep, counted apart from your own runs: importing never costs you a run of yours. Past that number, the ones that arrived first go.
 
 ## How loot is valued
 
 - **Vendor price** comes from the game.
 - **Auction price** comes from [Auctionator](https://www.curseforge.com/wow/addons/auctionator) if installed, with TradeSkillMaster as a fallback. Without either, only vendor prices are used.
 - **Market value** is the auction price when one is known, and the vendor price otherwise.
+- **Historical or current:** by default a run keeps the auction prices recorded when its loot dropped. With *Current auction prices* in the options, your runs are valued at today's prices where there is one. Statistics kept over all runs (dungeons, records, regulars) hold what was recorded when each run closed, whichever is chosen, and runs shared with you keep their owner's prices.
 - **Bind on Pickup and quest items** count at vendor price, since they cannot be sold to other players.
 - **Junk** (grey items) counts at vendor price by default, since a stray auction listing for a grey means little. Right-click one to use its auction price instead.
 - All loot counts the same, whether it came from a boss, a roll or a profession.
@@ -109,6 +114,8 @@ The minimap button does the same: left-click for the window, right-click for the
 
 - Entering a different dungeon starts a new run.
 - Running back in as a ghost after a wipe continues the same run.
+- If you leave dead and come back to life outside (a spirit healer, a resurrection), the run is shown as when you leave alive.
+- A player who is replaced stays in the run, and so does the replacement: one run, six players. When the group itself is another one (fewer than half the same people), what follows is a new run: at once if it forms while you are inside, and without asking when you come back in with it. Whoever joined in the last two minutes of a run and did nothing in it is left out of it.
 - If you come back into the same dungeon within 20 minutes without having died out of it, That Lucky Bastard asks whether it is a new run. Set it to "Always a new run" and it no longer asks.
 - If you reset the instance yourself, the run is closed automatically.
 - A reload or a short disconnect inside the dungeon continues the run.
@@ -117,7 +124,7 @@ The minimap button does the same: left-click for the window, right-click for the
 
 - **Window:** the theme (Modern, the default, Classic, or Receipt: each player's loot printed on a till receipt), the size of every window, one column per player (up to 5) or a list, items grouped by category, the same item lined up across columns, item order (value or name), what to show (icons, shares, share bar, totals, run time and records), and amounts as 12g 34s (the default), 12g 34s 56c or 12g.
 - **Players:** the picture (2D portrait by default, 3D model, class icon or none), names as the game shows them (its "My Secondary Name" setting), full or first name only, and the order: podium (top looter in the middle, the default), loot value, role or name, optionally with you first.
-- **Loot:** auction or vendor prices, with the addon the auction prices come from; vendor totals; which categories to show, and whether hidden ones still count.
+- **Loot:** auction or vendor prices, historical or current auction prices, with the addon the auction prices come from; vendor totals; which categories to show, and whether hidden ones still count.
 - **End of run:** what opens when you leave a dungeon alive (the breakdown and the podium by default, either one, or nothing), awards, the reveal's sounds and screenshot, the streak recap, and a line in your chat window that only you see.
 - **While you play:** the valuable loot notice (5 gold and up by default, or off), familiar faces, the two tooltip lines and loot bingo.
 - **Share:** the chat summary: how many players (5 by default, up to 25), the first line (run link, run time, group total) and the player lines (share %, gap to equal split, award), with a preview.
@@ -214,6 +221,10 @@ python tests/run_tests.py ThatLuckyBastard tests/test_regulars.lua
 
 ```bash
 python tests/run_tests.py ThatLuckyBastard tests/test_awards.lua
+```
+
+```bash
+python tests/run_tests.py ThatLuckyBastard tests/test_lifecycle.lua
 ```
 
 `tools/make_logo.py` draws the addon's mark (needs Pillow); the brand colours live at the top of `ThatLuckyBastard/Core.lua`. `tools/make_receipt_edge.py` draws the torn edge of the Receipt theme's receipts.

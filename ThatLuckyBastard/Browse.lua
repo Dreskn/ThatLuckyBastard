@@ -401,7 +401,7 @@ PAGES.search = {
 -- The awards list in three parts: the awards, then these.
 local AWARD_GROUPS = {
     moment = { "Moments", "Odd things the dice did." },
-    consolation = { "Consolation", "For players nothing else fits." },
+    consolation = { "Consolation", "For players nothing else fits, the best at each first." },
 }
 
 PAGES.awards = {
@@ -410,7 +410,8 @@ PAGES.awards = {
     cols = { { "Award", 150 }, { "Rule", 0 } },
     rows = function()
         local rows = {
-            { note = "One award per player, one player per award. Ninja and Luckiest weigh more." },
+            { note = "One award per player. One player per award in a party, 2 up to ten players, 3 beyond "
+                .. "(II, III). Ninja and Luckiest weigh more." },
         }
         local group = false
         for _, award in ipairs(ns.AwardGuide()) do

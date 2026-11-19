@@ -29,7 +29,8 @@ local QUALITY_INK = {
 }
 -- Awards stamped in red; the others in blue.
 local RED_STAMPS = { ninja = true, lionshare = true, empty = true, snakeeyes = true, colddice = true, window = true,
-                     heartbreak = true, dryspell = true, nemesis = true, overkill = true, booby = true }
+                     heartbreak = true, dryspell = true, nemesis = true, overkill = true, booby = true,
+                     afk = true, dkp = true, classclown = true }
 
 local MEDIA = "Interface\\AddOns\\ThatLuckyBastard\\Media\\"
 local function ReceiptFont(name, file, size, color)
@@ -93,6 +94,10 @@ local cols = {}
 local MEDALS = { { 1.00, 0.82, 0.00 }, { 0.78, 0.78, 0.82 }, { 0.80, 0.50, 0.20 }, { 0.50, 0.50, 0.50 } }
 
 local expanded = {}   -- [playerName] = true
+-- Runs shown as a list although the options ask for columns: switched
+-- with the List button on their bench (see RenderBench). For this session
+-- only, and the options are left alone.
+local listRuns = setmetatable({}, { __mode = "k" })
 local viewIndex = 1   -- 1 = current / most recent run
 local rows = {}
 local buttons = {}
@@ -217,7 +222,8 @@ end
 local function PriceNote(e, mark, dominant)
     local note
     if mark == "ah" then
-        note = "Auction price: " .. Money(e.ah) .. " each\nRight-click for the vendor price."
+        note = (e.now and "Auction price today: " or "Auction price: ") .. Money(e.now or e.ah)
+            .. " each\nRight-click for the vendor price."
     elseif mark == "off" then
         note = "Auction price (" .. Money(e.ah) .. " each) not used.\nRight-click to use it."
     elseif mark == "noah" then
@@ -1360,8 +1366,9 @@ local function FooterTexts(sum, insights, includeTotals)
             if insights.minePct then
                 text = text .. (",  your own %s"):format(Versus(insights.minePct))
             end
-            texts[#texts + 1] = text .. ("  %s(%d earlier %s)|r"):format(
-                lo, insights.priorRuns, insights.priorRuns == 1 and "run" or "runs")
+            texts[#texts + 1] = text .. ("  %s(%d %s %s)|r"):format(
+                lo, insights.priorRuns, insights.earlier and "earlier" or "other",
+                insights.priorRuns == 1 and "run" or "runs")
         end
     end
 
@@ -1513,15 +1520,123 @@ end
 
 local HEADER_GLOW_H = 72 -- Modern theme: the class-coloured glow at the top of a column
 
+-- The bench: in a group too big for one column each, the columns go to
+-- the top five and everyone else sits here, under them: place, name, loot
+-- and award, a few to a line. Its List button shows this run as a list
+-- instead, where a Columns button leads back.
+local BENCH_CELL_W = 240 -- a seat is at least this wide
+local BENCH_ROW_H = 16
+local BENCH_HEAD_H = 26  -- the heading and the button
+local BACK_H = 26        -- room for the Columns button at the top of the list
+local benchHead, benchButton, backButton
+local benchSeats = {}
+
+local function HideBench()
+    if benchHead then benchHead:Hide() end
+    if benchButton then benchButton:Hide() end
+    for _, seat in ipairs(benchSeats) do seat:Hide() end
+end
+
+-- Draws the bench for the players in `bench` (in rank order), `top` down
+-- from the top of the content, and returns where what follows starts. In
+-- the Receipt theme it is written on the counter, like the footer.
+local function RenderBench(bench, awards, top, paper)
+    HideBench()
+    if #bench == 0 then return top end
+    local font = paper and "ThatLuckyBastardReceiptCounter" or "GameFontHighlightSmall"
+    if not benchHead then
+        benchHead = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        benchHead:SetJustifyH("LEFT")
+        benchButton = ns.MakeButton("List", 60, function()
+            if currentRun then listRuns[currentRun] = true end
+            Render()
+        end, content)
+    end
+    benchHead:SetFontObject(font)
+    benchHead:ClearAllPoints()
+    benchHead:SetPoint("TOPLEFT", 4, -(top + 5))
+    benchHead:SetText(HeadCode() .. "Bench|r")
+    benchHead:Show()
+    benchButton:ClearAllPoints()
+    benchButton:SetPoint("TOPLEFT", 60, -top)
+    benchButton:SetFlat(theme.flat)
+    benchButton:Show()
+    top = top + BENCH_HEAD_H
+
+    local width = content:GetWidth()
+    local perRow = math.max(1, math.floor(width / BENCH_CELL_W))
+    local seatW = width / perRow
+    for i, p in ipairs(bench) do
+        local seat = benchSeats[i]
+        if not seat then
+            seat = CreateFrame("Frame", nil, content)
+            seat.text = seat:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            seat.text:SetPoint("LEFT", 4, 0)
+            seat.text:SetPoint("RIGHT", -4, 0)
+            seat.text:SetJustifyH("LEFT")
+            seat.text:SetWordWrap(false)
+            seat:EnableMouse(true)
+            seat:SetScript("OnEnter", function(self)
+                if self.p then PersonTooltip(self, self.p, self.award) end
+            end)
+            seat:SetScript("OnLeave", function() GameTooltip:Hide() end)
+            benchSeats[i] = seat
+        end
+        local award = awards[p.name]
+        seat.p, seat.award = p, award
+        seat:ClearAllPoints()
+        seat:SetPoint("TOPLEFT", ((i - 1) % perRow) * seatW, -(top + math.floor((i - 1) / perRow) * BENCH_ROW_H))
+        seat:SetSize(seatW, BENCH_ROW_H)
+        seat.text:SetFontObject(font)
+        seat.text:SetText(("%s%d.|r %s  %s%s"):format(LowCode(), p.rank,
+            ClassColored(DisplayName(p.name), p.class), Money(p.market),
+            award and ("  " .. AwardTitle(award)) or ""))
+        seat:Show()
+    end
+    return top + math.ceil(#bench / perRow) * BENCH_ROW_H + 10
+end
+
+-- The way back for a run its bench switched to the list: a Columns button
+-- at the top of the list. Returns the room it takes there.
+local function ShowBackButton(show)
+    if not show then
+        if backButton then backButton:Hide() end
+        return 0
+    end
+    if not backButton then
+        backButton = ns.MakeButton("Columns", 80, function()
+            if currentRun then listRuns[currentRun] = nil end
+            Render()
+        end, content)
+    end
+    backButton:ClearAllPoints()
+    backButton:SetPoint("TOPLEFT", 4, -2)
+    backButton:SetFlat(theme.flat)
+    backButton:Show()
+    return BACK_H
+end
+
 local function RenderColumns(sum, awards, insights)
-    local n = #sum.players
+    -- A bigger group: columns for its top five, the bench for the others.
+    -- `view` is the summary with the columns' players only; every total
+    -- and the equal split stay the whole run's.
+    local view, bench = sum, {}
+    if #sum.players > MAX_COLUMNS then
+        local top = {}
+        for _, p in ipairs(sum.players) do
+            if p.rank <= MAX_COLUMNS then top[#top + 1] = p else bench[#bench + 1] = p end
+        end
+        table.sort(bench, function(a, b) return a.rank < b.rank end)
+        view = setmetatable({ players = top }, { __index = sum })
+    end
+    local n = #view.players
     -- Receipt theme: each column is a receipt, printed in ink and lying a
     -- little apart from the next on the counter.
     local paper = theme.paper and true or false
     local gap = paper and 12 or COL_GAP
     local colW = (content:GetWidth() - gap * (n - 1)) / n
     local rowH = theme.rowH
-    local equal = sum.market / n
+    local equal = sum.market / #sum.players
     local maxH = 0
     inkMode = paper -- the footer under the receipts is on the counter: see below
 
@@ -1553,12 +1668,12 @@ local function RenderColumns(sum, awards, insights)
     -- Podium: columns in podium order, stepping down by rank unless items
     -- are aligned. (Summarize leaves the players in rank order for it.)
     local podium = o.sortPlayers == "podium"
-    if podium then sum.players = PodiumOrder(sum.players) end
+    if podium then view.players = PodiumOrder(view.players) end
     -- Receipts all come out of the printer at the same height.
     local step = (podium and not o.alignItems and not paper) and 14 or 0
-    local colLines = BuildColumnLines(sum, o)
+    local colLines = BuildColumnLines(view, o)
 
-    for i, p in ipairs(sum.players) do
+    for i, p in ipairs(view.players) do
         local c = GetCol(i)
         c:ClearAllPoints()
         c.offset = step * math.min(p.rank - 1, 3)
@@ -1800,7 +1915,7 @@ local function RenderColumns(sum, awards, insights)
         end
     end
 
-    local bottom = maxH + 10
+    local bottom = RenderBench(bench, awards, maxH + 10, paper)
     local texts = FooterTexts(sum, insights, true)
     for i, text in ipairs(texts) do
         local fs = footLines[i]
@@ -2220,8 +2335,11 @@ function Render()
         runLabel:SetText("")
     end
 
-    -- Small groups get one column per player; bigger ones the list.
-    local useColumns = sum ~= nil and o.useColumns and #sum.players > 0 and #sum.players <= MAX_COLUMNS
+    -- One column per player; in a bigger group, for its top five, with the
+    -- others on a bench under them. The list is for whoever chose it: in
+    -- the options for every run, or with the bench's button for this one.
+    local big = sum ~= nil and #sum.players > MAX_COLUMNS
+    local useColumns = sum ~= nil and o.useColumns and #sum.players > 0 and not (big and listRuns[s])
     -- The list view honours the same "show" options as the columns.
     local showVendor = o.showVendor and o.valueMode ~= "vendor"
     local showShare = o.showShare
@@ -2240,6 +2358,7 @@ function Render()
     listPaper:SetShown(paper and not useColumns)
     if useColumns then
         for _, r in ipairs(rows) do r:Hide() end
+        ShowBackButton(false)
         RenderColumns(sum, awards, insights)
     else
         -- The reveal only exists in the column view: one under way stops,
@@ -2248,10 +2367,14 @@ function Render()
         CancelReveal()
         for _, c in ipairs(cols) do c:Hide() end
         for _, fs in ipairs(footLines) do fs:Hide() end
+        HideBench()
+        -- Only its bench can have made a list of a run the options give
+        -- columns to: that run gets the way back.
+        local top = ShowBackButton(big and o.useColumns and true or false)
         inkMode = paper
         RenderList(sum and BuildLines(sum, awards, insights) or {
             { indent = 4, wide = true, label = "No run recorded yet. Enter a dungeon, or type /tlb start." },
-        }, showVendor, showShare)
+        }, showVendor, showShare, top)
         inkMode = false
     end
     drawing = false
@@ -2264,12 +2387,13 @@ end
 
 local PLAYER_ROW_EXTRA = 14 -- player rows are taller, to hold the picture
 
-function RenderList(lines, showVendor, showShare)
+-- `top`: room to leave above the first line (see ShowBackButton).
+function RenderList(lines, showVendor, showShare, top)
     local o = ns.db.options
     local rowH = theme.rowH
     local playerH = rowH + PLAYER_ROW_EXTRA
     local width = content:GetWidth()
-    local y = 0
+    local y = top or 0
     for i, line in ipairs(lines) do
         local r = GetRow(i)
         local h = line.p and playerH or rowH

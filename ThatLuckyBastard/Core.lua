@@ -10,6 +10,8 @@ local CAPTURE_MAX = 600    -- lines kept by /tlb capture
 local LOG_MAX = 3000       -- pickups kept per run for the timeline
 local TICKER_RETRY = 1.5   -- seconds before a notice retries an item whose value was not known yet
 local FORGET_AFTER = 90 * 24 * 3600 -- people met once are forgotten after this long
+local LATE_JOIN = 120      -- seconds: who joins this close to a run's end and does nothing was not part of it
+local PRICE_KEPT = 300     -- seconds for which today's price of an item is not asked for again
 ns.MIN_TIMED_RUN = 60      -- runs shorter than this get no per-hour figures
 
 local PLAYER_NAME, PLAYER_CLASS
@@ -60,6 +62,9 @@ ns.OPTION_DEFAULTS = {
              junk = true },
     countHidden = false,
     valueMode = "market",   -- "market" (auction, vendor fallback) or "vendor"
+    -- Auction prices as recorded when the loot dropped ("then"), or as
+    -- they are today ("now"). Statistics keep what was recorded.
+    priceTime = "then",
     -- Amounts as 12g 34s (copper off), 12g 34s 56c or 12g. Amounts smaller
     -- than the smallest shown unit still show, so nothing reads as zero.
     showSilver = true,
@@ -203,6 +208,11 @@ local function MarkPrice(s, e)
     local switched = s.priceSwitched or s.vendorOnly -- vendorOnly: its name before junk had its own default
     local flipped = switched ~= nil and switched[ItemKey(e)] == true
     e.noAH = (ns.VendorByDefault(e) ~= flipped) or nil
+    -- With current prices chosen, the item's auction price of today stands
+    -- in for the recorded one where there is one (e.now; never saved). Not
+    -- in runs shared with you, which keep their owner's prices.
+    e.now = (db.options.priceTime == "now" and not e.noAH and not s.sharedBy and not s.example
+        and ns.CanAuction(e) and ns.TodaysPrice(e.link)) or nil
 end
 ns.MarkPrice = MarkPrice
 
@@ -357,6 +367,19 @@ local function AuctionPrice(link)
 end
 ns.AuctionPrice = AuctionPrice
 
+-- The auction price of today, asked of the price addon once every few
+-- minutes at most: every window values every item again each time it is
+-- drawn. Nil when there is none.
+local todays = {} -- [link] = { price = (false for none), at = }
+function ns.TodaysPrice(link)
+    local known = todays[link]
+    if not known or GetTime() - known.at > PRICE_KEPT then
+        known = { price = AuctionPrice(link) or false, at = GetTime() }
+        todays[link] = known
+    end
+    return known.price or nil
+end
+
 -- True when an addon that can supply auction prices is loaded.
 function ns.HasPriceSource()
     return AuctionatorAPI() ~= nil or HasTSM()
@@ -411,7 +434,8 @@ end
 local function AddPlayer(s, name, class)
     local p = s.players[name]
     if not p then
-        p = { items = {} }
+        -- joined: seconds into the run (see DropLateJoiners); not kept.
+        p = { items = {}, joined = math.max(time() - (s.startedAt or time()), 0) }
         s.players[name] = p
     end
     if class and not p.class then p.class = class end
@@ -427,22 +451,61 @@ local function SetRole(p, unit)
     if not issecret(role) and role and role ~= "NONE" then p.role = role end
 end
 
-local function UpdateRoster()
-    local s = db.active
-    if not Tracking(s) or not PLAYER_NAME then return end
-    local me = AddPlayer(s, PLAYER_NAME, PLAYER_CLASS)
-    SetRole(me, "player")
+-- The other members of the group right now, as [name] = unit, and how
+-- many they are.
+local function GroupNow()
+    local set, n = {}, 0
     local raid = IsInRaid()
     for i = 1, GetNumGroupMembers() do
         local unit = (raid and "raid" or "party") .. i
         if UnitExists(unit) and not UnitIsUnit(unit, "player") then
             local name = GetUnitName(unit, true)
-            if not issecret(name) and name and name ~= UNKNOWNOBJECT then
-                local _, class = UnitClass(unit)
-                if issecret(class) then class = nil end
-                SetRole(AddPlayer(s, name, class), unit)
+            if not issecret(name) and name and name ~= UNKNOWNOBJECT and not set[name] then
+                set[name], n = unit, n + 1
             end
         end
+    end
+    return set, n
+end
+
+-- Is the group of now (see GroupNow) another group than the one the run
+-- was last seen with (s.group, a list of names)? It is when fewer than
+-- half of the smaller of the two are the same people. Players replaced
+-- one or two at a time keep it the same group, so their run goes on; a
+-- group joined after the old one broke up is another, and so is the group
+-- of the next queue when one friend queues along. Being alone, or a run
+-- that has had no group yet, says nothing.
+local function DifferentGroup(s, set, n)
+    local last = s.group
+    if not last or #last == 0 or n == 0 then return false end
+    local shared = 0
+    for _, name in ipairs(last) do
+        if set[name] then shared = shared + 1 end
+    end
+    return shared * 2 < math.min(#last, n)
+end
+
+local SplitRun -- defined with the zone rules, below
+
+local function UpdateRoster()
+    local s = db.active
+    if not Tracking(s) or not PLAYER_NAME then return end
+    -- A run recorded on another character is closed at the next arrival:
+    -- this character's group is not its group.
+    if s.owner and s.owner ~= PLAYER_NAME then return end
+    local set, n = GroupNow()
+    if not s.manual and DifferentGroup(s, set, n) then return SplitRun(s) end
+    local me = AddPlayer(s, PLAYER_NAME, PLAYER_CLASS)
+    SetRole(me, "player")
+    for name, unit in pairs(set) do
+        local _, class = UnitClass(unit)
+        if issecret(class) then class = nil end
+        SetRole(AddPlayer(s, name, class), unit)
+    end
+    if n > 0 then
+        s.group = {}
+        for name in pairs(set) do s.group[#s.group + 1] = name end
+        table.sort(s.group)
     end
     ns.Refresh()
 end
@@ -480,10 +543,29 @@ local CommitRun    -- defined with the records code, further down
 local function StripRun(s)
     s.rolls, s.pendingWins, s.killed = nil, nil, nil
     s.enteredAt, s.lastSeen, s.nextId = nil, nil, nil
-    s.leftDead, s.summarized, s.streakShown = nil, nil, nil
+    s.leftDead, s.summarized, s.streakShown, s.group = nil, nil, nil, nil
     for _, p in pairs(s.players) do
+        p.joined = nil
         for _, e in pairs(p.items) do
-            e.lastAt, e.noAH = nil, nil
+            e.lastAt, e.noAH, e.now = nil, nil, nil
+        end
+    end
+end
+
+-- Players who joined in a run's last moments and did nothing in it belong
+-- to what came next: the group of the following run, formed while we
+-- were still inside (a queue that pops there), or someone invited once it
+-- was over. Nobody who joined in the run's first minutes is dropped,
+-- however short it was.
+local function DropLateJoiners(s)
+    if s.manual then return end
+    local from = math.max((s.endedAt or time()) - (s.startedAt or 0) - LATE_JOIN, LATE_JOIN)
+    local logged = {}
+    for _, name in ipairs(s.names or {}) do logged[name] = true end -- in the pickup or roll log
+    for name, p in pairs(s.players) do
+        if name ~= ns.Me(s) and p.joined and p.joined >= from and not next(p.items) and not logged[name]
+                and not (s.rollStats and s.rollStats[name]) then
+            s.players[name] = nil
         end
     end
 end
@@ -494,6 +576,7 @@ local function FinalizeSession()
     PrintSummary(s) -- no-op if already printed or switched off
     db.active = nil
     s.endedAt = s.leftAt or time()
+    DropLateJoiners(s)
     if HasLoot(s) then
         table.insert(db.history, 1, s)
         ns.TrimHistory()
@@ -609,15 +692,27 @@ local function ShowRunEnd(s)
     end
 end
 
+-- The group of the run in progress has been replaced by another one
+-- (see DifferentGroup): the run ends here, and what follows in the same
+-- place is a new run, with the new group.
+function SplitRun(s)
+    s.leftAt = time()
+    local ended = not UnitIsDeadOrGhost("player") and HasLoot(s) and s or nil
+    NewSession(s.name, s.instanceID) -- files the old run away; the roster goes to the new one
+    if ended then ShowRunEnd(ended) end
+end
+
 -- The rules, in full:
 --   * A run belongs to one instance. Arriving in a different one, or with
 --     no run in progress, starts a new run. Going from the run's dungeon
 --     straight into another one (a queue that pops inside) leaves the run
 --     first, as if through the door.
---   * Leaving alive opens the window. Leaving dead does nothing.
+--   * Leaving alive opens the window. Leaving dead does nothing, until
+--     you are alive again outside (see Revived): then it opens as well.
 --   * Coming back within RESUME_WINDOW continues the run: silently after
 --     a death, and with a "new run?" question otherwise. With the
---     question switched off, coming back alive starts a new run.
+--     question switched off, coming back alive starts a new run. Coming
+--     back with another group (see DifferentGroup) always starts one.
 --   * A run that was left is closed once RESUME_WINDOW has passed, or as
 --     soon as the instance is reset.
 --
@@ -657,7 +752,9 @@ local function CheckZone(isLogin, entered)
             if ended then ShowRunEnd(ended) end
         elseif s.leftAt then
             local recent = time() - s.leftAt < RESUME_WINDOW
-            if recent and s.leftDead then
+            if recent and DifferentGroup(s, GroupNow()) then
+                NewSession(name, instanceID) -- another group: another run, without asking
+            elseif recent and s.leftDead then
                 Continue(s)
             elseif recent and db.options.askNewRun then
                 local leftAt, summarized = s.leftAt, s.summarized
@@ -936,9 +1033,16 @@ end
 -- is valued at its vendor price in its run: call MarkPrice first.
 local function EntryMarket(e)
     if db.options.valueMode == "vendor" or e.noAH then return e.vendor * e.count end
-    return (e.ah or e.vendor) * e.count
+    return (e.now or e.ah or e.vendor) * e.count
 end
 ns.EntryMarket = EntryMarket
+
+-- The same at the prices recorded when it was looted, whatever the price
+-- setting says.
+function ns.EntryRecorded(e)
+    if db.options.valueMode == "vendor" or e.noAH then return e.vendor * e.count end
+    return (e.ah or e.vendor) * e.count
+end
 
 -- Switches an item between its auction and vendor price for one run. It
 -- applies to every copy of the item in that run, whoever looted it.
@@ -1060,8 +1164,9 @@ end
 -- about 2 for the extraordinary. So an average roll of 51 earns nothing,
 -- and an average of 99 beats nearly everything. That figure is multiplied
 -- by the award's weight, and the best fits are served first: an award
--- goes to one player only, so the others move on to their next best.
--- Anyone left without one is a Tourist.
+-- goes to one player in a party and to two or three in a bigger group
+-- (see Holders), so the others move on to their next best. Anyone left
+-- without one is a Tourist.
 --
 -- Ninja and Luckiest weigh more than the rest, so they usually win when
 -- someone earns them, but a more striking award can still take their
@@ -1072,12 +1177,17 @@ end
 --   x  their roll figures: rolls, avgRoll, luck, high, low, passes
 --   g  the group's figures: n (players), total and equal (the run's loot
 --      and an equal share of it), vendor (the run's loot at vendor
---      prices), best / need / greed / count (the highest single item, Need
---      value, Greed value and item count of any player), least (the
---      smallest haul), and the run's totals: items, junk and quest (item
+--      prices), holders (how many players can have the same award),
+--      best / need / greed / count / least (the single item, Need value,
+--      Greed value, item count and haul it takes to be among that many
+--      best; `board` lists every player's), roles and classes (the
+--      players and loot of each), and the run's totals: items, junk and quest (item
 --      counts), greedAll (value won on Greed rolls) and prof (value of
 --      profession materials)
 -- detail(p, x, g) returns the text / item / amount shown with the award.
+-- An award with `each` in place of `fit` has several slots, each for one
+-- player (Boss's Pet: one per boss): each(sum, extra, g) lists
+-- { p, fit, slot, data }, and detail gets that `data` as a fourth argument.
 -- `how` is the rule in plain words, for the tooltip and the awards guide:
 -- keep it to one line of the guide (about 90 characters) and in step with
 -- fit.
@@ -1087,7 +1197,12 @@ end
 local NINJA_MIN = 10000   -- copper: Need wins below this never make a Ninja
 local JACKPOT_MIN = 10000 -- copper: smallest item worth calling a jackpot
 local FARMER_MIN = 1000   -- copper: profession materials below this do not make a Farmer
-local DICE_MIN_ROLLS = 3  -- rolls needed before the dice awards apply
+local DICE_MIN_ROLLS = 5  -- rolls needed before the dice awards apply
+-- The dice awards start at an average two standard deviations from what
+-- chance gives, and are remarkable at three (see RollLuck). With fair dice
+-- that is one player in twenty or so: at 1.3, where the bar used to be,
+-- two parties in three had someone who qualified.
+local DICE_LUCK, DICE_LUCK_HIGH = 2, 3
 local ONEHIT_MIN_ITEMS = 3   -- items needed for One-Hit Wonder
 local PACKMULE_MIN_ITEMS = 10
 local HOARDER_MIN_JUNK = 5
@@ -1130,6 +1245,45 @@ local function Plural(n, one, many)
     return n == 1 and ("1 " .. one) or (n .. " " .. many)
 end
 
+-- How many players can hold the same award: one in a party, two in a
+-- group of up to ten, three in anything bigger. Their titles are numbered
+-- from the second on ("Hoarder II").
+local function Holders(n)
+    return (n <= 5 and 1) or (n <= 10 and 2) or 3
+end
+ns.AwardHolders = Holders
+local NUMERALS = { "", " II", " III" }
+
+-- Where `v` stands in `list`, a sorted list of every player's figure: 1
+-- for the best, 2 for the next. Equal figures stand together.
+local function Standing(list, v)
+    for i, other in ipairs(list) do
+        if other == v then return i end
+    end
+    return #list + 1
+end
+
+-- "Most <what>" for whoever stands first, "2nd most <what>" for the next.
+local function Nth(standing, what, first)
+    first = first or "Most"
+    if standing <= 1 then return first .. " " .. what end
+    return ns.Ordinal(standing) .. " " .. first:lower() .. " " .. what
+end
+
+-- For the role and class titles: how far a player's loot is above (or
+-- below) the average of a set of players (`set`: { n, total }), as a
+-- fit: one and a half times the average just qualifies, three times is
+-- remarkable; and half of it, or nothing at all. Nil for a set of fewer
+-- than `min` players, or with no loot.
+local function Above(p, set, min)
+    if not set or set.n < min or set.total <= 0 then return end
+    return Fit(p.market / (set.total / set.n), 1.5, 3)
+end
+local function Below(p, set, min)
+    if not set or set.n < min or set.total <= 0 then return end
+    return Fit(1 - p.market / (set.total / set.n), 0.5, 1)
+end
+
 -- How far an average of `n` rolls is from what chance gives, in standard
 -- deviations: 0 is average, 2 happens about once in 40 tries, 3 once in
 -- 700. Rolls run from 1 to 100: mean 50.5, standard deviation 28.87.
@@ -1143,6 +1297,19 @@ local function Percent(x)
     return math.floor(x * 100 + 0.5)
 end
 
+-- "40% above the tanks' average"
+local function AgainstText(p, set, whose)
+    local ratio = p.market / (set.total / set.n)
+    return ("%d%% %s %s"):format(Percent(math.abs(ratio - 1)), ratio >= 1 and "above" or "below", whose)
+end
+
+-- The dice awards' text. `diceLogged`: the figures come from the roll log,
+-- so they only cover rolls that were a contest (see Moments).
+local function DiceText(x)
+    return ("Average roll of %.0f over %d %s"):format(x.diceAvg, x.diceRolls,
+        x.diceLogged and "contested rolls" or "rolls")
+end
+
 local AWARDS = {
     -- Bound gear counts at vendor price, so Ninja mostly reflects needing
     -- things that can be sold.
@@ -1152,7 +1319,9 @@ local AWARDS = {
           if p.needValue < g.need or p.needValue < NINJA_MIN then return end
           return Fit(p.needValue / g.total, 0.1, 0.3)
       end,
-      detail = function(p) return { text = "Most value won on Need rolls", amount = p.needValue } end },
+      detail = function(p, _, g)
+          return { text = Nth(Standing(g.board.need, p.needValue), "value won on Need rolls"), amount = p.needValue }
+      end },
     { key = "lucky", title = "Luckiest", icon = "INV_Misc_Coin_02", weight = 1.5,
       how = "Won the most on Greed rolls, clearly more than an even split of the rolled loot.",
       fit = function(p, _, g)
@@ -1161,21 +1330,25 @@ local AWARDS = {
           -- against an equal share of the whole run.
           return Fit((p.greedValue - g.greedAll / g.n) / g.equal, 0.1, 0.6)
       end,
-      detail = function(p) return { text = "Most value won on Greed rolls", amount = p.greedValue } end },
+      detail = function(p, _, g)
+          return { text = Nth(Standing(g.board.greed, p.greedValue), "value won on Greed rolls"),
+                   amount = p.greedValue }
+      end },
     { key = "jackpot", title = "Jackpot", icon = "INV_Misc_Gem_Diamond_02",
       how = "Got the most valuable single item, worth 1g or more.",
       fit = function(p, _, g)
           if p.bestValue < g.best or p.bestValue < JACKPOT_MIN then return end
           return Fit(p.bestValue / g.total, 0, 0.3)
       end,
-      detail = function(p)
-          return { text = "Best single item of the run", link = p.bestLink, amount = p.bestValue }
+      detail = function(p, _, g)
+          return { text = Nth(Standing(g.board.best, p.bestValue), "single item of the run", "Best"),
+                   link = p.bestLink, amount = p.bestValue }
       end },
     { key = "lionshare", title = "Lion's Share", icon = "Ability_Druid_CatForm", minPlayers = 3,
       how = "Topped the loot, far above an equal share: 36% or more in a group of five.",
       -- Where their share sits between an equal one (0) and everything (1).
       fit = function(p, _, g)
-          if p.rank ~= 1 then return end
+          if p.rank > g.holders then return end
           return Fit((p.market / g.total - 1 / g.n) / (1 - 1 / g.n), 0.2, 0.5)
       end,
       detail = function(p, _, g)
@@ -1194,7 +1367,9 @@ local AWARDS = {
           if p.market > g.least then return end
           return Fit(1 - p.market / g.equal, 0.2, 1)
       end,
-      detail = function(p) return { text = "Least loot of the group", amount = p.market } end },
+      detail = function(p, _, g)
+          return { text = Nth(Standing(g.board.market, p.market), "loot of the group", "Least"), amount = p.market }
+      end },
     { key = "onehit", title = "One-Hit Wonder", icon = "INV_Misc_Gem_Ruby_01",
       how = "Got 70% or more of their loot from a single item (3 items or more).",
       fit = function(p)
@@ -1268,13 +1443,17 @@ local AWARDS = {
       fit = function(_, x) return x.low == 1 and 0.75 or nil end,
       detail = function() return { text = "Rolled a 1" } end },
     { key = "hotdice", title = "Loaded Dice", icon = "INV_Misc_Dice_02",
-      how = "Rolled well above average: about 60 over 15 rolls, or 68 over 5.",
-      fit = function(_, x) return x.rolls >= DICE_MIN_ROLLS and Fit(x.luck, 1.3, 2.6) or nil end,
-      detail = function(_, x) return { text = ("Average roll of %.0f over %d rolls"):format(x.avgRoll, x.rolls) } end },
+      how = "Rolled far above average when it counted: about 65 over 15 rolls, or 76 over 5.",
+      fit = function(_, x)
+          return x.diceRolls >= DICE_MIN_ROLLS and Fit(x.diceLuck, DICE_LUCK, DICE_LUCK_HIGH) or nil
+      end,
+      detail = function(_, x) return { text = DiceText(x) } end },
     { key = "colddice", title = "Cursed Dice", icon = "INV_Misc_Dice_01",
-      how = "Rolled well below average: about 41 over 15 rolls, or 33 over 5.",
-      fit = function(_, x) return x.rolls >= DICE_MIN_ROLLS and Fit(-x.luck, 1.3, 2.6) or nil end,
-      detail = function(_, x) return { text = ("Average roll of %.0f over %d rolls"):format(x.avgRoll, x.rolls) } end },
+      how = "Rolled far below average when it counted: about 36 over 15 rolls, or 25 over 5.",
+      fit = function(_, x)
+          return x.diceRolls >= DICE_MIN_ROLLS and Fit(-x.diceLuck, DICE_LUCK, DICE_LUCK_HIGH) or nil
+      end,
+      detail = function(_, x) return { text = DiceText(x) } end },
     { key = "window", title = "Window Shopper", icon = "INV_Misc_Spyglass_02",
       how = "Rolled on 4 or more items and won none.",
       fit = function(p, x)
@@ -1308,7 +1487,7 @@ local AWARDS = {
       fit = function(_, x) return x.repeated and 0.5 or nil end,
       detail = function(_, x) return { text = ("Rolled %d twice in a row"):format(x.repeated) } end },
     { key = "hotstreak", title = "Hot Streak", icon = "Spell_Fire_Fireball02", group = "moment",
-      how = "Won 3 rolls in a row.",
+      how = "Won 3 rolls in a row, each against another roller.",
       fit = function(_, x) return Fit(x.winRun, HOT_STREAK, 6) end,
       detail = function(_, x) return { text = ("Won %d rolls in a row"):format(x.winRun) } end },
     { key = "dryspell", title = "Dry Spell", icon = "Spell_Frost_ChainsOfIce", group = "moment",
@@ -1328,47 +1507,131 @@ local AWARDS = {
           return { text = "Won on Need, worth next to nothing", link = x.overkillLink, amount = x.overkill }
       end },
 
+    -- Titles from WoW lore, and for roles, classes and bosses. The role
+    -- and class ones need several players of one role or class, so they
+    -- mostly turn up in raids. Rolls are measured against the group's
+    -- average: in a run where everyone rolls on everything, losing twenty
+    -- rolls is normal.
+    { key = "afk", title = "AFK", icon = "Spell_Nature_Sleep",
+      how = "Picked up nothing and rolled on nothing.",
+      fit = function(p, x) return p.count == 0 and x.rolls == 0 and x.entered == 0 and 1.1 or nil end,
+      detail = function() return { text = "Nothing picked up, nothing rolled on" } end },
+    { key = "hunterloot", title = "Hunter Loot", icon = "INV_Weapon_Bow_07",
+      how = "A hunter who won on Need. Everything is hunter loot.",
+      -- Any Need win will do; it grows with the wins beyond an even share.
+      fit = function(p, _, g)
+          if p.class ~= "HUNTER" or p.needWins < 1 then return end
+          return 0.35 + math.min(0.2 * math.max(p.needWins - g.needWinsAll / g.n, 0), 1.15)
+      end,
+      detail = function(p)
+          return { text = "A hunter, and won " .. Plural(p.needWins, "Need roll", "Need rolls"),
+                   amount = p.needValue > 0 and p.needValue or nil }
+      end },
+    { key = "needfirst", title = "Need Before Greed", icon = "Ability_Warrior_Charge",
+      how = "Chose Need on 2 rolls more than the group's average, or more.",
+      fit = function(_, x, g) return Fit(x.needs - g.needsAvg, 2, 6) end,
+      detail = function(_, x) return { text = ("Chose Need on %d rolls"):format(x.needs) } end },
+    { key = "dkp", title = "50 DKP Minus", icon = "Ability_Warrior_WarCry",
+      how = "Lost 3 rolls more than the group's average, or more.",
+      fit = function(_, x, g) return Fit(x.losses - g.lossesAvg, 3, 8) end,
+      detail = function(_, x) return { text = ("Lost %d rolls"):format(x.losses) } end },
+    { key = "tanktax", title = "Tank Tax", icon = "INV_Shield_06",
+      how = "A tank with 1.5 times the tanks' average loot, or more (2 tanks or more).",
+      fit = function(p, _, g) return p.role == "TANK" and Above(p, g.roles.TANK, 2) or nil end,
+      detail = function(p, _, g)
+          return { text = AgainstText(p, g.roles.TANK, "the tanks' average"), amount = p.market }
+      end },
+    { key = "healertip", title = "Healer's Tip", icon = "Spell_Holy_FlashHeal",
+      how = "A healer with 1.5 times the healers' average loot, or more (2 healers or more).",
+      fit = function(p, _, g) return p.role == "HEALER" and Above(p, g.roles.HEALER, 2) or nil end,
+      detail = function(p, _, g)
+          return { text = AgainstText(p, g.roles.HEALER, "the healers' average"), amount = p.market }
+      end },
+    { key = "topdps", title = "Top DPS", icon = "Ability_DualWield",
+      how = "A damage dealer with 1.5 times the damage dealers' average loot, or more.",
+      fit = function(p, _, g) return p.role == "DAMAGER" and Above(p, g.roles.DAMAGER, 2) or nil end,
+      detail = function(p, _, g)
+          return { text = AgainstText(p, g.roles.DAMAGER, "the damage dealers' average"), amount = p.market }
+      end },
+    { key = "classact", title = "Class Act", icon = "INV_Misc_Book_09",
+      how = "Got 1.5 times the average loot of their class, or more (3 or more of it).",
+      fit = function(p, _, g) return p.class and Above(p, g.classes[p.class], 3) or nil end,
+      detail = function(p, _, g)
+          return { text = AgainstText(p, g.classes[p.class], "their class's average"), amount = p.market }
+      end },
+    { key = "classclown", title = "Class Clown", icon = "Ability_Rogue_Disguise",
+      how = "Got half the average loot of their class, or less (3 or more of it).",
+      fit = function(p, _, g) return p.class and Below(p, g.classes[p.class], 3) or nil end,
+      detail = function(p, _, g)
+          return { text = AgainstText(p, g.classes[p.class], "their class's average"), amount = p.market }
+      end },
+    { key = "bosspet", title = "Boss's Pet", icon = "Ability_Hunter_BeastTaming",
+      how = "Got loot from a boss: the biggest share first. One player per boss, one in a party.",
+      each = function(sum, _, g)
+          local list = {}
+          for boss, loot in pairs(g.bossLoot) do
+              local total, top = 0, 0
+              for _, value in pairs(loot) do total, top = total + value, math.max(top, value) end
+              for _, p in ipairs(sum.players) do
+                  local value = loot[p.name]
+                  if value and value > 0 then
+                      -- Just above the consolation prizes: one drop to one
+                      -- player is what most bosses give.
+                      list[#list + 1] = { p = p, fit = 0.3 + 0.1 * value / total, slot = boss,
+                                          data = { boss = g.bossNames[boss], value = value, top = value == top } }
+                  end
+              end
+          end
+          return list
+      end,
+      detail = function(_, _, _, data)
+          return { text = (data.top and "Most loot from %s" or "Loot from %s"):format(data.boss or "a boss"),
+                   amount = data.value }
+      end },
+
     -- Consolation prizes: scored below 0.3 (see Ranked), so they only go
-    -- to players that nothing above fits, the best of them first.
+    -- to players that nothing above fits, the best of them first. Whoever
+    -- gets one need not be the best of the group at it, so `how` never
+    -- says "the most".
     { key = "collector", title = "Collector", icon = "INV_Box_01", group = "consolation",
-      how = "Won the most rolls.",
+      how = "Won 2 rolls or more.",
       fit = function(p, _, g)
           local wins = p.needWins + p.greedWins
           return wins >= 2 and Ranked(wins, g.most.wins) or nil
       end,
       detail = function(p) return { text = ("Won %d rolls"):format(p.needWins + p.greedWins) } end },
     { key = "busy", title = "Busy Hands", icon = "INV_Gauntlets_04", group = "consolation",
-      how = "Entered the most rolls.",
+      how = "Entered 3 rolls or more.",
       fit = function(_, x, g) return x.rolls >= 3 and Ranked(x.rolls, g.most.rolls) or nil end,
       detail = function(_, x) return { text = ("Entered %d rolls"):format(x.rolls) } end },
     { key = "second", title = "Always Second", icon = "INV_Misc_Coin_03", group = "consolation",
-      how = "Had the second best roll most often.",
+      how = "Second best of 3 or more rollers, twice or more.",
       fit = function(_, x, g) return x.second >= 2 and Ranked(x.second, g.most.second) or nil end,
       detail = function(_, x) return { text = ("Second best roll %d times"):format(x.second) } end },
     { key = "avgjoe", title = "Average Joe", icon = "Achievement_Character_Human_Male", group = "consolation",
-      how = "Rolled closest to an average of 50.",
+      how = "Averaged close to 50 over 5 rolls or more.",
       fit = function(_, x, g) return Ranked(Middling(x), g.most.middling) end,
       detail = function(_, x) return { text = ("Average roll of %.0f over %d rolls"):format(x.avgRoll, x.rolls) } end },
     { key = "magpie", title = "Magpie", icon = "INV_Misc_Gem_Crystal_02", group = "consolation",
-      how = "Picked up the most green or better items.",
+      how = "Picked up 2 or more green or better items.",
       fit = function(_, x, g) return x.magpie >= 2 and Ranked(x.magpie, g.most.magpie) or nil end,
       detail = function(_, x) return { text = ("%d green or better items"):format(x.magpie) } end },
     { key = "bossmagnet", title = "Boss Magnet", icon = "INV_Misc_Head_Dragon_01", group = "consolation",
-      how = "Got the most loot from bosses.",
+      how = "Got loot from bosses.",
       fit = function(_, x, g) return Ranked(x.boss, g.most.boss) end,
       detail = function(_, x) return { text = "Loot from bosses", amount = x.boss } end },
     { key = "trashpanda", title = "Trash Panda", icon = "Ability_Druid_Cower", group = "consolation",
-      how = "Got the most loot from trash.",
+      how = "Got loot from trash.",
       fit = function(_, x, g) return Ranked(x.trash, g.most.trash) end,
       detail = function(_, x) return { text = "Loot from trash", amount = x.trash } end },
     { key = "leftovers", title = "Leftovers", icon = "INV_Misc_Food_15", group = "consolation",
-      how = "Won the most items nobody else rolled on.",
+      how = "Won an item nobody else rolled on.",
       fit = function(_, x, g) return Ranked(x.leftovers, g.most.leftovers) end,
       detail = function(_, x)
           return { text = "Won " .. Plural(x.leftovers, "item", "items") .. " nobody else rolled on" }
       end },
     { key = "booby", title = "Booby Prize", icon = "INV_Misc_Gift_01", group = "consolation",
-      how = "Got the run's cheapest item.",
+      how = "For their cheapest item.",
       fit = function(_, x, g) return x.cheapest and Ranked(g.cheapest / x.cheapest, 1) or nil end,
       detail = function(_, x, g)
           return { text = x.cheapest == g.cheapest and "Cheapest item of the run" or "Their cheapest item",
@@ -1422,28 +1685,45 @@ end
 --   cheapest, cheapestLink  their cheapest item
 --   boss, trash         loot value picked up after a boss kill, and elsewhere
 --   magpie              items of uncommon quality or better
+--   needs, losses, entered  rolls they chose Need on, lost, and entered
+--   diceRolls, diceAvg, diceLuck  their numbers in rolls that were a
+--                       contest: rolled the same way as the winner, by
+--                       two players or more. A lone roll, or a Greed
+--                       against a Need, decides nothing. (Runs recorded
+--                       without a roll log: every number they rolled.)
 -- and to the group's `g`: the best of each figure (g.most), the cheapest
--- item of the run (g.cheapest), and the first and last pickups (g.first,
--- g.last: { name, link }). Runs without a log simply have none of it.
+-- item of the run (g.cheapest), the first and last pickups (g.first,
+-- g.last: { name, link }), each boss's loot by player (g.bossLoot,
+-- g.bossNames), the group's average of needs and losses (g.needsAvg,
+-- g.lossesAvg) and its Need wins in all (g.needWinsAll). Runs without a
+-- log simply have none of it.
 local function Moments(s, sum, extra, g)
     for _, x in pairs(extra) do
         x.lost, x.second, x.leftovers, x.winRun, x.loseRun, x.nemesis = 0, 0, 0, 0, 0, 0
         x.boss, x.trash, x.magpie = 0, 0, 0
+        x.needs, x.losses, x.entered = 0, 0, 0
+        x.diceRolls, x.diceAvg, x.diceLuck = x.rolls, x.avgRoll, x.luck
     end
 
     -- Rolls, in the order they were won.
-    local streak, lostTo, together, lastNumber = {}, {}, {}, {}
+    local streak, lostTo, together, lastNumber, dice = {}, {}, {}, {}, {}
     for name in pairs(extra) do
         streak[name], lostTo[name], together[name] = { win = 0, lose = 0 }, {}, {}
+        dice[name] = { sum = 0, n = 0 }
     end
     for _, r in ipairs(ns.RunRolls(s)) do
         local winner = extra[r.winner]
         local entered, numbers, passes, wnum = {}, {}, 0, nil
+        local rivals = 0 -- players who rolled the same way as the winner, the winner included
         for _, roll in ipairs(r.rolls) do
             if roll.choice == "pass" then
                 passes = passes + 1
             elseif extra[roll.name] then
                 entered[#entered + 1] = roll.name
+            end
+            if roll.choice == r.method then rivals = rivals + 1 end
+            if roll.choice == "need" and extra[roll.name] then
+                extra[roll.name].needs = extra[roll.name].needs + 1
             end
             -- Those who rolled the same way as the winner: the numbers that
             -- decided it. RunRolls lists them highest first.
@@ -1455,12 +1735,24 @@ local function Moments(s, sum, extra, g)
                 lastNumber[roll.name] = roll.roll
             end
         end
+        -- A number counts for the dice awards only where it could decide
+        -- something.
+        if rivals >= 2 then
+            for _, roll in ipairs(numbers) do
+                local d = dice[roll.name]
+                if d then d.sum, d.n = d.sum + roll.roll, d.n + 1 end
+            end
+        end
         for _, a in ipairs(entered) do
             local x, run = extra[a], streak[a]
+            x.entered = x.entered + 1
             if a == r.winner then
-                run.win, run.lose = run.win + 1, 0
+                -- A win nobody rolled against ends a losing run, but is no
+                -- part of a winning one.
+                run.win, run.lose = run.win + (rivals >= 2 and 1 or 0), 0
             else
                 run.win, run.lose = 0, run.lose + 1
+                x.losses = x.losses + 1
                 lostTo[a][r.winner] = (lostTo[a][r.winner] or 0) + 1
             end
             x.winRun, x.loseRun = math.max(x.winRun, run.win), math.max(x.loseRun, run.lose)
@@ -1497,6 +1789,14 @@ local function Moments(s, sum, extra, g)
             winner.leftovers = winner.leftovers + 1
         end
     end
+    if s.rollLog then
+        for name, d in pairs(dice) do
+            local x = extra[name]
+            x.diceLogged = true
+            x.diceRolls, x.diceAvg = d.n, d.n > 0 and d.sum / d.n or 0
+            x.diceLuck = d.n > 0 and RollLuck(x.diceAvg, d.n) or 0
+        end
+    end
     for a, beaten in pairs(lostTo) do
         local x = extra[a]
         for b, n in pairs(beaten) do
@@ -1523,10 +1823,18 @@ local function Moments(s, sum, extra, g)
 
     -- Pickups: boss loot and trash, and who picked up first and last.
     local picks = ns.Pickups(s) or {}
+    g.bossLoot, g.bossNames = {}, {}
     for _, pick in ipairs(picks) do
         local x = extra[pick.name]
-        local source = ns.PickupSource(s, pick)
-        if x and source == "boss" then x.boss = x.boss + pick.value end
+        local source, boss = ns.PickupSource(s, pick)
+        if x and source == "boss" then
+            x.boss = x.boss + pick.value
+            if boss then
+                local loot = g.bossLoot[boss] or {}
+                g.bossLoot[boss], g.bossNames[boss] = loot, s.bosses[boss].name
+                loot[pick.name] = (loot[pick.name] or 0) + pick.value
+            end
+        end
         if x and source == "trash" then x.trash = x.trash + pick.value end
     end
     if #picks > 0 then
@@ -1535,9 +1843,12 @@ local function Moments(s, sum, extra, g)
     end
 
     g.most = { wins = 0, rolls = 0, second = 0, middling = 0, magpie = 0, boss = 0, trash = 0, leftovers = 0 }
+    g.needsAvg, g.lossesAvg, g.needWinsAll = 0, 0, 0
     local most = g.most
     for _, p in ipairs(sum.players) do
         local x = extra[p.name]
+        g.needsAvg, g.lossesAvg = g.needsAvg + x.needs / g.n, g.lossesAvg + x.losses / g.n
+        g.needWinsAll = g.needWinsAll + p.needWins
         most.wins = math.max(most.wins, p.needWins + p.greedWins)
         most.rolls = math.max(most.rolls, x.rolls)
         most.second = math.max(most.second, x.second)
@@ -1559,15 +1870,22 @@ local function AwardFits(s, sum)
     if n < 2 or sum.count == 0 or sum.market <= 0 then return end
 
     local g = { n = n, total = sum.market, equal = sum.market / n, vendor = sum.vendor, items = sum.count,
-                best = 0, need = 0, greed = 0, count = 0, least = math.huge,
-                junk = 0, quest = 0, greedAll = 0, prof = 0 }
+                holders = Holders(n), junk = 0, quest = 0, greedAll = 0, prof = 0, roles = {}, classes = {} }
+    -- Every player's figure for the awards that go to the best of the
+    -- group at something. Sorted below, best first.
+    local board = { best = {}, need = {}, greed = {}, count = {}, market = {} }
+    g.board = board
     local extra = {}
-    for _, p in ipairs(sum.players) do
-        g.best = math.max(g.best, p.bestValue)
-        g.need = math.max(g.need, p.needValue)
-        g.greed = math.max(g.greed, p.greedValue)
-        g.count = math.max(g.count, p.count)
-        g.least = math.min(g.least, p.market)
+    for i, p in ipairs(sum.players) do
+        board.best[i], board.need[i], board.greed[i] = p.bestValue, p.needValue, p.greedValue
+        board.count[i], board.market[i] = p.count, p.market
+        for field, sets in pairs({ role = g.roles, class = g.classes }) do
+            if p[field] then
+                local set = sets[p[field]] or { n = 0, total = 0 }
+                sets[p[field]] = set
+                set.n, set.total = set.n + 1, set.total + p.market
+            end
+        end
         g.junk = g.junk + (p.cats.junk and p.cats.junk.count or 0)
         g.quest = g.quest + (p.cats.quest and p.cats.quest.count or 0)
         g.greedAll = g.greedAll + p.greedValue
@@ -1585,6 +1903,16 @@ local function AwardFits(s, sum)
             passes = st and st.passes or 0,
         }
     end
+    for key, list in pairs(board) do
+        table.sort(list, function(a, b)
+            if key == "market" then return a < b end -- the smallest haul stands first
+            return a > b
+        end)
+    end
+    -- What it takes to be one of the `holders` best at each.
+    local k = g.holders
+    g.best, g.need, g.greed, g.count, g.least = board.best[k], board.need[k], board.greed[k], board.count[k],
+        board.market[k]
     Moments(s, sum, extra, g)
 
     -- Every award a player qualifies for, best fit first. Equal fits are
@@ -1592,7 +1920,12 @@ local function AwardFits(s, sum)
     -- the result does not depend on how the window is sorted.
     local fits = {}
     for i, def in ipairs(AWARDS) do
-        if n >= (def.minPlayers or 2) then
+        if n >= (def.minPlayers or 2) and def.each then
+            for _, f in ipairs(def.each(sum, extra, g)) do
+                f.def, f.order = def, i * 1000 + f.p.rank + f.slot / 1000
+                fits[#fits + 1] = f
+            end
+        elseif n >= (def.minPlayers or 2) then
             for _, p in ipairs(sum.players) do
                 local fit = def.fit(p, extra[p.name], g)
                 if fit then
@@ -1611,11 +1944,15 @@ end
 -- Every award each player qualified for, with its weighted fit, best
 -- first: [playerName] = { { title = , fit = }, ... }. For the curious.
 function ns.AwardScores(s, sum)
-    local out = {}
+    local out, seen = {}, {}
     for _, f in ipairs(AwardFits(s, sum) or {}) do
         local list = out[f.p.name] or {}
         out[f.p.name] = list
-        list[#list + 1] = { title = f.def.title, fit = f.fit }
+        local once = f.p.name .. "\0" .. f.def.key -- an award with slots is listed once, at its best
+        if not seen[once] then
+            seen[once] = true
+            list[#list + 1] = { title = f.def.title, fit = f.fit }
+        end
     end
     return out
 end
@@ -1633,28 +1970,50 @@ function ns.RunAwards(s, sum)
 end
 
 -- Returns [playerName] = award, one for every player of the run. An award
--- is { key, title, icon, how, text, link, amount }. `sum` must be a full
--- summary (not the Need-only view). Empty for a run with fewer than two
--- players or nothing of value.
+-- is { key, title, icon, how, text, link, amount, place }. `sum` must be
+-- a full summary (not the Need-only view). Empty for a run with fewer
+-- than two players or nothing of value.
+--
+-- An award goes to as many players as the size of the group allows (see
+-- Holders), best fit first, and each slot of a slotted award to one.
+-- Players who cannot be told apart, with the same fit and the same loot,
+-- share it whatever the limit: nothing but their names would choose
+-- between them. `place` numbers an award's holders by fit, and the title
+-- of the second and third says so ("Hoarder II"); holders with equal fits
+-- (three players who each rolled a 100) have the same place. In a party,
+-- where an award has one holder, a slotted award has one in all.
 function ns.Awards(s, sum)
     local out = {}
     local fits, extra, g = AwardFits(s, sum)
     if not fits then return out end
 
-    local given = {}
+    local given = {} -- [award or slot] = { n = holders, and the last one's fit, market and place }
+    local slotted = {} -- [award with slots] = true once a party's only one is given
     for _, f in ipairs(fits) do
         local def, p = f.def, f.p
-        if not out[p.name] and not given[def.key] then
-            given[def.key] = true
-            local award = def.detail(p, extra[p.name], g)
-            award.key, award.title, award.icon, award.how = def.key, def.title, def.icon, def.how
-            out[p.name] = award
+        if not out[p.name] and not (f.slot and slotted[def.key]) then
+            local slot = f.slot and (def.key .. ":" .. f.slot) or def.key
+            local got = given[slot]
+            if not got then
+                got = { n = 0 }
+                given[slot] = got
+            end
+            local same = got.n > 0 and f.fit == got.fit
+            if got.n < (f.slot and 1 or g.holders) or (same and p.market == got.market) then
+                local place = same and got.place or got.n + 1
+                got.n, got.fit, got.market, got.place = got.n + 1, f.fit, p.market, place
+                local award = def.detail(p, extra[p.name], g, f.data)
+                award.key, award.icon, award.how, award.place = def.key, def.icon, def.how, place
+                award.title = def.title .. (NUMERALS[place] or "")
+                out[p.name] = award
+                if f.slot and g.holders == 1 then slotted[def.key] = true end
+            end
         end
     end
     for _, p in ipairs(sum.players) do
         if not out[p.name] then
             out[p.name] = { key = TOURIST.key, title = TOURIST.title, icon = TOURIST.icon,
-                            how = TOURIST.how, text = "Along for the ride" }
+                            how = TOURIST.how, text = "Along for the ride", place = 1 }
         end
     end
     return out
@@ -1726,8 +2085,9 @@ function CommitRun(s)
             who.class = p.class or who.class
             who.last = s.startedAt
             local a = awards[p.name]
-            if a and a.key == "lucky" then who.lucky = who.lucky + 1 end
-            if a and a.key == "ninja" then who.ninja = who.ninja + 1 end
+            -- The Ninja and the Luckiest of the run, not a "Ninja II".
+            if a and a.key == "lucky" and a.place == 1 then who.lucky = who.lucky + 1 end
+            if a and a.key == "ninja" and a.place == 1 then who.ninja = who.ninja + 1 end
         end
     end
 
@@ -1742,6 +2102,13 @@ function CommitRun(s)
         db.records[s.instanceID] = rec
     end
     local hadRuns = rec.runs > 0 -- a first run sets every record; that is not news
+    -- How the dungeon's averages stood before this run: it is compared with
+    -- the runs that came before it, however many follow.
+    s.stats.prior = rec.runs
+    if hadRuns then
+        s.stats.avgGroup = math.floor(rec.sumGroup / rec.runs + 0.5)
+        s.stats.avgMine = math.floor(rec.sumMine / rec.runs + 0.5)
+    end
     local set = {}
     rec.name = s.name or rec.name
     rec.runs = rec.runs + 1
@@ -1775,7 +2142,10 @@ end
 -- which dungeon records it set, and how it compares with your average.
 -- `sum` must be a full summary. Returns
 --   { duration, perHour, records = { group, mine, jackpot, fastest },
---     groupPct, minePct, priorRuns }  (every field optional)
+--     groupPct, minePct, priorRuns, earlier }  (every field optional)
+-- priorRuns: the runs it is compared with. `earlier`: they are the ones
+-- that came before it. (A run counted before that was kept is compared
+-- with every other run of the dungeon.)
 function ns.RunInsights(s, sum)
     local out = { duration = ns.RunDuration(s) }
     if out.duration and out.duration >= ns.MIN_TIMED_RUN then
@@ -1794,7 +2164,11 @@ function ns.RunInsights(s, sum)
         st.group, st.mine = s.stats.group, s.stats.mine
     end
     local priorRuns, avgGroup, avgMine
-    if s.recorded then
+    if s.recorded and s.stats and s.stats.prior then
+        -- Against the runs before it, as they stood when it was counted.
+        out.records, out.earlier = s.records, true
+        priorRuns, avgGroup, avgMine = s.stats.prior, s.stats.avgGroup, s.stats.avgMine
+    elseif s.recorded then
         -- Already counted in the records: leave it out of its own average.
         out.records = s.records
         priorRuns = rec.runs - 1
@@ -1803,6 +2177,7 @@ function ns.RunInsights(s, sum)
             avgMine = (rec.sumMine - s.stats.mine) / priorRuns
         end
     else
+        out.earlier = true
         priorRuns = rec.runs
         if priorRuns > 0 then
             local set = {}
@@ -1991,9 +2366,33 @@ function handlers.PLAYER_DEAD()
     end
 end
 
+-- Left the dungeon dead, and now alive outside it: you were resurrected
+-- out there, so you are not running back in as a ghost. The run is shown
+-- as when leaving alive, and coming back in will ask whether it is a new
+-- run. (Both events can report the same return to life; the first clears
+-- the note, so the second finds nothing to do.)
+local function Revived()
+    local s = db.active
+    if not s or s.manual or not s.leftAt or not s.leftDead then return end
+    if IsInInstance() or UnitIsDeadOrGhost("player") then return end
+    s.leftDead = nil
+    if HasLoot(s) then
+        PrintSummary(s)
+        ShowRunEnd(s)
+    end
+end
+function handlers.PLAYER_ALIVE() Revived() end
+function handlers.PLAYER_UNGHOST() Revived() end
+
 -- Stamp the run so that, at the next login, we know how long we were away.
 function handlers.PLAYER_LOGOUT()
     if db.active then db.active.lastSeen = time() end
+    -- Today's prices are for today: none goes into the saved file.
+    for _, s in ipairs(ns.AllRuns()) do
+        for _, p in pairs(s.players or {}) do
+            for _, e in pairs(p.items or {}) do e.now = nil end
+        end
+    end
 end
 
 frame:SetScript("OnEvent", function(_, event, ...)

@@ -22,7 +22,7 @@ local CHUNK = 236          -- characters of code per addon message, which holds 
 -- drops the rest: stay under that.
 local BURST, PACE = 8, 1.1
 local MAX_QUEUE = 400      -- messages waiting to go out; requests beyond that are turned down
-local MAX_PARTS = 400      -- messages accepted for one run
+local MAX_PARTS = 600      -- messages accepted for one run: 141,600 characters. A busy raid of forty takes some 350
 local TIMEOUT = 15         -- seconds without news before a request is given up
 
 -- The game's own channels, in case the client does not list them.
