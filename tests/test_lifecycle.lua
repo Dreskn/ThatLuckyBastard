@@ -301,13 +301,16 @@ check(before and not Stored(), "today's prices are dropped when logging out")
 o.priceTime = "then"
 check(ns.Summarize(s).market == 50000, "and back to historical prices")
 
-print("-- more than five players: columns for the top five, a bench for the others")
+print("-- more than five players: columns for the top five, the others on cards under them")
 -- A button by its label: its outer frame (shown or hidden with it), and
 -- a click on it.
 local function Button(label)
     for _, w in ipairs(FRAMES) do
         local text = rawget(w, "text")
-        if type(text) == "table" and text.__text == label and w.__scripts.OnClick then return rawget(w, "__parent"), w end
+        if type(text) == "table" and text.__text == label and w.__scripts.OnClick and not rawget(w, "more")
+                and not rawget(w, "back") then
+            return rawget(w, "__parent"), w
+        end
     end
 end
 local function Click(label)
@@ -326,13 +329,62 @@ local function Draw(run)
     RunTimers()
 end
 local function Plain(text) return (text:gsub("|c%x%x%x%x%x%x%x%x", ""):gsub("|r", "")) end
--- Was exactly this written (colours aside)? For a word a title could hold too.
-local function wrote(text)
-    for _, t in ipairs(TEXTLOG) do
-        if Plain(t) == text then return true end
+-- The cards of the bench, as drawn, from left to right: whose each is,
+-- where it is and how big, and what it shows (nil for a line left out).
+local function Seats()
+    local seats = {}
+    for _, w in ipairs(FRAMES) do
+        if rawget(w, "bench") and w:IsShown() then
+            seats[#seats + 1] = {
+                who = w.p.name, x = w.__points[1][2], y = -w.__points[1][3], w = w.__w, h = w.__h,
+                picture = w.portrait:IsShown(), name = Plain(w.name.__text),
+                title = w.title:IsShown() and Plain(w.title.__text) or nil,
+                gold = w.gold:IsShown() and Plain(w.gold.__text) or nil,
+            }
+        end
     end
-    return false
+    table.sort(seats, function(a, b) return a.x < b.x end)
+    return seats
 end
+-- The arrow at the end of the bench, when it is on show.
+local function More()
+    for _, w in ipairs(FRAMES) do
+        if rawget(w, "more") and w:IsShown() then
+            return { label = Plain(w.text.__text), hidden = w.hidden, x = w.__points[1][2], y = -w.__points[1][3],
+                     w = w.__w, h = w.__h, click = function() w.__scripts.OnClick(w, "LeftButton") end }
+        end
+    end
+end
+-- Its mirror at the top of the list, when it is on show: the arrow back
+-- to the columns.
+local function Back()
+    for _, w in ipairs(FRAMES) do
+        if rawget(w, "back") and w:IsShown() then
+            return { label = Plain(w.text.__text), x = w.__points[1][2], y = -w.__points[1][3], h = w.__h,
+                     click = function() w.__scripts.OnClick(w, "LeftButton") end }
+        end
+    end
+end
+-- How far down the list's first line starts.
+local function FirstLine()
+    local top
+    for _, w in ipairs(FRAMES) do
+        if rawget(w, "line") and w:IsShown() and w.__points and w.__points[1] then
+            local y = -w.__points[1][3]
+            if not top or y < top then top = y end
+        end
+    end
+    return top
+end
+-- The line under the Podium's stage: the text that names `name`.
+local function PodiumLine(name)
+    for _, text in ipairs(TEXTLOG) do
+        local plain = Plain(text)
+        if plain:find(name .. " ", 1, true) then return plain end
+    end
+end
+local WIDTH -- how wide the window's contents are: read off the first card's parent, below
+local CARD, GAP, ARROW = 104, 6, 64 -- a card, the gap after it, the arrow
 
 o.priceTime, o.useColumns = "then", true
 PRICES[100] = nil
@@ -349,51 +401,80 @@ NOW = NOW + 60
 Loot(("%s receives loot: %s."):format("Pim Sorrel", ItemLink(112, "Trophy 112", 2)))  -- 60000
 Reset()
 Draw(six)
-check(Count(six) == 6 and wrote("Bench") and Shown("List") and not Shown("Expand all"),
-      "six players: still the columns, with a bench and its List button")
-check(drew("6. Juno Ash") and not drew("5. ") and not drew("6. Pim Sorrel"),
-      "the bench seats whoever comes after the top five: the sixth by loot, with their place")
+for _, w in ipairs(FRAMES) do
+    if rawget(w, "bench") then WIDTH = rawget(w, "__parent"):GetWidth() end
+end
+local seats, more = Seats(), More()
+local junoAward = ns.Awards(six, ns.Summarize(six))["Juno Ash"].title
+check(Count(six) == 6 and #seats == 1 and seats[1].who == "Juno Ash" and more ~= nil and not Shown("Expand all"),
+      "six players: still the columns, and the sixth by loot has a card under them")
+check(seats[1].picture and seats[1].name == "Juno Ash" and seats[1].title == junoAward
+      and seats[1].gold == Plain(ns.Money(300)),
+      ("a card shows a picture, then the name, the award and the loot value (%s / %s / %s)"):format(
+          seats[1].name, tostring(seats[1].title), tostring(seats[1].gold)))
+check(more.label == "List" and more.hidden == 0 and more.y == seats[1].y and more.h == seats[1].h
+      and more.x == seats[1].x + CARD + GAP,
+      "the row ends with the arrow, as tall as the cards; with everyone on show it says List")
+check(seats[1].x == (WIDTH - (CARD + GAP) - ARROW) / 2, "the row is centred under the columns")
 check(drew("Equal split  " .. Plain(ns.Money(100800 / 6))), "the equal split is still among all six")
 check(drew("60%  +4g 32s"), "and so is each column's gap to it: the richest is 4g 32s above a sixth of the loot")
 -- Whatever order the columns are in, the bench is for the lowest by loot.
 o.sortPlayers = "name"
 Draw(six)
-check(drew("6. Juno Ash") and not drew("6. Sela Marrow"), "sorted by name, the bench still seats the sixth by loot")
+check(#Seats() == 1 and Seats()[1].who == "Juno Ash", "sorted by name, the bench still seats the sixth by loot")
 o.sortPlayers = "podium"
+
+-- The options say what a card shows; a card is as tall as what it holds.
+local full = seats[1].h
+o.benchAward = false
 Draw(six)
--- The List button: this run as a list, and the option untouched.
-check(Click("List") and Shown("Columns") and Shown("Expand all") and not Shown("List") and o.useColumns == true,
-      "List shows this run as a list, without changing the option")
+check(Seats()[1].title == nil and Seats()[1].gold ~= nil and Seats()[1].h == full - 13, "without the award")
+o.benchAward, o.benchValue = true, false
+Draw(six)
+check(Seats()[1].gold == nil and Seats()[1].title == junoAward and Seats()[1].h == full - 13, "without the loot value")
+o.benchValue, o.benchPicture = true, false
+Draw(six)
+check(not Seats()[1].picture and Seats()[1].h < full - 30, "without the picture")
+o.benchPicture, o.portrait = true, "none"
+Draw(six)
+check(not Seats()[1].picture, "nor with pictures switched off for the whole window")
+o.portrait = "2d"
+Draw(six)
+
+-- The arrow: this run as a list, and the option untouched.
+More().click()
+local back = Back()
+check(back ~= nil and Shown("Expand all") and More() == nil and o.useColumns == true,
+      "the arrow shows this run as a list, without changing the option")
+check(back and back.label == "Columns" and back.x == 4 and FirstLine() >= back.y + back.h,
+      "at the top of the list its mirror leads back: an arrow and Columns, with the list starting under it")
 TEXTLOG = {}
 ns.Rerender()
 RunTimers()
-check(not wrote("Bench") and not drew("6. Juno Ash") and drew("Juno Ash") and drew("Pim Sorrel"),
-      "in the list everyone has a line, and there is no bench")
+check(#Seats() == 0 and drew("Juno Ash") and drew("Pim Sorrel"), "in the list everyone has a line, and there is no bench")
 Draw(made[3])
-check(not Shown("Columns") and not Shown("List") and not Shown("Expand all"),
-      "another run, of five or fewer, keeps its columns and has neither button")
+check(Back() == nil and More() == nil and not Shown("Expand all") and #Seats() == 0,
+      "another run, of five or fewer, keeps its columns and has neither arrow nor bench")
 Draw(six)
-check(Shown("Columns") and not Shown("List"), "coming back to the run, it is still a list")
-check(Click("Columns") and Shown("List") and not Shown("Columns"), "Columns brings its columns and its bench back")
+check(Back() ~= nil and More() == nil, "coming back to the run, it is still a list")
+Back().click()
+check(More() ~= nil and Back() == nil and #Seats() == 1, "Columns brings its columns and its bench back")
 o.useColumns = false
 Draw(six)
-check(not Shown("List") and not Shown("Columns") and Shown("Expand all"),
-      "with Always a list chosen there is neither button: every run is a list")
+check(More() == nil and Back() == nil and Shown("Expand all"),
+      "with Always a list chosen there is no arrow: every run is a list")
 o.useColumns = true
 
 -- The Podium window: the top five on the podium, the others named below.
 TEXTLOG = {}
 ns.OpenRunWindow("podium", six)
 RunTimers()
-check(drew("6. Juno Ash"), "the Podium names the sixth under the stage")
-TEXTLOG = {}
-ns.OpenRunWindow("podium", made[3])
-RunTimers()
-check(not drew("6. "), "and nobody for a run of five or fewer")
+check(PodiumLine("Juno Ash") == "Juno Ash " .. junoAward .. " " .. Plain(ns.Money(300)),
+      "the Podium names the sixth under the stage, with award and loot value (" .. tostring(PodiumLine("Juno Ash")) .. ")")
 podium:Hide()
 
--- A raid of forty: five columns, thirty-five seats; the Podium names
--- eight of them and counts the rest.
+-- A raid of forty: five columns, and of the thirty-five others as many
+-- cards as one row holds; the arrow says how many are left.
 local raid = { name = "Raid Keep", startedAt = NOW - 9000, endedAt = NOW - 600, owner = WORLD.me, players = {} }
 for i = 1, 40 do
     raid.players[("Raider %02d"):format(i)] = { class = "MAGE", items = { x = {
@@ -402,18 +483,64 @@ for i = 1, 40 do
 end
 table.insert(db.history, 1, raid)
 local ok = pcall(Draw, raid)
-local seats = 0
-for _, text in ipairs(TEXTLOG) do
-    if Plain(text):match("^%d+%. Raider %d%d  ") then seats = seats + 1 end
+seats, more = Seats(), More()
+local fits = math.floor((WIDTH - ARROW) / (CARD + GAP))
+check(ok and #seats == fits and seats[1].who == "Raider 06" and seats[fits].who == ("Raider %02d"):format(5 + fits),
+      ("a raid of forty: five columns, and the next %d by loot on cards"):format(fits))
+check(more and more.label == "List\n" .. (35 - fits) .. " more" and more.hidden == 35 - fits,
+      "the arrow says List, and under it how many more there are: " .. tostring(more and more.label):gsub("\n", " / "))
+local row, apart = true, true
+for i, seat in ipairs(seats) do
+    if seat.y ~= seats[1].y or seat.w ~= CARD or seat.h ~= seats[1].h then row = false end
+    if i > 1 and seats[i - 1].x + seats[i - 1].w > seat.x then apart = false end
 end
-check(ok and seats == 35 and drew("6. Raider 06") and drew("40. Raider 40") and Shown("List"),
-      ("a raid of forty: five columns and thirty-five seats on the bench (%d)"):format(seats))
+check(row and apart and more.y == seats[1].y and more.x >= seats[fits].x + CARD and more.x + more.w <= WIDTH,
+      "one row, card after card, the arrow last, and nothing past the edge of the window")
+check(seats[1].x == (WIDTH - fits * (CARD + GAP) - ARROW) / 2, "the row is centred")
+more.click()
+check(Back() ~= nil and #Seats() == 0, "the arrow leads to the list, where all forty have a line")
+Back().click()
+
+-- On paper: a ticket printed in ink, the arrow on a till key.
+ns.SetTheme("receipt")
+Draw(raid)
+seats, more = Seats(), More()
+check(#seats == fits and seats[1].name == "RAIDER 06" and more.label == "LIST\n" .. (35 - fits) .. " MORE",
+      ("in the Receipt theme names are printed in capitals, and so is the key (%s, %s)"):format(
+          seats[1].name, (more.label:gsub("\n", " / "))))
+more.click()
+check(Back() and Back().label == "COLUMNS", "and so is the key that leads back")
+Back().click()
+ns.SetTheme("classic")
+Draw(raid)
+check(#Seats() == fits and More().label == "List\n" .. (35 - fits) .. " more", "the Classic theme has them too")
+ns.SetTheme("modern")
+Draw(raid)
+
 TEXTLOG = {}
 ns.OpenRunWindow("podium", raid)
 RunTimers()
-check(drew("13. Raider 13") and not drew("14. Raider 14") and drew("and 27 more"),
-      "its Podium names eight on the bench and counts the other twenty-seven")
+local line = PodiumLine("Raider 13") or ""
+check(line:find("Raider 06 ", 1, true) and not line:find("Raider 14", 1, true) and line:find("and 27 more", 1, true),
+      "its Podium names eight of them and counts the other twenty-seven")
+TEXTLOG = {}
+ns.OpenRunWindow("podium", made[3])
+RunTimers()
+check(PodiumLine("Raider 13") == nil and not drew("more"), "and names nobody under a run of five or fewer")
 podium:Hide()
+
+-- The example addon's raid has forty players, so that it shows all of this.
+local file = io.open(TEST_DIR .. "/../ThatLuckyBastard_Example/Example.lua", "r")
+local source = file:read("*a")
+file:close()
+LoadAddonFile("Example.lua", source)
+RunTimers()
+local example = ns.exampleRuns[#ns.exampleRuns]
+local players = 0
+for _ in pairs(example.players) do players = players + 1 end
+Draw(example)
+check(players == 40 and #Seats() == fits and More() and More().label == "List\n" .. (35 - fits) .. " more",
+      ("the example raid: %d players, %d cards, and an arrow that counts the rest"):format(players, #Seats()))
 main:Hide()
 
 print(FAILED and (FAILED .. " check(s) FAILED") or "all checks passed (lifecycle)")

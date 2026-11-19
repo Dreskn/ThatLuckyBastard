@@ -88,15 +88,28 @@ ThatLuckyBastard.AddExampleRun({
 })
 
 ----------------------------------------------------------------------
--- Run 3: a 10-player raid with many items, for testing the list view and
--- scrolling. Who gets what is generated, but the same every time.
+-- Run 3: a 40-player raid with many items: columns for its top five, a
+-- bench with more players than it has room for, awards held by three
+-- players, and a long list to scroll. Who gets what is generated, but the
+-- same every time.
 ----------------------------------------------------------------------
 
 do
     local roster = {
-        { me, myClass }, { "Thorgrim", "WARRIOR" }, { "Elyndra", "PRIEST" }, { "Vexia", "ROGUE" },
-        { "Skinnyjoe", "HUNTER" }, { "Quietmage", "MAGE" }, { "Bramblehoof", "DRUID" },
-        { "Lighthammer", "PALADIN" }, { "Zulrokk", "SHAMAN" }, { "Nethersip", "WARLOCK" },
+        { me, myClass, "DAMAGER" }, { "Thorgrim", "WARRIOR", "TANK" }, { "Elyndra", "PRIEST", "HEALER" },
+        { "Vexia", "ROGUE", "DAMAGER" }, { "Skinnyjoe", "HUNTER", "DAMAGER" }, { "Quietmage", "MAGE", "DAMAGER" },
+        { "Bramblehoof", "DRUID", "HEALER" }, { "Lighthammer", "PALADIN", "HEALER" },
+        { "Zulrokk", "SHAMAN", "HEALER" }, { "Nethersip", "WARLOCK", "DAMAGER" },
+        { "Grumbar", "WARRIOR", "TANK" }, { "Ironhide", "WARRIOR", "TANK" }, { "Moonwhisper", "DRUID", "HEALER" },
+        { "Stabbington", "ROGUE", "DAMAGER" }, { "Frostina", "MAGE", "DAMAGER" }, { "Mendwell", "PRIEST", "HEALER" },
+        { "Petwrangler", "HUNTER", "DAMAGER" }, { "Totemic", "SHAMAN", "HEALER" }, { "Doomsayer", "WARLOCK", "DAMAGER" },
+        { "Shieldwall", "PALADIN", "HEALER" }, { "Cleavehard", "WARRIOR", "DAMAGER" }, { "Emberly", "MAGE", "DAMAGER" },
+        { "Nightstep", "ROGUE", "DAMAGER" }, { "Barkskin", "DRUID", "DAMAGER" }, { "Longshot", "HUNTER", "DAMAGER" },
+        { "Soulsiphon", "WARLOCK", "DAMAGER" }, { "Stormcaller", "SHAMAN", "DAMAGER" }, { "Dawnbringer", "PALADIN", "HEALER" },
+        { "Whisperwind", "PRIEST", "DAMAGER" }, { "Arcanist", "MAGE", "DAMAGER" }, { "Backstabber", "ROGUE", "DAMAGER" },
+        { "Hoofbeat", "DRUID", "DAMAGER" }, { "Trueshot", "HUNTER", "DAMAGER" }, { "Hexweaver", "WARLOCK", "DAMAGER" },
+        { "Earthshaker", "SHAMAN", "DAMAGER" }, { "Gravelord", "WARRIOR", "DAMAGER" }, { "Sunward", "PRIEST", "HEALER" },
+        { "Pyroclasm", "MAGE", "DAMAGER" }, { "Quickfinger", "ROGUE", "DAMAGER" }, { "Wildgrowth", "DRUID", "HEALER" },
     }
     -- { itemID, kind }: "stack" = common material, many players get a pile;
     -- "rare" = lands on very few players; "single" = one each for about half.
@@ -119,7 +132,8 @@ do
     for p, who in ipairs(roster) do
         local loot = {}
         for i, def in ipairs(pool) do
-            local roll = (p * 7 + i * 13) % 10
+            -- The third term keeps players ten apart from getting the same loot.
+            local roll = (p * 7 + i * 13 + math.floor((p - 1) / 10) * (i + 3)) % 10
             if def[2] == "stack" and roll < 8 then
                 loot[#loot + 1] = { def[1], (roll + 2) * 3 }
             elseif def[2] == "single" and roll < 6 then
@@ -128,7 +142,7 @@ do
                 loot[#loot + 1] = { def[1], 1 }
             end
         end
-        players[who[1]] = { class = who[2], loot = loot }
+        players[who[1]] = { class = who[2], role = who[3], loot = loot }
     end
     ThatLuckyBastard.AddExampleRun({
         name = "Molten Core",

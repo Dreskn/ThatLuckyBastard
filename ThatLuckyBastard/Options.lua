@@ -236,6 +236,15 @@ do
     })
     RowLabel(p, "Order items by")
     Choices(p, "sortItems", { { "Value", "value" }, { "Name", "name" } }, 2, 90, 110)
+    -- Past five players, the others follow the columns on a bench: what
+    -- each of them shows there besides their name.
+    RowLabel(p, "On the bench")
+    local function Columns() return Opt().useColumns end
+    local function Bench(label, key)
+        return { label, function() return Opt()[key] end, function(on) Opt()[key] = on end, Columns }
+    end
+    Group(p, { Bench("Picture", "benchPicture"), Bench("Award", "benchAward"), Bench("Gold", "benchValue") },
+          3, false, 100, 110)
 
     Section(p, "Show")
     Toggles(p, {

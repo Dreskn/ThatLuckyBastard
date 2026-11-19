@@ -54,7 +54,11 @@ ns.OPTION_DEFAULTS = {
     ticker = true,       -- on-screen notice when someone loots something valuable
     tickerMin = 50000,   -- copper: smallest pickup worth a notice
     alignItems = false,  -- put the same item on the same line in every column
-    useColumns = true,   -- one column per player for groups of 5 or fewer
+    useColumns = true,   -- one column per player; past five, for the top five, the others on a bench
+    -- What each player on the bench shows besides their name.
+    benchPicture = true, -- their picture (the Picture options say which; none with "None")
+    benchAward = true,
+    benchValue = true,   -- their loot value
     scale = 1,           -- window scale
     -- Categories that are switched off are hidden, and left out of every
     -- total unless countHidden is on.

@@ -70,7 +70,7 @@ check(not has("Appearance") and not has("Behaviour") and not has("Extras") and n
       "the old pages are gone")
 for _, label in ipairs({
     "Modern", "Classic", "One column per player, up to 5", "Always a list", "Group items by category",
-    "Line up the same item across columns", "Item icons", "Each share, and its gap to an equal split", "Share bar",
+    "Line up the same item across columns", "Picture", "Award", "Gold", "Item icons", "Each share, and its gap to an equal split", "Share bar",
     "Run total and equal split", "Run time, records and averages", "12g 34s 56c", "12g 34s", "12g",
     "2D portrait", "3D model", "Class icon", "None", "As the game shows them", "Full name", "First name only",
     "Podium (top looter in the middle)", "Loot value", "Role (tank, healer, damage)", "Put me first",

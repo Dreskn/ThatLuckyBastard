@@ -239,12 +239,15 @@ function DrawPodium(s, ceremony, top)
     local seated = {}
     for rank = MAX_SLOTS + 1, math.min(#ranked, MAX_SLOTS + BENCH_NAMED) do
         local p = ranked[rank]
-        seated[#seated + 1] = ("|cff909090%d.|r %s %s"):format(rank,
-            ns.ClassColored(ns.DisplayName(p.name), p.class), ns.Money(p.market))
+        -- As on the main window's bench: name, award and loot value, as the options say.
+        local parts = { ns.ClassColored(ns.DisplayName(p.name), p.class) }
+        if ns.db.options.benchAward and awards[p.name] then parts[#parts + 1] = AwardText(awards[p.name]) end
+        if ns.db.options.benchValue then parts[#parts + 1] = ns.Money(p.market) end
+        seated[#seated + 1] = table.concat(parts, " ")
     end
     if #seated > 0 then
         local more = #ranked - MAX_SLOTS - #seated
-        benchText:SetText(table.concat(seated, "    ")
+        benchText:SetText(table.concat(seated, "      ")
             .. (more > 0 and ("    |cff909090and %d more|r"):format(more) or ""))
         stage:SetPoint("BOTTOMRIGHT", -12, 12 + BENCH_H) -- the stage makes room
     end
