@@ -1,13 +1,13 @@
 # Changelog
 
-## Unreleased
+## 0.5.0
 
 - **Awards for raids.** An award now goes to one player in a party, two in a group of up to ten and three in anything bigger, numbered from the second: Hoarder, Hoarder II, Hoarder III.
 - **Ten new awards,** for groups of any size: AFK, Hunter Loot, Need Before Greed, 50 DKP Minus, Tank Tax, Healer's Tip, Top DPS, Class Act, Class Clown and Boss's Pet (one per boss; one in all in a party).
 - **Ties are shared.** Two players with the same score and the same loot both get the award; before, the name that came first had it.
 - **Hot Streak, Loaded Dice and Cursed Dice count contested rolls only.** A win nobody rolled against, or a Greed number against someone's Need, no longer counts. The dice awards also ask for more: five rolls, and an average of about 65 (or 36) over 15 rolls. Before, fair dice qualified someone in two runs out of three.
 - **Codes from other players are read with care.** A code's length is checked before anything else, every list in it has a limit (well above what a raid of forty needs), and reading one no longer slows down with its size: a code written to freeze the game is refused at once. A link now carries up to 141,600 characters, room for a busy raid.
-- **Room for thousands of runs.** A finished run is now saved as one code, the one sharing uses, in place of a table of every pickup and item: about a tenth of the text. The saved file used to fill up at some 300 runs, which could have kept it from loading. Runs are converted by themselves the first time the game saves, each one only after checking that it reads back the same; one that would not stays as it was. Nothing changes in the windows. A version older than this one cannot read the converted runs.
+- **Room for thousands of runs.** A finished run is now saved as one code, the one sharing uses, in place of a table of every pickup and item: about a tenth of the text. The saved file used to fill up at some 300 runs, which could have kept it from loading. Runs are converted by themselves the first time the game saves, each one only after checking that it reads back the same; one that would not stays as it was. Nothing changes in the windows. Versions before 0.5.0 cannot read the converted runs.
 - **`/tlb clear` asks first,** saying how many runs would go: yours, the one in progress, and those shared with you.
 - **Names in other alphabets survive sharing.** A code could lose bytes of a name written in Cyrillic or with accents on some systems.
 - **A bench for bigger groups.** A run of more than five players keeps its columns: the top five by loot get one each, and the others follow under them on small cards, side by side (picture, name, award and loot value, as the options say). The row ends with an arrow marked List, with the number of players left out under it, which shows that run as a list; its mirror at the top of the list, marked Columns, brings the columns back. The example addon's raid now has forty players, to show it. The Podium names them under the stage too. Before, a sixth player turned the whole window into a list.
