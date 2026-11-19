@@ -14,7 +14,7 @@ Everything the addon does, page by page, with its commands, options and limits. 
   - *From WoW lore, and for roles, classes and bosses:* AFK (picked up nothing, rolled on nothing), Hunter Loot (a hunter who won on Need), Need Before Greed (chose Need on two rolls more than the group's average), 50 DKP Minus (lost three rolls more than the group's average), Tank Tax, Healer's Tip and Top DPS (one and a half times the average of their role, two or more of it), Class Act and Class Clown (one and a half times, or half, the average of their class, three or more of it), and Boss's Pet (loot from a boss: one player per boss, one in all in a party; it ranks just above the consolation prizes).
   - *Consolation prizes* go only to players nothing else fits, the best of them first: Collector, Busy Hands, Always Second, Average Joe, Magpie, Boss Magnet, Trash Panda, Leftovers, Booby Prize, Runner-up, First Dibs and Last Call. They score below 0.3, so they never take another award's place. A player left with nothing at all is a Tourist.
 - **Under the breakdown:** run time, group loot per hour, a fairness score, any dungeon record the run set, how it compares with your average over the earlier runs there, and the streak it belongs to.
-- **History:** past runs are kept and can be browsed. **Pin** a run and it is never deleted: not by the limit on runs to keep, not by `/tlb clear`. **Delete** removes just the run on show, after asking.
+- **History:** past runs are kept and can be browsed. **Pin** a run and it is never deleted: not by the limit on runs to keep, not by `/tlb clear`. **Delete** removes just the run on show, after asking; `/tlb clear` asks too.
 
 ## Podium, front page and analysis
 
@@ -105,7 +105,7 @@ A run starts automatically when you enter a dungeon (and raids, if enabled). The
 | `/tlb stop` | End the current run |
 | `/tlb pin` | Pin the run on show so that it is never deleted; again to unpin |
 | `/tlb delete` | Delete the run on show (asks first; not for a pinned run) |
-| `/tlb clear` | Delete all recorded runs, except pinned ones |
+| `/tlb clear` | Delete all runs except pinned ones, those shared with you included (asks first, saying how many) |
 | `/tlb capture` | Record raw loot and roll messages, for troubleshooting |
 
 The minimap button does the same: left-click for the window, right-click for the options, drag to move it.
@@ -141,7 +141,7 @@ Options that do nothing as things stand are greyed out, such as the share bar in
 - **Boss loot is a rule of thumb:** whatever was picked up within 90 seconds of a boss kill, profession materials aside.
 - **Roll luck counts what the game reports.** A roll nobody won (everyone passed) is not counted, and a roll whose messages you were too far away to receive is missed.
 - **Portraits and models need the player nearby.** The game cannot save either, so a player who is out of sight or gone from the group shows their class icon.
-- **Item search and the Runs page only cover the runs that are kept** (300 by default; any number up to unlimited). A run takes about 25 to 150 KB in the saved file. Dungeon figures, records, regulars, luck, drops and roles are kept separately and are not affected by that limit.
+- **Item search and the Runs page only cover the runs that are kept** (300 by default; any number up to unlimited). A finished run takes about 4 to 9 KB in the saved file, where it is kept as one code (the same code sharing uses) with its item names; a raid of forty takes 30 to 90 KB. Kept this way the file has room for thousands of runs. A version older than this one cannot read runs saved by it. Dungeon figures, records, regulars, luck, drops and roles are kept separately and are not affected by that limit.
 - **People met once are forgotten after 90 days.** Regulars would otherwise fill up with strangers from random groups.
 - **Lowering the number of runs to keep asks first,** saying how many runs would go, then deletes them at once. Pinned runs stay.
 - **Deleting runs does not change the statistics.** Dungeon figures, regulars, luck, drops and roles are added up when a run is closed, and keep what a deleted run contributed.
@@ -225,6 +225,10 @@ python tests/run_tests.py ThatLuckyBastard tests/test_awards.lua
 
 ```bash
 python tests/run_tests.py ThatLuckyBastard tests/test_lifecycle.lua
+```
+
+```bash
+python tests/run_tests.py ThatLuckyBastard tests/test_storage.lua
 ```
 
 `tools/make_logo.py` draws the addon's mark (needs Pillow); the brand colours live at the top of `ThatLuckyBastard/Core.lua`. `tools/make_receipt_edge.py` draws the torn edge of the Receipt theme's receipts.

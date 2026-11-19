@@ -2211,6 +2211,9 @@ function handlers.ADDON_LOADED(name)
     db = ThatLuckyBastardDB
     db.history = db.history or {}
     db.shared = db.shared or {}   -- runs other players shared with you (Code.lua)
+    -- Finished runs are saved packed, one code each (Code.lua): from here
+    -- on they are the tables the rest of the addon works with.
+    ns.unread = ns.UnpackRuns(db)
     db.capture = db.capture or {}
     db.records = db.records or {} -- [instanceID] = dungeon records
     db.people = db.people or {}   -- [player name] = figures for people you have run with
@@ -2290,6 +2293,10 @@ function handlers.PLAYER_LOGIN()
     ns.playerName = PLAYER_NAME
     PLAYER_CLASS = select(2, UnitClass("player"))
     if ns.ApplyScale then ns.ApplyScale() end -- the windows' size, from the options
+    if (ns.unread or 0) > 0 then
+        Print(("%d saved %s could not be read. Nothing was deleted: they are kept aside in the saved file.")
+            :format(ns.unread, ns.unread == 1 and "run" or "runs"))
+    end
     RebuildRegulars()
     -- People met in a single run, long ago, are forgotten: with random
     -- groups the list would otherwise grow for ever.
@@ -2393,11 +2400,20 @@ function handlers.PLAYER_LOGOUT()
             for _, e in pairs(p.items or {}) do e.now = nil end
         end
     end
+    -- Last of all: the finished runs go into the saved file packed.
+    ns.PackRuns(db)
+    ns.saving = true
 end
 
 frame:SetScript("OnEvent", function(_, event, ...)
     -- Nothing can be handled before the saved data has loaded.
     if not db and event ~= "ADDON_LOADED" then return end
+    -- The game went on after saving (it should not): the runs packed for
+    -- the saved file are runs again.
+    if ns.saving then
+        ns.saving = nil
+        if event ~= "ADDON_LOADED" then ns.WakeRuns(db) end
+    end
     handlers[event](...)
 end)
 for event in pairs(handlers) do
@@ -2496,6 +2512,49 @@ local function ClearRuns()
     return left
 end
 
+StaticPopupDialogs["THATLUCKYBASTARD_CLEAR_RUNS"] = {
+    text = ns.NAME .. "\n\nDelete all runs?\n%s\n\n"
+        .. "|cff909090This cannot be undone. Pinned runs are kept. Statistics keep what the runs added.|r",
+    button1 = YES,
+    button2 = NO,
+    OnAccept = function()
+        local left = ClearRuns()
+        CheckZone() -- keep tracking if this was asked for inside a dungeon
+        ns.Rerender()
+        if left > 0 then
+            Print(("Runs deleted, except %d pinned."):format(left))
+        else
+            Print("All runs deleted.")
+        end
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
+
+-- Asks before deleting every run that is not pinned, saying how many
+-- that is: yours (the one in progress among them) and those shared with
+-- you.
+function ns.AskClearRuns()
+    local own, going = 0, db.active ~= nil and not db.active.pinned
+    if going then own = 1 end
+    for _, s in ipairs(db.history) do
+        if not s.pinned then own = own + 1 end
+    end
+    local shared = #db.shared
+    if own + shared == 0 then
+        Print("No runs to delete: only pinned runs are kept.")
+        return
+    end
+    local parts = {}
+    if own > 0 then
+        parts[1] = Plural(own, "run of yours", "runs of yours") .. (going and " (the one in progress too)" or "")
+    end
+    if shared > 0 then parts[#parts + 1] = shared .. " shared with you" end
+    StaticPopup_Show("THATLUCKYBASTARD_CLEAR_RUNS", table.concat(parts, " and "))
+end
+
 ----------------------------------------------------------------------
 -- Slash commands
 ----------------------------------------------------------------------
@@ -2565,14 +2624,7 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
     elseif cmd == "delete" then
         ns.AskDeleteRun(ns.ViewedRun())
     elseif cmd == "clear" then
-        local left = ClearRuns()
-        CheckZone() -- keep tracking if this was typed inside a dungeon
-        ns.Rerender()
-        if left > 0 then
-            Print(("Runs deleted, except %d pinned."):format(left))
-        else
-            Print("All runs deleted.")
-        end
+        ns.AskClearRuns()
     else
         Print("/tlb - the breakdown window")
         Print("/tlb options")
@@ -2587,7 +2639,7 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
         Print("/tlb import - open a run from a code, and the runs shared with you")
         Print("/tlb pin - pin or unpin the run on show; pinned runs are never deleted")
         Print("/tlb delete - delete the run on show")
-        Print("/tlb clear - delete all runs except pinned ones")
+        Print("/tlb clear - delete all runs except pinned ones (asks first)")
         Print("/tlb start, /tlb stop - track a run by hand, outside a dungeon")
         Print("/tlb theme modern|classic|receipt")
         Print("/tlb capture - record raw loot messages, for troubleshooting")

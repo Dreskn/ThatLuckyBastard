@@ -92,16 +92,23 @@ local function Num(text, low, high)
     return n
 end
 
+-- The control characters of ASCII, spelled out. (`%c` asks the C library,
+-- which on some systems also names bytes above 127: there they are half
+-- of a letter, in a name written in Cyrillic or with accents.)
+local CONTROL = "%z\1-\31\127"
+
 -- Text with the separators escaped.
 local function S(text)
-    return (tostring(text or ""):gsub("[%%!;,%.'|%c]", function(c) return ("%%%02X"):format(c:byte()) end))
+    return (tostring(text or ""):gsub("[%%!;,%.'|" .. CONTROL .. "]", function(c)
+        return ("%%%02X"):format(c:byte())
+    end))
 end
 
 -- Reads text written by S. Escape sequences and control characters are
 -- dropped: text from outside never gets to draw anything in a window.
 local function ReadS(text, max)
     text = (text or ""):gsub("%%(%x%x)", function(hex) return string.char(tonumber(hex, 16)) end)
-    text = text:gsub("[|%c]", "")
+    text = text:gsub("[|" .. CONTROL .. "]", "")
     assert(#text <= max, "text")
     return text
 end
@@ -142,7 +149,9 @@ end
 -- Writing a code
 ----------------------------------------------------------------------
 
-function ns.EncodeRun(s)
+-- `written`, when given, receives the item entries in the order they are
+-- written (an entry without an item ID is not written at all).
+function ns.EncodeRun(s, written)
     -- Names: the run's own list first, since the pickups and rolls point
     -- into it, then everyone missing from it.
     local names, index = {}, {}
@@ -190,6 +199,7 @@ function ns.EncodeRun(s)
             local itemString = ns.EntryKey(e.link)
             local id = tonumber(itemString:match("^item:(%d+)"))
             if id then
+                if written then written[#written + 1] = e end
                 if e.id then entryIds[e.id] = true end
                 local kind = ((CAT_INDEX[e.cat] or CAT_INDEX.other) - 1) * 8 + math.min(e.quality or 1, 7)
                 fields[#fields + 1] = Join({ N(e.id), N(id), N(e.count), N(e.vendor), N(kind), N(e.ah),
@@ -260,9 +270,22 @@ local function ItemLink(itemString, quality, id)
     return ("|cnIQ%d:|H%s|h[Item %d]|h|r"):format(quality, itemString, id)
 end
 
+-- A link with the name it was saved with: nothing is asked of the game.
+local function NamedLink(itemString, quality, name)
+    return ("|cnIQ%d:|H%s|h[%s]|h|r"):format(quality, itemString, name)
+end
+
 -- Builds the run from the sections of a code. Errors on anything that
--- is not what a code holds.
-local function Build(sec)
+-- is not what a code holds. `itemNames`, when given, are the names of the
+-- items in the order the code holds them, for their links; `read`, when
+-- given, receives the item entries in that order.
+local function Build(sec, itemNames, read)
+    local nth = 0
+    local function Link(itemString, quality, id)
+        nth = nth + 1
+        if not itemNames then return ItemLink(itemString, quality, id) end
+        return NamedLink(itemString, quality, assert(itemNames[nth], "item name"))
+    end
     local head = Split(sec[1], ",")
     local names = {}
     for i, text in ipairs(Split(sec[2], ",")) do names[i] = ReadS(text, 64) end
@@ -326,13 +349,15 @@ local function Build(sec)
                 need = Num(f[8], 0, 1e6), greed = Num(f[9], 0, 1e6),
                 -- Valued as the owner saw it: never priced again here.
                 resolved = true,
-                link = ItemLink(itemString, quality, id),
+                link = Link(itemString, quality, id),
             }
+            if read then read[#read + 1] = p.items[key] end
             if entryId then whose[entryId] = nameIndex end
         end
         s.players[name] = p
     end
     assert(next(s.players), "no players")
+    assert(not itemNames or nth == #itemNames, "item names")
 
     local log, t = {}, 0
     for _, text in ipairs(Split(sec[5], ",")) do
@@ -386,8 +411,8 @@ local function Build(sec)
     return s
 end
 
--- The run in a code, or nil and why not.
-function ns.DecodeRun(code)
+-- The run in a code, or nil and why not. `itemNames` and `read`: see Build.
+function ns.DecodeRun(code, itemNames, read)
     code = tostring(code or "")
     -- Its length, before anything else looks at it.
     if #code > MAX_TEXT then return nil, TOO_LONG end
@@ -408,7 +433,7 @@ function ns.DecodeRun(code)
     end
     local sections = Split(body:sub(#PREFIX + 1), "!")
     if #sections ~= 8 then return nil, DAMAGED end
-    local ok, s = pcall(Build, sections)
+    local ok, s = pcall(Build, sections, itemNames, read)
     if not ok then return nil, DAMAGED end
     return s
 end
@@ -487,4 +512,296 @@ function ns.ImportCode(code, from)
     ns.TrimShared()
     LoadNames(s)
     return s
+end
+
+----------------------------------------------------------------------
+-- Runs in the saved file
+--
+-- The game's saved file is one Lua chunk, and Lua cannot load a chunk
+-- with more than 262,143 different strings and numbers. A run kept as a
+-- table takes 550 to 1,000 of them (every pickup, every item), so the
+-- file was full at some 300 runs. A finished run is therefore saved as a
+-- record of a few values:
+--
+--   c  the run's code, the same one sharing uses
+--   n  its items' names, each followed by "|", in the order of the code
+--   m  how many names the run's own list had (absent: it had none)
+--   e  fields that were empty tables, d  fields the run did not have:
+--      a code makes no difference between "none" and "nothing"
+--   x  every other field of the run, as it is: whatever a code does not
+--      carry (owner, pinned, the figures it was counted with...), and
+--      whatever a later version adds
+--
+-- That is 13 values for a dungeon run, and a tenth of the text.
+--
+-- Runs are packed when the game saves (PLAYER_LOGOUT) and unpacked when
+-- it loads (ADDON_LOADED): in between they are the tables they always
+-- were. A run is only packed once unpacking its record has been checked
+-- to give the run back: every field and every item, the same. One thing
+-- is let go, as sharing already does: an item's link is filed without the
+-- looter's level and specialisation (see ns.EntryKey), and without the
+-- colons that end it. A run that does not come back the same (an item
+-- still unresolved, a field a code cannot hold) stays a table, and is
+-- tried again at the next save. A record that cannot be read is never
+-- thrown away: it is set aside in db.unread, and tried again at each load.
+----------------------------------------------------------------------
+
+-- What a code carries of a run. Everything else goes into `x`.
+local CODED = { name = true, instanceID = true, startedAt = true, endedAt = true, kills = true, names = true,
+                players = true, rollStats = true, log = true, rollLog = true, bosses = true, priceSwitched = true }
+-- Of the moment only: never saved, so not compared.
+local ITEM_PASSING = { lastAt = true, noAH = true, now = true }
+local PLAYER_PASSING = { joined = true }
+local NAME_END = "|" -- cannot be part of a name inside a link
+
+-- [run] = the record it was read from, or was last packed as: a run whose
+-- code and names have not changed since needs no second check.
+local packedAs = setmetatable({}, { __mode = "k" })
+
+local function IsPacked(v)
+    return type(v) == "table" and type(rawget(v, "c")) == "string" and rawget(v, "players") == nil
+end
+
+-- Plain values, and tables of them, compared all the way down.
+local function Same(a, b)
+    if a == b then return true end
+    if type(a) ~= "table" or type(b) ~= "table" then return false end
+    for k, v in pairs(a) do
+        if not Same(v, b[k]) then return false end
+    end
+    for k in pairs(b) do
+        if a[k] == nil then return false end
+    end
+    return true
+end
+
+-- The run in a record, or nil and why not. Also returns its item entries
+-- in the order of the code.
+function ns.UnpackRun(record)
+    local names = {}
+    for name in (record.n or ""):gmatch("([^" .. NAME_END .. "]*)" .. NAME_END) do names[#names + 1] = name end
+    local read = {}
+    local s, why = ns.DecodeRun(record.c, names, read)
+    if not s then return nil, why end
+    s.recordedBy = nil -- a code names its recorder; a run has `owner`, in x
+    if record.m then
+        for i = #s.names, record.m + 1, -1 do s.names[i] = nil end -- the code adds the players its lists lack
+    else
+        s.names = nil
+    end
+    for _, field in ipairs(record.d or {}) do s[field] = nil end
+    for _, field in ipairs(record.e or {}) do
+        if s[field] == nil then s[field] = {} end
+    end
+    for k, v in pairs(record.x or {}) do s[k] = v end
+    return s, read
+end
+
+-- Is `back`, unpacked from a record of `s`, the same run? `written` and
+-- `read`: their item entries, in the order of the code. Returns false and
+-- the first thing that differs.
+local function Lossless(s, back, written, read)
+    for key in pairs(CODED) do
+        if key ~= "players" and not Same(s[key], back[key]) then return false, key end
+    end
+    for k, v in pairs(s) do
+        if not CODED[k] and back[k] ~= v then return false, k end
+    end
+    for k in pairs(back) do
+        if s[k] == nil then return false, k end
+    end
+
+    local players = 0
+    for name, p in pairs(s.players) do
+        players = players + 1
+        local q = back.players[name]
+        if not q or p.class ~= q.class or p.role ~= q.role then return false, "player" end
+        for k in pairs(p) do
+            if k ~= "class" and k ~= "role" and k ~= "items" and not PLAYER_PASSING[k] then return false, "player." .. k end
+        end
+        local have, got = 0, 0
+        for _ in pairs(p.items) do have = have + 1 end
+        for _ in pairs(q.items) do got = got + 1 end
+        if have ~= got then return false, "items" end
+    end
+    for _ in pairs(back.players) do players = players - 1 end
+    if players ~= 0 then return false, "players" end
+
+    if #written ~= #read then return false, "items" end
+    for i, e in ipairs(written) do
+        local d = read[i]
+        for k, v in pairs(e) do
+            if k == "link" then
+                -- The same link, but for its item string, which must be
+                -- the one the item is filed under, less the colons at its end.
+                local filed = ns.EntryKey(v):gsub(":+$", "")
+                local expected = v:gsub("|Hitem:[^|]*|h", function() return "|H" .. filed .. "|h" end, 1)
+                if d.link ~= expected then return false, "link" end
+            elseif not ITEM_PASSING[k] and d[k] ~= v then
+                return false, "item." .. k
+            end
+        end
+        for k in pairs(d) do
+            if e[k] == nil then return false, "item." .. k end
+        end
+    end
+    return true
+end
+
+-- What a code holds of an item, and as what.
+local ITEM_CODED = { id = "number", count = "number", vendor = "number", ah = "number", need = "number",
+                     greed = "number", quality = "number", cat = "text", link = "text", resolved = "flag" }
+local function Whole(v) return type(v) == "number" and v >= 0 and v % 1 == 0 end
+
+-- Are the players and items of `s` exactly what a code holds: no value it
+-- has no place for, none it would round or default, no item it leaves
+-- out, every link in the form it is rebuilt in? Two runs for which this
+-- holds and whose codes and item names are equal are the same run. (That
+-- is what lets a run checked once be saved again without a second check;
+-- the check itself asks for no such thing.) `written`: see ns.EncodeRun.
+local function Plain(s, written)
+    local items = 0
+    for _, p in pairs(s.players) do
+        for k in pairs(p) do
+            if k ~= "class" and k ~= "role" and k ~= "items" and not PLAYER_PASSING[k] then return false end
+        end
+        for _ in pairs(p.items) do items = items + 1 end
+    end
+    if items ~= #written then return false end
+    for _, e in ipairs(written) do
+        if e.resolved ~= true or not CAT_INDEX[e.cat] or not Whole(e.quality) or e.quality > 7 then return false end
+        for k, v in pairs(e) do
+            if not ITEM_PASSING[k] then
+                local kind = ITEM_CODED[k]
+                if not kind or (kind == "number" and not Whole(v)) then return false end
+            end
+        end
+        if tonumber(e.link:match("^|cnIQ(%d):|Hitem:[^|]*|h%[.*%]|h|r$")) ~= e.quality then return false end
+    end
+    return true
+end
+
+-- The record to save run `s` as, or nil and why not: then it is saved
+-- as the table it is.
+function ns.PackRun(s)
+    local written = {}
+    local code = ns.EncodeRun(s, written)
+    local names = {}
+    for i, e in ipairs(written) do
+        local name = e.link:match("|h%[(.*)%]|h")
+        if not name or name:find(NAME_END, 1, true) then return nil, "item name" end
+        names[i] = name .. NAME_END
+    end
+    local record = { c = code, n = table.concat(names), m = s.names and #s.names or nil }
+    local empty, x = {}, {}
+    for k, v in pairs(s) do
+        if not CODED[k] then
+            x[k] = v
+        elseif type(v) == "table" and next(v) == nil then
+            empty[#empty + 1] = k
+        end
+    end
+    table.sort(empty)
+    record.e, record.x = empty[1] and empty or nil, next(x) and x or nil
+
+    -- Checked before, and nothing has changed since: the code and the names
+    -- are the same, and nothing a code cannot show has crept in.
+    local known = packedAs[s]
+    if known and known.c == record.c and known.n == record.n and known.m == record.m and Same(known.e, record.e)
+            and Plain(s, written) then
+        record.d = known.d
+        packedAs[s] = record
+        return record
+    end
+
+    local back, read = ns.UnpackRun(record)
+    if not back then return nil, read end
+    local absent = {}
+    for key in pairs(CODED) do
+        if s[key] == nil and back[key] ~= nil then
+            absent[#absent + 1] = key
+            back[key] = nil
+        end
+    end
+    table.sort(absent)
+    record.d = absent[1] and absent or nil
+    local same, what = Lossless(s, back, written, read)
+    if not same then return nil, what end
+    packedAs[s] = record
+    return record
+end
+
+local LISTS = { "history", "shared" }
+
+-- When the saved data has loaded: every record becomes the run it holds.
+-- Returns how many could not be read (they wait in db.unread).
+function ns.UnpackRuns(db)
+    -- Those set aside before get another try: this version may read them.
+    local waiting = db.unread or {}
+    db.unread = nil
+    for _, item in ipairs(waiting) do
+        if type(item) == "table" and db[item.from] and item.record then
+            table.insert(db[item.from], item.record)
+        end
+    end
+    local unread = 0
+    for _, key in ipairs(LISTS) do
+        local list, runs = db[key], {}
+        for _, v in ipairs(list) do
+            if IsPacked(v) then
+                local ok, s = pcall(ns.UnpackRun, v)
+                if ok and s then
+                    packedAs[s] = v
+                    runs[#runs + 1] = s
+                else
+                    db.unread = db.unread or {}
+                    db.unread[#db.unread + 1] = { from = key, record = v }
+                    unread = unread + 1
+                end
+            else
+                runs[#runs + 1] = v
+            end
+        end
+        for i = 1, math.max(#list, #runs) do list[i] = runs[i] end
+        if #waiting > 0 then -- a run that came back goes where its date puts it
+            table.sort(list, function(a, b) return (a.startedAt or 0) > (b.startedAt or 0) end)
+        end
+    end
+    return unread
+end
+
+-- When the game is about to save: every finished run that packs becomes
+-- its record. A record stands in for its run until the game is gone
+-- (anything still reading the run finds it behind the record); only the
+-- record's own values are saved.
+function ns.PackRuns(db)
+    for _, key in ipairs(LISTS) do
+        local list = db[key]
+        for i, s in ipairs(list) do
+            if type(s) == "table" and not IsPacked(s) and type(s.players) == "table" then
+                local ok, record = pcall(ns.PackRun, s)
+                if ok and record then list[i] = setmetatable(record, { __index = s }) end
+            end
+        end
+    end
+end
+
+-- The game is torn down right after it saves, so nothing should follow
+-- PackRuns. Should something follow all the same, the records become the
+-- runs again, with whatever was written to them meanwhile.
+local RECORD = { c = true, n = true, m = true, e = true, d = true, x = true }
+function ns.WakeRuns(db)
+    for _, key in ipairs(LISTS) do
+        local list = db[key]
+        for i, v in ipairs(list) do
+            local behind = getmetatable(v)
+            local s = behind and behind.__index
+            if type(s) == "table" then
+                for k, x in next, v do
+                    if not RECORD[k] then s[k] = x end
+                end
+                list[i] = s
+            end
+        end
+    end
 end

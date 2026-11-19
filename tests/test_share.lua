@@ -425,6 +425,21 @@ db.options.maxHistory = 300
 for i = 1, 5 do SharedAt(run.startedAt - 1200 - i * 600) end
 check(#db.shared == 7, "with the default 300, they all stay")
 
+print("-- names in other alphabets")
+-- Written as bytes: UTF-8 letters whose second byte (0x81, 0x8D, 0x8F,
+-- 0x90, 0x9D) some systems take for a control character.
+local ANNA = "\208\144\208\189\208\189\208\176 \208\160\208\190\209\129\209\129"   -- Cyrillic, with 0x90 and 0x81
+local ELISE = "\195\137lise No\195\171l"                                           -- accents
+local ODD = "\208\157\208\143\208\141 \196\129"                                    -- 0x9D, 0x8F, 0x8D, 0x81
+local abroad = { name = "Far Keep", startedAt = NOW - 7200, endedAt = NOW - 3600, owner = ANNA, players = {} }
+for i, name in ipairs({ ANNA, ELISE, ODD }) do
+    abroad.players[name] = { class = "MAGE", items = { x = { link = ItemLink(100, "Green Gloves", 2), id = i, count = 1,
+                                                             vendor = 1500, cat = "uncommon", quality = 2, resolved = true } } }
+end
+local home = ns.DecodeRun(ns.EncodeRun(abroad))
+check(home and home.players[ANNA] and home.players[ELISE] and home.players[ODD] and home.recordedBy == ANNA,
+      "names in Cyrillic or with accents come back from a code byte for byte")
+
 print("-- codes written to waste time")
 -- A code comes from someone else. These are made by hand, with a checksum
 -- that fits, the way someone who means harm would make them.

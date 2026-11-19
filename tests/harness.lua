@@ -333,13 +333,47 @@ function LoadAddonFile(path, source)
     chunk("ThatLuckyBastard", NS)
 end
 
--- Sends an event to every frame that registered for it.
+-- What the game would write to the saved file: a table's own values,
+-- all the way down. Anything a file cannot hold is an error.
+local function Saved(v, path)
+    local t = type(v)
+    if t ~= "table" then
+        assert(t == "string" or t == "number" or t == "boolean", "cannot be saved: " .. path .. " is a " .. t)
+        return v
+    end
+    local out = {}
+    for k, x in next, v do out[Saved(k, path)] = Saved(x, path .. "." .. tostring(k)) end
+    return out
+end
+
+-- Sends an event to every frame that registered for it. PLAYER_LOGOUT is
+-- when the game saves: SAVED is then what the file would hold. A test
+-- that carries on afterwards plays a session that never ended, so the
+-- runs packed for the file are put back (as the addon does itself, should
+-- the game ever go on after saving). Reload() plays a real one.
 function Fire(event, ...)
     for _, w in ipairs(FRAMES) do
         if w.__events and w.__events[event] and w.__scripts.OnEvent then
             w.__scripts.OnEvent(w, event, ...)
         end
     end
+    if event == "PLAYER_LOGOUT" and ThatLuckyBastardDB then
+        SAVED = Saved(ThatLuckyBastardDB, "ThatLuckyBastardDB")
+        if NS.WakeRuns then
+            NS.WakeRuns(ThatLuckyBastardDB)
+            NS.saving = nil
+        end
+    end
+end
+
+-- Logs out and back in: the addon starts again from what was saved, and
+-- nothing else. Returns the saved data as loaded.
+function Reload()
+    Fire("PLAYER_LOGOUT")
+    ThatLuckyBastardDB = Saved(SAVED, "saved")
+    Fire("ADDON_LOADED", "ThatLuckyBastard")
+    Fire("PLAYER_LOGIN")
+    return ThatLuckyBastardDB
 end
 
 function Loot(text) Fire("CHAT_MSG_LOOT", text) end

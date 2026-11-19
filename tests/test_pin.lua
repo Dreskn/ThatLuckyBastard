@@ -42,10 +42,29 @@ ns.TrimHistory()
 check(#db.history == 1 and db.history[1] == old, "limit of 0: only the pinned run remains")
 db.options.maxHistory = 30
 
--- Clearing leaves pinned runs.
+-- Clearing asks first, says how many runs would go, and leaves pinned runs.
 table.insert(db.history, 1, newest)
+local asked = #POPUPS
 SlashCmdList.THATLUCKYBASTARD("clear")
-check(#db.history == 1 and db.history[1] == old, "/tlb clear leaves the pinned run")
+local ask = POPUPS[#POPUPS]
+check(#POPUPS == asked + 1 and ask.which == "THATLUCKYBASTARD_CLEAR_RUNS" and #db.history == 2,
+      "/tlb clear asks first, and deletes nothing until answered")
+check(ask.a == "1 run of yours", "it says how many runs would go (" .. tostring(ask.a) .. ")")
+StaticPopupDialogs.THATLUCKYBASTARD_CLEAR_RUNS.OnAccept()
+check(#db.history == 1 and db.history[1] == old, "Yes deletes them, and leaves the pinned run")
+asked = #POPUPS
+SlashCmdList.THATLUCKYBASTARD("clear")
+check(#POPUPS == asked, "with only pinned runs left there is nothing to ask")
+-- The run in progress and the runs shared with you go too: it says so.
+table.insert(db.history, 1, newest)
+db.active = { name = "Going", startedAt = NOW, players = { ["Mira Vale"] = { items = {} } } }
+db.shared[#db.shared + 1] = { name = "Gift", startedAt = NOW - 99, sharedBy = "Kind Soul", players = {} }
+SlashCmdList.THATLUCKYBASTARD("clear")
+ask = POPUPS[#POPUPS]
+check(ask.a == "2 runs of yours (the one in progress too) and 1 shared with you",
+      "the question counts the run in progress and the shared runs (" .. tostring(ask.a) .. ")")
+StaticPopupDialogs.THATLUCKYBASTARD_CLEAR_RUNS.OnAccept()
+check(#db.history == 1 and db.active == nil and #db.shared == 0, "Yes deletes all of those")
 
 -- The popup's Yes button deletes the run that was asked about.
 table.insert(db.history, 1, newest)
