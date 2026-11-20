@@ -2,7 +2,7 @@
 ## Title: |cffffffffThat|r |cff40c7b8Lucky|r |cffffffffBastard|r
 ## Notes: Who got what in your dungeon runs: loot values, awards and statistics. Private unless you share a run.
 ## Author: Dreskn
-## Version: 0.5.0
+## Version: 0.5.5
 ## SavedVariables: ThatLuckyBastardDB
 ## OptionalDeps: Auctionator, TradeSkillMaster
 ## AddonCompartmentFunc: ThatLuckyBastard_OnAddonCompartmentClick
