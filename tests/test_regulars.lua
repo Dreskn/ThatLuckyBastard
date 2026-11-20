@@ -89,8 +89,8 @@ check(drew("Theirs") and drew("Yours") and drew("Difference") and drew("Old Pal"
 db.options.useColumns = true
 WORLD.inInstance = false
 ns.ShowRun(db.history[1])
--- The hover area over a column's picture and name (a button: the podium's
--- slots, which also hold a player, are frames).
+-- The hover area over a column's picture and name (a button: the bench's
+-- cards, which also hold a player, are frames).
 local hover
 for _, w in ipairs(FRAMES) do
     local p = rawget(w, "p")

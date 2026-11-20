@@ -2,12 +2,17 @@ local _, ns = ...
 
 -- Loot bingo: a private game played during a run. Each run deals a 4x4
 -- card of things that might happen ("a blue item drops", "someone
--- passes", "you die"). Squares tick themselves off as the run goes, and
--- a completed row, column or diagonal is announced on screen.
+-- passes", "you die"), and squares tick themselves off as the run goes.
+-- The player bets on one line of it, a row, a column or a diagonal. A
+-- line can be picked as long as none of its squares is ticked; the pick
+-- is for good, and the line wins if it fills before the run is over.
 --
 -- The card is stored with the run as
---   s.bingo = { keys = { 16 square keys }, done = { [key] = true }, lines = n }
--- A square that has been ticked stays ticked.
+--   s.bingo = { keys = { 16 square keys }, done = { [key] = true },
+--               pick = the line picked (its place in LINES), won = true,
+--               solo = true for a card dealt to a player on their own }
+-- A square that has been ticked stays ticked. db.bingo counts the lines
+-- picked and the lines won, over all runs.
 
 local SIZE = 4
 local CELL_W, CELL_H, GAP = 92, 54, 4
@@ -164,11 +169,12 @@ local function NewCard(s)
         local j = rand(i)
         keys[i], keys[j] = keys[j], keys[i]
     end
-    return { keys = keys, done = {}, lines = 0 }
+    return { keys = keys, done = {}, solo = not InGroup(s) or nil }
 end
 
--- Every row, column and diagonal, as lists of cell indexes (1 to 16,
--- left to right, top to bottom).
+-- The lines a player can pick, as lists of cell indexes (1 to 16, left
+-- to right, top to bottom): the four rows, then the four columns, then
+-- the two diagonals. A card remembers its pick by its place here.
 local LINES = {}
 do
     local d1, d2 = {}, {}
@@ -178,29 +184,34 @@ do
             row[j] = (i - 1) * SIZE + j
             col[j] = (j - 1) * SIZE + i
         end
-        LINES[#LINES + 1] = row
-        LINES[#LINES + 1] = col
+        LINES[i], LINES[SIZE + i] = row, col
         d1[i] = (i - 1) * SIZE + i
         d2[i] = (i - 1) * SIZE + (SIZE - i + 1)
     end
-    LINES[#LINES + 1] = d1
-    LINES[#LINES + 1] = d2
+    LINES[2 * SIZE + 1], LINES[2 * SIZE + 2] = d1, d2
 end
 
--- Returns how many lines are complete, and the set of cells in them.
-local function CompletedLines(card)
-    local count, cells = 0, {}
-    for _, line in ipairs(LINES) do
-        local full = true
-        for _, index in ipairs(line) do
-            if not card.done[card.keys[index]] then full = false end
-        end
-        if full then
-            count = count + 1
-            for _, index in ipairs(line) do cells[index] = true end
-        end
+-- How many squares of line `n` are ticked.
+local function Ticked(card, n)
+    local count = 0
+    for _, index in ipairs(LINES[n]) do
+        if card.done[card.keys[index]] then count = count + 1 end
     end
-    return count, cells
+    return count
+end
+
+-- The line a card has picked, when it is one of LINES. A pick this
+-- version cannot place (a damaged file, a card of another version)
+-- counts as none.
+local function Picked(card)
+    return LINES[card.pick] and card.pick or nil
+end
+
+-- The lines picked and the lines won, over all runs.
+local function Tally()
+    local db = ns.db
+    db.bingo = db.bingo or { picked = 0, won = 0 }
+    return db.bingo
 end
 
 ----------------------------------------------------------------------
@@ -209,15 +220,23 @@ end
 
 local GRID_W = SIZE * CELL_W + (SIZE - 1) * GAP
 local GRID_H = SIZE * CELL_H + (SIZE - 1) * GAP
+-- The markers lines are picked with stand around the grid: one at the
+-- start of each row, one above each column, one at each top corner for
+-- the diagonal that starts there.
+local MARK, MARK_ROOM = 12, 22 -- a marker's size, and the room markers take beside the grid
+local ICON = "Interface\\Icons\\INV_Misc_Dice_02"
 
 -- Not closed by Escape: the card is meant to stay open during a run. On
 -- the same level as the addon's other windows, in front when it opens.
-local frame, ui, title, skins = ns.MakeWindow("ThatLuckyBastardBingoFrame", GRID_W + 28, GRID_H + 100, "HIGH", false)
+local frame, ui, title, skins = ns.MakeWindow("ThatLuckyBastardBingoFrame", GRID_W + 28 + 2 * MARK_ROOM,
+    GRID_H + 140, "HIGH", false)
 frame:SetPoint("RIGHT", UIParent, "RIGHT", -60, 60)
 
 local status = ui:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 local grid = CreateFrame("Frame", nil, ui)
 grid:SetSize(GRID_W, GRID_H)
+local tallyText = ui:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+tallyText:SetPoint("TOPLEFT", grid, "BOTTOMLEFT", 0, -8)
 
 local cells = {}
 for index = 1, SIZE * SIZE do
@@ -237,6 +256,44 @@ for index = 1, SIZE * SIZE do
     cells[index] = cell
 end
 
+local Draw, Pick
+local hovered -- the line whose marker the mouse is on
+
+local marks = {}
+for n = 1, #LINES do
+    local m = CreateFrame("Button", nil, grid)
+    m.mark = n
+    m:SetSize(MARK, MARK)
+    if n <= SIZE then
+        m:SetPoint("RIGHT", cells[(n - 1) * SIZE + 1], "LEFT", -6, 0)
+    elseif n <= 2 * SIZE then
+        m:SetPoint("BOTTOM", cells[n - SIZE], "TOP", 0, 6)
+    elseif n == 2 * SIZE + 1 then
+        m:SetPoint("BOTTOMRIGHT", cells[1], "TOPLEFT", -6, 6)
+    else
+        m:SetPoint("BOTTOMLEFT", cells[SIZE], "TOPRIGHT", 6, 6)
+    end
+    m.bg = m:CreateTexture(nil, "ARTWORK")
+    m.bg:SetAllPoints()
+    -- Hovering a marker shows its line on the card; a click picks it.
+    m:SetScript("OnEnter", function(self)
+        hovered = self.mark
+        Draw()
+        if self.tip then
+            GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+            GameTooltip:AddLine(self.tip)
+            GameTooltip:Show()
+        end
+    end)
+    m:SetScript("OnLeave", function()
+        hovered = nil
+        GameTooltip:Hide()
+        Draw()
+    end)
+    m:SetScript("OnClick", function(self) Pick(self.mark) end)
+    marks[n] = m
+end
+
 -- The run whose card is on show: the one in progress, else the run on
 -- show in the main window.
 local function CardRun()
@@ -246,17 +303,19 @@ local function CardRun()
     if s and s.bingo then return s end
 end
 
-local function Draw()
+function Draw()
     local _, top = ns.ApplyWindowTheme(skins, title)
     status:ClearAllPoints()
     status:SetPoint("TOPLEFT", 14, top)
     grid:ClearAllPoints()
-    grid:SetPoint("TOPLEFT", 14, top - 20)
-    frame:SetHeight(GRID_H - top + 34)
+    grid:SetPoint("TOPLEFT", 14 + MARK_ROOM, top - 20 - MARK_ROOM)
+    frame:SetHeight(GRID_H - top + 34 + MARK_ROOM + 18)
 
     local s = CardRun()
     local card = s and s.bingo
     title:SetText(ns.Title("Loot bingo"))
+    local tally = Tally()
+    tallyText:SetText(tally.picked > 0 and ("Lines won: %d of %d"):format(tally.won, tally.picked) or "")
     if not card then
         status:SetText("No card yet. One is dealt when a run starts.")
         grid:Hide()
@@ -264,45 +323,96 @@ local function Draw()
     end
     grid:Show()
 
-    local lines, inLine = CompletedLines(card)
-    local ticked = 0
+    -- A line can be picked on the card of the run in progress, once, and
+    -- only while none of its squares is ticked.
+    local pick = Picked(card)
+    local live = s == ns.db.active and not pick
+    local open = 0
+    for n, m in ipairs(marks) do
+        m.can = live and Ticked(card, n) == 0
+        if n == pick then
+            m.bg:SetColorTexture(1.00, 0.82, 0.00, 1)
+            m.tip = "Your line"
+        elseif m.can then
+            open = open + 1
+            m.bg:SetColorTexture(1.00, 0.82, 0.00, hovered == n and 0.95 or 0.50)
+            m.tip = "Pick this line"
+        else
+            m.bg:SetColorTexture(1, 1, 1, 0.10)
+            m.tip = live and "Already started" or nil
+        end
+    end
+    local mine, preview = {}, {}
+    for _, index in ipairs(LINES[pick] or {}) do mine[index] = true end
+    if hovered and marks[hovered].can then
+        for _, index in ipairs(LINES[hovered]) do preview[index] = true end
+    end
+
     for index, cell in ipairs(cells) do
         local key = card.keys[index]
         local square = key and BY_KEY[key]
         local done = key and card.done[key]
-        if done then ticked = ticked + 1 end
         cell.text:SetText(square and square.text or "")
         cell.tick:SetShown(done == true)
-        if inLine[index] then
-            cell.bg:SetColorTexture(1.00, 0.82, 0.00, 0.35) -- part of a completed line
+        if mine[index] then
+            cell.bg:SetColorTexture(1.00, 0.82, 0.00, done and 0.45 or 0.16) -- the line picked
             cell.text:SetTextColor(1, 1, 1)
         elseif done then
             cell.bg:SetColorTexture(0.25, 0.78, 0.40, 0.30)
+            cell.text:SetTextColor(1, 1, 1)
+        elseif preview[index] then
+            cell.bg:SetColorTexture(1, 1, 1, 0.18) -- the line a click would pick
             cell.text:SetTextColor(1, 1, 1)
         else
             cell.bg:SetColorTexture(1, 1, 1, 0.07)
             cell.text:SetTextColor(0.75, 0.75, 0.75)
         end
     end
-    local where = s.name or "Run"
-    if lines > 0 then
-        status:SetText(("%s:  %d of %d squares,  |cffffd100%d %s|r"):format(
-            where, ticked, SIZE * SIZE, lines, lines == 1 and "line" or "lines"))
+
+    local text
+    if pick and card.won then
+        text = "|cffffd100Bingo!|r"
+    elseif pick then
+        text = ("your line, %d of %d"):format(Ticked(card, pick), SIZE)
+    elseif s ~= ns.db.active then
+        text = "no line picked"
+    elseif open > 0 then
+        text = "pick your line"
     else
-        status:SetText(("%s:  %d of %d squares"):format(where, ticked, SIZE * SIZE))
+        text = "every line has started"
     end
+    status:SetText((s.name or "Run") .. ":  " .. text)
 end
 
 frame:SetScript("OnShow", Draw)
+
+-- Bets on line `n` of the card of the run in progress.
+function Pick(n)
+    local s = ns.db.active
+    local card = s and s.bingo
+    if not card or Picked(card) or not LINES[n] or Ticked(card, n) > 0 then return end
+    card.pick = n
+    local tally = Tally()
+    tally.picked = tally.picked + 1
+    ns.PlayKit("IG_MAINMENU_OPTION_CHECKBOX_ON", 856)
+    if frame:IsShown() then Draw() end
+end
+ns.BingoPick = Pick
 
 ----------------------------------------------------------------------
 -- Checking
 ----------------------------------------------------------------------
 
-local function Evaluate()
+-- `quiet`: the card is being opened, which is no time to say it exists.
+local function Evaluate(quiet)
     local s = ns.db.active
     if not s then return end
-    s.bingo = s.bingo or NewCard(s)
+    local dealt = not s.bingo
+    -- A card dealt before the group was there has no square that takes a
+    -- group. Until a line is picked on it, the group gets a card of its
+    -- own: squares tick from what the run holds, so none is lost.
+    local late = not dealt and s.bingo.solo and not Picked(s.bingo) and InGroup(s)
+    if dealt or late then s.bingo = NewCard(s) end
     local card = s.bingo
 
     local c = Context(s)
@@ -313,27 +423,22 @@ local function Evaluate()
         end
     end
 
-    local lines = CompletedLines(card)
-    if lines > card.lines then
-        card.lines = lines
-        local ticked = 0
-        for _ in pairs(card.done) do ticked = ticked + 1 end
-        local text
-        if ticked >= SIZE * SIZE then
-            text = "Full card!"
-        elseif lines == 1 then
-            text = "You completed a line."
-        else
-            text = ("%d lines completed."):format(lines)
-        end
-        ns.Notice("|cffffd100BINGO!|r", text, "Interface\\Icons\\INV_Misc_Dice_02")
+    local pick = Picked(card)
+    if pick and not card.won and Ticked(card, pick) == SIZE then
+        card.won = true
+        local tally = Tally()
+        tally.won = tally.won + 1
+        ns.Notice("|cffffd100BINGO!|r", "Your line is complete.", ICON)
         ns.PlayKit("IG_QUEST_LIST_COMPLETE", 878)
+    elseif dealt and not quiet and not frame:IsShown() then
+        -- A new card: lines close as their squares tick, so say so now.
+        ns.Notice("Loot bingo", "Pick your line: /tlb bingo", ICON)
     end
     if frame:IsShown() then Draw() end
 end
 
--- Called whenever something happened in the run. Checks are grouped: at
--- most one a second.
+-- Called whenever something happened in the run, and when one starts.
+-- Checks are grouped: at most one a second.
 local pending = false
 function ns.BingoCheck()
     if pending or not ns.db.options.bingo then return end
@@ -348,7 +453,7 @@ function ns.ToggleBingo()
     if frame:IsShown() then
         frame:Hide()
     else
-        if ns.db.options.bingo then Evaluate() end -- deals the card if the run has none yet
+        if ns.db.options.bingo then Evaluate(true) end -- deals the card if the run has none yet
         frame:Show()
         frame:Raise()
     end

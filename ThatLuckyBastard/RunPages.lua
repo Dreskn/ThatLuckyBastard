@@ -17,7 +17,7 @@ local tab = "timeline" -- the tab on show
 
 local emptyNote
 local analysis = ns.MakeRunWindow("analysis", "ThatLuckyBastardAnalysisFrame", "Analysis", PAGE_W + 24, 540,
-    function(s, _, top)
+    function(s, top)
         for i, t in ipairs(TABS) do
             local b = tabButtons[i]
             b:ClearAllPoints()

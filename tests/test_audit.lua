@@ -44,7 +44,7 @@ print("==== run boundaries ====")
 enter(1, "Keep")
 local first = db.active
 leave()
-check(not ThatLuckyBastardFrame:IsShown() and not ThatLuckyBastardPodiumFrame:IsShown(), "stepping in and out with no loot opens nothing")
+check(not ThatLuckyBastardFrame:IsShown(), "stepping in and out with no loot opens nothing")
 NOW = NOW + 30
 enter(1, "Keep")
 check(db.active == first, "coming straight back continues the run")
@@ -185,7 +185,7 @@ db.options.cats.junk = false -- hidden categories must still tick their squares
 local run = db.active
 run.bingo = { keys = { "junk10", "blue", "epic", "boss1", "green", "greens3", "quest", "junk5", "mats20", "mats50",
                        "items100", "item1g", "item10g", "total5g", "total25g", "died" },
-              done = {}, lines = 0 }
+              done = {} }
 local notices = 0
 local realNotice = ns.Notice
 ns.Notice = function(title, ...)
@@ -200,14 +200,13 @@ check(run.bingo.done.epic == true and not run.bingo.done.blue, "an epic ticks 'a
 Fire("ENCOUNTER_END", 70, "Boss", 1, 4, 1)
 Loot(("You receive loot: %s."):format(blue))
 RunTimers()
-check(run.bingo.done.boss1 and run.bingo.done.blue and run.bingo.lines == 1, "the top row is complete: one line")
-check(notices == 1, "announced once (" .. notices .. ")")
+check(run.bingo.done.boss1 and run.bingo.done.blue, "a boss kill and a blue tick theirs: the top row is full")
 for _ = 1, 3 do
     Loot(("You receive loot: %s."):format(junk))
     RunTimers()
 end
 ns.ToggleBingo(); ns.ToggleBingo()
-check(notices == 1, "and not again on later loot or on opening the card")
+check(notices == 0 and not run.bingo.won, "a full line nobody picked wins nothing, and is not announced (" .. notices .. ")")
 ns.Notice = realNotice
 db.options.cats.junk = true
 
@@ -326,16 +325,14 @@ check(inFront(ThatLuckyBastardBingoFrame, ThatLuckyBastardFrame) and inFront(Tha
 ns.ToggleBingo()
 
 print("==== the buttons that open a window close it too ====")
-local podiumWin, paperWin, analysisWin = ThatLuckyBastardPodiumFrame, ThatLuckyBastardPaperFrame,
-                                         ThatLuckyBastardAnalysisFrame
-podiumWin:Hide()
+local paperWin, analysisWin = ThatLuckyBastardPaperFrame, ThatLuckyBastardAnalysisFrame
 browse:Hide()
 ns.ShowRun(first)
-check(click("Podium") and podiumWin:IsShown(), "Podium opens its window")
-check(click("Front page") and paperWin:IsShown() and podiumWin:IsShown(), "Front page opens its own, beside it")
-check(click("Analysis") and analysisWin:IsShown(), "so does Analysis")
-check(click("Podium") and not podiumWin:IsShown() and click("Front page") and not paperWin:IsShown()
-      and click("Analysis") and not analysisWin:IsShown(), "a second click closes each one")
+check(click("Front page") and paperWin:IsShown(), "Front page opens its window")
+check(click("Analysis") and analysisWin:IsShown() and paperWin:IsShown(), "Analysis opens its own, beside it")
+check(click("Front page") and not paperWin:IsShown() and click("Analysis") and not analysisWin:IsShown(),
+      "a second click closes each one")
+check(not click("Podium") and ThatLuckyBastardPodiumFrame == nil, "the Podium window and its button are gone")
 check(click("Statistics") and browse:IsShown(), "Statistics opens")
 check(click("Statistics") and not browse:IsShown(), "and a second click closes it")
 
@@ -411,13 +408,12 @@ local q1 = db.active
 Loot(("You receive loot: %s."):format(green))
 Loot(("%s receives loot: %s."):format("Borin Oak", epic))
 ThatLuckyBastardFrame:Hide()
-ThatLuckyBastardPodiumFrame:Hide()
 NOW = NOW + 600
 enter(11, "Queue Two") -- straight from one dungeon into the next
 RunTimers()
 check(db.active ~= q1 and db.active.instanceID == 11 and db.history[1] == q1 and q1.endedAt == NOW,
       "the first run ends as the second one starts")
-check(ThatLuckyBastardFrame:IsShown() and ThatLuckyBastardPodiumFrame:IsShown(), "the window and the podium open, as on leaving")
+check(ThatLuckyBastardFrame:IsShown(), "the window opens, as on leaving")
 check(ns.ViewedRun() == q1, "on the run that just ended, not the new empty one")
 
 print("==== the streak notice, once per run ====")
@@ -478,7 +474,7 @@ local shots = 0
 local realScreenshot = Screenshot
 Screenshot = function() shots = shots + 1 end
 db.options.ceremonyScreenshot = true
-ThatLuckyBastardPodiumFrame:Hide()
+db.options.race = false -- the award cards' reveal: the race has a suite of its own
 TIMERS = {}
 ns.ShowWindow(true, q1)
 RunTimers()
@@ -489,7 +485,7 @@ db.options.useColumns = false
 ns.Rerender()
 RunTimers()
 check(shots == 1, "one cut short by the list view takes none")
-db.options.useColumns, db.options.ceremonyScreenshot = true, false
+db.options.useColumns, db.options.ceremonyScreenshot, db.options.race = true, false, true
 Screenshot = realScreenshot
 
 print(FAILED and (FAILED .. " check(s) FAILED") or "all checks passed (audit regressions)")

@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+- **The race replaces the Podium window.** When you leave a run, its columns race for their places: every total counts up at the same speed, the smallest stops first, and the last one still counting has won. The columns then move to their places and the loot, shares and awards appear. It takes about five seconds and a click skips it; `/tlb race` plays it again for the run on show. It needs the columns in podium order (the default) and can be switched off under Options › End of run. The Podium window, its button and `/tlb podium` are gone: its characters could only be shown in the moment before the group broke up. If the Podium was all you had open at the end of a run, the breakdown now opens in its place.
+- **Bingo: pick a line.** The card is dealt as the run starts, and you bet on one row, column or diagonal by clicking its marker. A line can be picked as long as none of its squares is ticked, and the pick is for good. It wins if it fills before the run is over, and the card counts the lines you have won. A line you did not pick is no longer announced. A notice says when a new card is waiting.
+- **Item tooltips: choose the kinds of item.** Under Options › While you play, the line about items seen in your runs has one box per category. Epic, blue and green BoE and Bind on Pickup are ticked to begin with, so materials, junk, quest items and the rest no longer get the line unless you tick them.
+
 ## 0.5.0
 
 - **Awards for raids.** An award now goes to one player in a party, two in a group of up to ten and three in anything bigger, numbered from the second: Hoarder, Hoarder II, Hoarder III.

@@ -49,7 +49,6 @@ WORLD.inInstance = false
 db.options.useColumns = true
 TEXTLOG = {}
 ns.ShowRun(run)
-if ThatLuckyBastardPodiumFrame then ThatLuckyBastardPodiumFrame:Hide() end
 
 print("-- the receipts")
 local cols = columns()

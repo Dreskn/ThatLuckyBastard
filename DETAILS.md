@@ -8,7 +8,8 @@ Everything the addon does, page by page, with its commands, options and limits. 
 - **Per item:** every item with its count and value, grouped by category: epic, blue and green BoE, Bind on Pickup, quest items, profession materials, other, junk.
 - **Two layouts:** one column per player (with portraits), or an expandable list. A group of more than five gets columns for its top five by loot, and the others on a *bench* under them: small cards side by side, each with a picture, the name, the award and the loot value one under the other (the options say which). One row of them is shown; it ends with an arrow marked **List**, with the number of players the row had no room for under it, which shows that run as a list without touching the option. At the top of the list its mirror, an arrow marked **Columns**, brings the columns back.
 - **Need rolls:** a button at the top switches the window to show only what each player won on Need rolls. Hovering an item shows whether it was won on Need or Greed, and everyone's roll on it.
-- **Awards:** when a run ends, each player gets one light-hearted award, revealed one by one: the one that fits them best out of about fifty, such as Jackpot, Lion's Share, Fair Share, Loaded Dice, Window Shopper, The Farmer, The Saint or Empty Pockets. The further a player is from normal, the stronger the fit: an average roll of 51 earns nothing, an average of 95 is hard to miss. **Ninja** (most value won on Need rolls) and **Luckiest** (most value won on Greed rolls) count for more than the others, but a more striking award can take their place. Hover an award to see the rule behind it, or click it for the list of all awards.
+- **The race:** when you leave a run alive, its columns race for their places (each time you leave it: go back in, and it is run again on the way out). They start side by side in name order, every total at nothing. All the totals count up at the same speed, so the smallest stops first and takes the last place, and the last one still counting has won. The columns then move to their places on the podium, and the loot, the shares and the awards appear. It takes about five seconds, and a click on the columns skips it; `/tlb race` plays it again for the run on show. It needs one column per player in podium order (both are the defaults) and two players or more with some loot between them; it can be switched off under End of run.
+- **Awards:** when a run ends, each player gets one light-hearted award (revealed one by one where there is no race): the one that fits them best out of about fifty, such as Jackpot, Lion's Share, Fair Share, Loaded Dice, Window Shopper, The Farmer, The Saint or Empty Pockets. The further a player is from normal, the stronger the fit: an average roll of 51 earns nothing, an average of 95 is hard to miss. **Ninja** (most value won on Need rolls) and **Luckiest** (most value won on Greed rolls) count for more than the others, but a more striking award can take their place. Hover an award to see the rule behind it, or click it for the list of all awards.
   - *How many players can have one award:* one in a party of up to five, two in a group of up to ten, three in anything bigger. The second and third are numbered: Hoarder, Hoarder II, Hoarder III. Players with the same score share a place (three players who each rolled a 100 are all Natural 100), and two players with the same score and the same loot share the award whatever the limit.
   - *Moments* are odd things the dice did: Natural 100, Snake Eyes, Heartbreak (lost with 95 or more), Lowball (won with 5 or less), Photo Finish (won by one point), Deja Vu (the same number twice in a row), Hot Streak, Dry Spell, Nemesis and Overkill (a Need win worth under 1s). Hot Streak, Loaded Dice and Cursed Dice only count rolls that were a contest: a win nobody rolled against, or a Greed number against someone's Need, decides nothing. The dice awards need five such rolls and an average far from 50: about 65 (or 36) over 15 rolls, 76 (or 25) over 5.
   - *From WoW lore, and for roles, classes and bosses:* AFK (picked up nothing, rolled on nothing), Hunter Loot (a hunter who won on Need), Need Before Greed (chose Need on two rolls more than the group's average), 50 DKP Minus (lost three rolls more than the group's average), Tank Tax, Healer's Tip and Top DPS (one and a half times the average of their role, two or more of it), Class Act and Class Clown (one and a half times, or half, the average of their class, three or more of it), and Boss's Pet (loot from a boss: one player per boss, one in all in a party; it ranks just above the consolation prizes).
@@ -16,11 +17,10 @@ Everything the addon does, page by page, with its commands, options and limits. 
 - **Under the breakdown:** run time, group loot per hour, a fairness score, any dungeon record the run set, how it compares with your average over the earlier runs there, and the streak it belongs to.
 - **History:** past runs are kept and can be browsed. **Pin** a run and it is never deleted: not by the limit on runs to keep, not by `/tlb clear`. **Delete** removes just the run on show, after asking; `/tlb clear` asks too.
 
-## Podium, front page and analysis
+## Front page and analysis
 
-Three windows about the run on show, opened from the main window's top row. Each closes again on a second click.
+Two windows about the run on show, opened from the main window's top row. Each closes again on a second click.
 
-- **Podium:** your group's characters stand on gold, silver and bronze blocks. The winner dances, last place cries, and the Ninja kneels. The podium holds the top five; anyone after them is named in a line under it, with award and loot value (the first eight, then a count). It also opens by itself when a run ends (an option).
 - **Front page:** a mock newspaper written from the run, with a headline and a short story for every award.
 - **Analysis:** three tabs about the run, following the main window from run to run:
   - *Timeline:* a chart of every player's running total through the run, with boss kills marked. You see when someone pulled ahead, and which drop did it.
@@ -53,9 +53,9 @@ Tables over all your runs, from the Statistics button beside Options. Click a co
 
 - **Live notices:** a small on-screen notice when someone loots something valuable.
 - **Familiar faces:** a notice when someone you have run with joins your group, with your history together.
-- **Tooltips:** one line in the tooltip of a player you have run with, and one in the tooltip of an item seen in your runs ("seen in 3 runs, last to ...").
+- **Tooltips:** one line in the tooltip of a player you have run with, and one in the tooltip of an item seen in your runs ("seen in 3 runs, last to ..."). The options say which kinds of item get theirs: epic, blue and green BoE and Bind on Pickup unless you choose otherwise.
 - **Streak recap:** when you chain runs with mostly the same group, or in the same dungeon, each starting within half an hour of the one before, the end of a run brings a notice with the standings so far.
-- **Loot bingo:** a private 4x4 card dealt each run ("a blue item drops", "someone passes", "you die"...). Squares tick themselves off, and a completed line is announced on your screen.
+- **Loot bingo:** a private 4x4 card dealt as each run starts ("a blue item drops", "someone passes", "you die"...), whose squares tick themselves off. You bet on one line of it: click the marker of a row, a column or a diagonal. A line can be picked as long as none of its squares is ticked, and the pick is for good. If your line fills before the run is over, it is announced on your screen, and the card counts the lines you have won.
 
 ## Sharing a run
 
@@ -91,7 +91,8 @@ A run starts automatically when you enter a dungeon (and raids, if enabled). The
 | --- | --- |
 | `/tlb` or `/lucky` | Open or close the window |
 | `/tlb options` | Open the options |
-| `/tlb podium` | The podium of the run on show (also `/tlb paper`) |
+| `/tlb paper` | The front page of the run on show |
+| `/tlb race` | The race again, for the run on show |
 | `/tlb analysis` | Its timeline, rolls and numbers (also `/tlb timeline`, `rolls`, `numbers`) |
 | `/tlb stats` | Statistics (also `/tlb dungeons`, `records`, `runs`, `luck`, `regulars`, `drops`, `roles`) |
 | `/tlb search <item name>` | Find an item in past runs |
@@ -125,8 +126,8 @@ The minimap button does the same: left-click for the window, right-click for the
 - **Window:** the theme (Modern, the default, Classic, or Receipt: each player's loot printed on a till receipt), the size of every window, one column per player (up to 5) or a list, what the players on the bench show (picture, award, gold), items grouped by category, the same item lined up across columns, item order (value or name), what to show (icons, shares, share bar, totals, run time and records), and amounts as 12g 34s (the default), 12g 34s 56c or 12g.
 - **Players:** the picture (2D portrait by default, 3D model, class icon or none), names as the game shows them (its "My Secondary Name" setting), full or first name only, and the order: podium (top looter in the middle, the default), loot value, role or name, optionally with you first.
 - **Loot:** auction or vendor prices, historical or current auction prices, with the addon the auction prices come from; vendor totals; which categories to show, and whether hidden ones still count.
-- **End of run:** what opens when you leave a dungeon alive (the breakdown and the podium by default, either one, or nothing), awards, the reveal's sounds and screenshot, the streak recap, and a line in your chat window that only you see.
-- **While you play:** the valuable loot notice (5 gold and up by default, or off), familiar faces, the two tooltip lines and loot bingo.
+- **End of run:** whether the breakdown opens when you leave a dungeon alive (if not, the reveal waits for the first time you open it), awards, the reveal (the race, its sounds and a screenshot), the streak recap, and a line in your chat window that only you see.
+- **While you play:** the valuable loot notice (5 gold and up by default, or off), familiar faces, the two tooltip lines, the kinds of item that get theirs, and loot bingo.
 - **Share:** the chat summary: how many players (5 by default, up to 25), the first line (run link, run time, group total) and the player lines (share %, gap to equal split, award), with a preview.
 - **General:** raid tracking, what happens when you come back into the same dungeon, how many runs to keep, the minimap button.
 

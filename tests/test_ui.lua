@@ -46,7 +46,7 @@ step("statistics via slash commands", function()
 end)
 
 print("-- the run windows")
-for _, key in ipairs({ "podium", "paper", "analysis" }) do
+for _, key in ipairs({ "paper", "analysis" }) do
     show(step(key .. " window (finished run)", function() ns.OpenRunWindow(key, old) end), 70)
     step(key .. " window (run in progress)", function() ns.OpenRunWindow(key, cur) end)
     step(key .. " window with no run", function() ns.OpenRunWindow(key, nil) end)
@@ -59,7 +59,7 @@ for _, tab in ipairs({ "timeline", "rolls", "numbers" }) do
     step("analysis: " .. tab .. " (run in progress)", function() ns.ShowRun(cur) end)
 end
 step("run windows and tabs via slash commands", function()
-    for _, cmd in ipairs({ "details", "podium", "paper", "analysis", "timeline", "rolls", "numbers" }) do
+    for _, cmd in ipairs({ "paper", "analysis", "timeline", "rolls", "numbers" }) do
         SlashCmdList.THATLUCKYBASTARD(cmd)
     end
 end)
@@ -91,6 +91,11 @@ show(step("familiar faces when a group forms", function()
     WORLD.party = {}
     Fire("GROUP_ROSTER_UPDATE"); RunTimers()     -- no group: forget everyone
     WORLD.party = party
+    -- Notices come one at a time: let the ones on screen run out.
+    local toast = ThatLuckyBastardToast
+    for _ = 1, 20 do
+        if toast:IsShown() then toast.__scripts.OnUpdate(toast, 10) end
+    end
     TEXTLOG = {}
     Fire("GROUP_ROSTER_UPDATE"); RunTimers()
     local met = 0

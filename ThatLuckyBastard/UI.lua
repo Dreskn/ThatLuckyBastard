@@ -81,12 +81,14 @@ local CATS = {
     { key = "epic",     label = "Epic BoE",                      short = "Epic BoE",    color = { 0.64, 0.21, 0.93 } },
     { key = "rare",     label = "Blue BoE",                      short = "Blue BoE",    color = { 0.20, 0.55, 1.00 } },
     { key = "uncommon", label = "Green BoE",                     short = "Green BoE",   color = { 0.12, 1.00, 0.00 } },
-    { key = "bop",      label = "Bind on Pickup (vendor value)", short = "BoP",         color = { 1.00, 0.50, 0.00 } },
+    { key = "bop",      label = "Bind on Pickup (vendor value)", short = "BoP",         color = { 1.00, 0.50, 0.00 },
+      name = "Bind on Pickup" }, -- name: what the options call it, when not by its label
     { key = "prof",     label = "Profession materials",          short = "Professions", color = { 1.00, 0.82, 0.00 } },
     { key = "other",    label = "Other",                         short = "Other",       color = { 0.85, 0.85, 0.85 } },
     { key = "junk",     label = "Junk",                          short = "Junk",        color = { 0.62, 0.62, 0.62 } },
     -- Always last: quest items are worth nothing to anyone else.
-    { key = "quest",    label = "Quest items (vendor value)",    short = "Quest",       color = { 1.00, 1.00, 0.45 } },
+    { key = "quest",    label = "Quest items (vendor value)",    short = "Quest",       color = { 1.00, 1.00, 0.45 },
+      name = "Quest items" },
 }
 local cols = {}
 
@@ -1037,17 +1039,19 @@ end
 
 ----------------------------------------------------------------------
 -- Awards: small cards under each player's totals (column view), or
--- titles after the name (list view). When the window opens by itself at
--- the end of a run, the cards are revealed one after another.
+-- titles after the name (list view). A run shown as it is left is
+-- revealed: by the race (further down) when the columns stand in podium
+-- order, else by the cards coming up one after another.
 ----------------------------------------------------------------------
 
 local AWARD_H = 30
 local REVEAL_STEP = 0.5       -- seconds between two cards
 local REVEAL_FADE = 0.4       -- seconds a card takes to appear
 local FANFARE_DELAY = 0.3     -- after the last card
-local SCREENSHOT_DELAY = 1.2  -- after the last card
+local SCREENSHOT_DELAY = 1.2  -- after the last card, or the race
 
-local ceremonyPending = false -- reveal the cards on the next draw
+local ceremonyPending = false -- reveal the run on the next draw
+local race = { on = false }   -- the columns' race for their places: see further down
 local revealEnd = 0           -- GetTime() at which the reveal is over
 local revealRun               -- the run being revealed
 local revealToken = 0         -- raised when a reveal starts or is called off, so its timers can tell
@@ -1062,6 +1066,7 @@ end
 local function CancelReveal()
     revealToken = revealToken + 1
     revealRun, revealEnd = nil, 0
+    race.Cancel()
 end
 
 -- The one line that fits under the title; the tooltip has the rest.
@@ -1786,6 +1791,177 @@ do
     end
 end
 
+----------------------------------------------------------------------
+-- The race: how a run is revealed when it is left (each time it is),
+-- with one column per player in podium order. The columns start side by
+-- side in name order, showing who is in them and nothing else. Every
+-- total counts up at the same speed, so the smallest stops first and
+-- takes the last place, and the one still counting at the end has won.
+-- Then the columns walk to their places on the podium, and the rest
+-- (awards, shares, loot, the footer) fades in. A click on the columns
+-- skips to the end. About five seconds in all.
+----------------------------------------------------------------------
+do
+    -- Seconds: a beat before the count, the count up to the biggest total,
+    -- a beat on the result, the walk to the podium, the rest fading in.
+    local HOLD, COUNT, PAUSE, WALK, FADE = 0.3, 3.4, 0.3, 0.6, 0.4
+    local token = 0
+    -- When the race began: with its first frame on screen, nil until then.
+    -- The window is often opened under a loading screen, where time
+    -- passes unseen.
+    local startedAt
+    local lay            -- what the last draw laid out (see race.Lay)
+    local detail         -- the alpha the details were last given
+    local stopped = {}   -- [column] = true once its count has ended
+    local fanfare = false
+
+    local driver = CreateFrame("Frame", nil, f)
+    driver:Hide()
+    -- Lies over the columns while they race: nothing under it answers the
+    -- mouse (a tooltip would give the result away), and a click on it ends
+    -- the race there and then.
+    local curtain = CreateFrame("Button", nil, content)
+    curtain.curtain = true
+    curtain:SetAllPoints()
+    curtain:SetFrameLevel(content:GetFrameLevel() + 20)
+    curtain:Hide()
+
+    -- Everything a column holds besides who is in it, and the footer.
+    local function Details(alpha)
+        if alpha == detail then return end
+        detail = alpha
+        for _, c in ipairs(cols) do
+            for _, r in ipairs(c.rows) do r:SetAlpha(alpha) end
+            c.vendor:SetAlpha(alpha)
+            c.share:SetAlpha(alpha)
+            c.pill:SetAlpha(alpha)
+            c.track:SetAlpha(alpha)
+            for _, seg in ipairs(c.segs) do seg:SetAlpha(alpha) end
+            if c.awardFrame then c.awardFrame:SetAlpha(alpha) end
+            local t = c.tail
+            if t then
+                t.rule1:SetAlpha(alpha)
+                t.rule2:SetAlpha(alpha)
+                t.thanks:SetAlpha(alpha)
+                for _, b in ipairs(t.bars) do b:SetAlpha(alpha) end
+            end
+        end
+        for _, fs in ipairs(footLines) do fs:SetAlpha(alpha) end
+    end
+
+    -- Puts the columns where the race has got to.
+    local function Apply()
+        local t = startedAt and (GetTime() - startedAt) or 0
+        local count = math.max(0, math.min(1, (t - HOLD) / COUNT))
+        local walk = math.max(0, math.min(1, (t - HOLD - COUNT - PAUSE) / WALK))
+        walk = walk * walk * (3 - 2 * walk) -- sets off and arrives gently
+        local fade = math.max(0, math.min(1, (t - HOLD - COUNT - PAUSE - WALK) / FADE))
+        inkMode = lay.paper
+        for i, p in ipairs(lay.players) do
+            local c = cols[i]
+            local shown = math.min(p.market, lay.top * count)
+            local done = count > 0 and shown >= p.market
+            c.market:SetText(Money(math.floor(shown)))
+            if done and not stopped[i] then
+                stopped[i] = true
+                if lay.sound and p.rank ~= 1 then PlayKit("IG_MAINMENU_OPTION_CHECKBOX_ON", 856) end
+            end
+            -- Its place, once it has one.
+            c.rank:SetAlpha(done and 1 or 0)
+            c.medal:SetAlpha(done and 1 or 0)
+            local slot = lay.from[i] + (i - 1 - lay.from[i]) * walk
+            local drop = c.offset * walk
+            c:ClearAllPoints()
+            c:SetPoint("TOPLEFT", slot * lay.pitch, -drop)
+            if lay.paper then
+                -- Receipts are torn off once they are in place.
+                c:SetHeight(walk < 1 and lay.tall or c.ownH)
+            else
+                c:SetHeight(lay.tall - drop)
+                c.bg:SetColorTexture(1, 1, 1, lay.tint + (p.rank == 1 and 0.04 * fade or 0))
+            end
+        end
+        inkMode = false
+        if count >= 1 and not fanfare then
+            fanfare = true
+            if lay.sound then PlayKit("IG_QUEST_LIST_COMPLETE", 878) end
+        end
+        Details(fade)
+    end
+
+    -- Called by RenderColumns once it has drawn the columns as they will
+    -- end up, while a race is on: `players` in column order, `pitch` from
+    -- one column to the next, `tall` the height the columns share (the
+    -- longest receipt, on paper) and `tint` how bright a column's panel is.
+    function race.Lay(players, pitch, tall, paper, tint)
+        local order = {}
+        for i in ipairs(players) do order[i] = i end
+        table.sort(order, function(a, b)
+            local x, y = DisplayName(players[a].name), DisplayName(players[b].name)
+            if x ~= y then return x < y end
+            return players[a].name < players[b].name
+        end)
+        local from, top = {}, 0
+        for slot, i in ipairs(order) do from[i] = slot - 1 end
+        for _, p in ipairs(players) do top = math.max(top, p.market) end
+        lay = { players = players, pitch = pitch, tall = tall, paper = paper, tint = tint, from = from, top = top,
+                sound = ns.db.options.ceremonySound }
+        detail = nil -- the draw may have made new rows
+        Apply()
+    end
+
+    function race.Start()
+        token = token + 1
+        startedAt, fanfare = nil, false
+        wipe(stopped)
+        race.on = true
+        curtain:Show()
+        driver:Show()
+    end
+
+    local function Stop()
+        race.on = false
+        token = token + 1
+        driver:Hide()
+        curtain:Hide()
+        detail = nil
+        Details(1)
+        for _, c in ipairs(cols) do
+            c.rank:SetAlpha(1)
+            c.medal:SetAlpha(1)
+        end
+    end
+
+    -- Calls the race off: another run comes on show, or the list, or the
+    -- window closes. The next draw shows the run as it is.
+    function race.Cancel()
+        if race.on then Stop() end
+    end
+
+    -- The race is over, or was skipped with a click: the run as it is,
+    -- and the souvenir photo.
+    local function Finish()
+        Stop()
+        local mine = token
+        Render()
+        if ns.db.options.ceremonyScreenshot and Screenshot then
+            C_Timer.After(SCREENSHOT_DELAY, function()
+                if mine == token and f:IsShown() then Screenshot() end
+            end)
+        end
+    end
+
+    driver:SetScript("OnUpdate", function()
+        if not race.on then return end
+        startedAt = startedAt or GetTime()
+        if GetTime() - startedAt >= HOLD + COUNT + PAUSE + WALK + FADE then Finish() else Apply() end
+    end)
+    driver:SetScript("OnHide", function() race.Cancel() end)
+    curtain:SetScript("OnClick", Finish)
+
+    function ns.Racing() return race.on end
+end
+
 local function RenderColumns(sum, awards, insights)
     -- A bigger group: columns for its top five, the bench for the others.
     -- `view` is the summary with the columns' players only; every total
@@ -1828,20 +2004,28 @@ local function RenderColumns(sum, awards, insights)
     local yAward = y - 4
     if next(awards) then y = yAward - AWARD_H end
     local headerH = 4 - y
-    local revealIndex = 0
-    if ceremonyPending then
-        CancelReveal() -- an earlier one, if any
-        revealRun = currentRun
-    end
-    local token = revealToken
 
     -- Podium: columns in podium order, stepping down by rank unless items
     -- are aligned. (Summarize leaves the players in rank order for it.)
     local podium = o.sortPlayers == "podium"
     if podium then view.players = PodiumOrder(view.players) end
+
+    -- The reveal: in podium order the columns race for their places (if
+    -- there is anything to race for), else the award cards come up one
+    -- after another.
+    local revealIndex = 0
+    local racing = false
+    if ceremonyPending then
+        CancelReveal() -- an earlier one, if any
+        revealRun = currentRun
+        racing = (o.race and podium and n > 1 and sum.market > 0) and true or false
+        if racing then race.Start() end
+    end
+    local token = revealToken
     -- Receipts all come out of the printer at the same height.
     local step = (podium and not o.alignItems and not paper) and 14 or 0
     local colLines = BuildColumnLines(view, o)
+    local tint = theme.flat and 0.045 or 0.03 -- how bright a column's panel is
 
     for i, p in ipairs(view.players) do
         local c = GetCol(i)
@@ -1852,7 +2036,7 @@ local function RenderColumns(sum, awards, insights)
         if paper then
             c.bg:SetColorTexture(PAPER[1], PAPER[2], PAPER[3], 1)
         else
-            c.bg:SetColorTexture(1, 1, 1, (theme.flat and 0.045 or 0.03) + ((podium and p.rank == 1) and 0.04 or 0))
+            c.bg:SetColorTexture(1, 1, 1, tint + ((podium and p.rank == 1) and 0.04 or 0))
         end
         c.rank:ClearAllPoints()
         if paper then
@@ -1974,7 +2158,7 @@ local function RenderColumns(sum, awards, insights)
                 StyleAward(af, award, paper)
                 af.title:SetText(AwardTitle(award))
                 af.detail:SetText(AwardShort(award))
-                if ceremonyPending then
+                if ceremonyPending and not racing then
                     -- Hidden now, faded in a little later than the one before.
                     revealIndex = revealIndex + 1
                     af:SetAlpha(0)
@@ -2103,6 +2287,16 @@ local function RenderColumns(sum, awards, insights)
     end
     for i = #texts + 1, #footLines do footLines[i]:Hide() end
     content:SetHeight(bottom + 4)
+
+    -- A race in progress takes the columns from here.
+    if race.on then
+        local tall = maxH
+        if paper then
+            tall = 0
+            for i = 1, n do tall = math.max(tall, cols[i].ownH) end
+        end
+        race.Lay(view.players, colW + gap, tall, paper, tint)
+    end
 end
 
 ----------------------------------------------------------------------
@@ -2341,14 +2535,14 @@ versionLabel:SetText(ns.VERSION ~= "" and ("v" .. ns.VERSION) or "")
 -- (the first is placed by ApplyTheme):
 --   Need only    switches between all loot and Need-roll wins only (to
 --                see who needed what)
---   Podium, Front page, Analysis
+--   Front page, Analysis
 --                a window of its own each (Analysis: its timeline, rolls
 --                and numbers)
 --   Bingo        your bingo card (not there while bingo is switched off)
 --   Expand all   opens every player's loot (only in the list view)
 -- and on its own on the right, Share: the run on show as a link in chat
 -- or as a code (Share.lua). Each button closes its window again on a
--- second click. Six of them and Share fit the narrowest window.
+-- second click. Five of them and Share fit the narrowest window.
 local TOP_W, TOP_GAP = 80, 4
 local topRow = {}
 local function TopButton(label, onClick)
@@ -2361,7 +2555,6 @@ local needBtn = TopButton("Need only", function()
     needOnly = not needOnly
     Render()
 end)
-TopButton("Podium", function() ns.ToggleRunWindow("podium", ns.ViewedRun()) end)
 TopButton("Front page", function() ns.ToggleRunWindow("paper", ns.ViewedRun()) end)
 local analysisBtn = TopButton("Analysis", function() ns.ToggleRunWindow("analysis", ns.ViewedRun()) end)
 local bingoBtn = TopButton("Bingo", function() ns.ToggleBingo() end)
@@ -2460,6 +2653,13 @@ function Render()
     local s = runs[viewIndex]
     currentRun = s
     if s ~= revealRun then CancelReveal() end
+    -- A run left while the window was not showing it (the core names it
+    -- in ns.fresh) is revealed the first time it is on show, however it
+    -- got there: the window opened, or stepped back to it.
+    if s ~= nil and s == ns.fresh then
+        ns.fresh = nil
+        ceremonyPending = true
+    end
 
     needBtn:SetSelected(needOnly) -- lit while on; a second click shows all loot again
     bingoBtn:SetShown(o.bingo and true or false)
@@ -2678,15 +2878,15 @@ function ns.Rerender()
     for _, fn in ipairs(redraws) do fn() end
 end
 
--- Opens the window on the latest run, or on run `s`. ceremony: reveal the
--- award cards one by one (used when the window opens by itself at the end
--- of a run).
+-- Opens the window on the latest run, or on run `s`. ceremony: reveal
+-- the run (used when the window opens by itself as a run is left; a run
+-- left unseen is revealed when it comes on show: see Render).
 function ns.ShowWindow(ceremony, s)
     viewIndex, currentRun = 1, nil
     for i, run in ipairs(s and Runs() or {}) do
         if run == s then viewIndex = i end
     end
-    ceremonyPending = ceremony and ns.db.options.showAwards or false
+    ceremonyPending = ceremony and true or false
     RestoreWindow()
     f:Show()
     f:Raise() -- above the other windows, which may have been opened since
@@ -2716,14 +2916,9 @@ end
 
 -- Shared with the other panels.
 ns.MoneyPlain = function(copper) return MoneyText(copper, false) end
-ns.UnitForName = UnitForName
-ns.FillPortrait = FillPortrait
-ns.NewRoundPicture, ns.InSight, ns.PodiumOrder = NewRoundPicture, InSight, PodiumOrder
-ns.MEDALS = MEDALS
 ns.Signed, ns.FirstName = Signed, FirstName
 ns.PlayKit = PlayKit
-ns.AddAwardLines = AddAwardLines
-ns.AWARDS_HINT = AWARDS_HINT
+ns.CATS = CATS
 ns.Money = Money
 ns.Duration = Duration
 ns.ClassColored = ClassColored

@@ -49,8 +49,8 @@ ns.OPTION_DEFAULTS = {
     showInsights = true, -- run time, dungeon records and comparison with your average
     ceremonySound = true,       -- sounds while the awards are revealed
     ceremonyScreenshot = false, -- take a screenshot once they are all shown
-    podiumOnLeave = true, -- open the podium scene when a run ends
-    bingo = true,        -- deal a loot bingo card each run and announce completed lines
+    race = true,         -- as a run is left, its columns race for their places
+    bingo = true,        -- deal a loot bingo card each run, to pick a line on
     ticker = true,       -- on-screen notice when someone loots something valuable
     tickerMin = 50000,   -- copper: smallest pickup worth a notice
     alignItems = false,  -- put the same item on the same line in every column
@@ -89,6 +89,9 @@ ns.OPTION_DEFAULTS = {
     familiar = true,        -- notice when someone you have run with joins your group
     tipPlayers = true,      -- a line about people you have run with, in their tooltip
     tipItems = true,        -- a line about items seen in your runs, in their tooltip
+    -- The kinds of item that get that line (the window's categories).
+    tipCats = { epic = true, rare = true, uncommon = true, bop = true, quest = false, prof = false, other = false,
+                junk = false },
     streak = true,          -- recap when you chain runs with the same group or dungeon
     showMinimap = true,     -- minimap button
     minimapAngle = 215,     -- its position around the minimap, in degrees
@@ -409,6 +412,13 @@ local function Categorize(quality, classID, bindType)
     return "other"
 end
 
+-- The category of an item, given as a link or an id; nothing while the
+-- game does not know the item.
+function ns.ItemCategory(item)
+    local _, _, quality, _, _, _, _, _, _, _, _, classID, _, bindType = GetItemInfo(item)
+    if quality then return Categorize(quality, classID, bindType) end
+end
+
 local function FillItem(e)
     local _, _, quality, _, _, _, _, _, _, _, sellPrice, classID, _, bindType = GetItemInfo(e.link)
     if not quality then return false end
@@ -511,6 +521,8 @@ local function UpdateRoster()
         for name in pairs(set) do s.group[#s.group + 1] = name end
         table.sort(s.group)
     end
+    -- A bingo card dealt while alone is dealt again for the group.
+    if s.bingo and s.bingo.solo and ns.BingoCheck then ns.BingoCheck() end
     ns.Refresh()
 end
 
@@ -604,7 +616,9 @@ local function NewSession(name, instanceID, manual)
         lastSeen = time(),  -- last loot, or logout
         players = {},
     }
+    ns.fresh = nil -- a run that ended unseen is old news now (see ShowRunEnd)
     UpdateRoster()
+    if ns.BingoCheck then ns.BingoCheck() end -- deals the run's bingo card
 end
 
 local function CoinText(copper)
@@ -678,17 +692,18 @@ local function Continue(s)
         s.enteredAt = time()
     end
     s.leftAt, s.leftDead = nil, nil
+    if ns.fresh == s then ns.fresh = nil end -- back inside: its end is still to come
     UpdateRoster()
 end
 
--- What the player sees when they leave a run alive: the window, and on
--- top of it the podium (only one of the two plays the reveal), then the
--- streak notice. A run left again after coming back opens the window
--- again, but the notice only the first time.
+-- What the player sees when they leave a run alive: the window, with
+-- its reveal, then the streak notice. With the window switched off, the
+-- reveal waits for the first time that run is on show (ns.fresh: at once
+-- if the window is open on it). A run left again after coming back opens
+-- the window again, but the notice only the first time.
 local function ShowRunEnd(s)
-    local podium = db.options.podiumOnLeave
-    if db.options.popupLeave then ns.ShowWindow(not podium, s) end
-    if podium then ns.OpenRunWindow("podium", s, true) end
+    ns.fresh = s
+    if db.options.popupLeave then ns.ShowWindow(true, s) else ns.Refresh() end
     if not s.streakShown then
         pcall(ns.StreakNotice, s)
         -- Only the run in progress can be left again: a closed one keeps no note.
@@ -2229,6 +2244,15 @@ function handlers.ADDON_LOADED(name)
     db.options = db.options or {}
     -- Left behind by features that no longer exist.
     db.options.compact, db.options.popupBoss = nil, nil
+    -- The podium window is gone. Its switch becomes the race's, and
+    -- whoever had only the podium open at the end of a run gets the
+    -- breakdown, where the race is run.
+    local podium = db.options.podiumOnLeave
+    if podium ~= nil then
+        if db.options.race == nil then db.options.race = podium end
+        if podium and db.options.popupLeave == false then db.options.popupLeave = true end
+        db.options.podiumOnLeave = nil
+    end
     db.finalBoss, db.bossCount = nil, nil
     -- Players' saved looks (race, sex and gear), from stand-in pictures
     -- that were never a likeness.
@@ -2579,10 +2603,13 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
     elseif cmd == "dungeons" or cmd == "runs" or cmd == "luck" or cmd == "drops" or cmd == "roles"
             or cmd == "regulars" or cmd == "records" or cmd == "awards" then
         ns.ShowBrowse(cmd)
-    elseif cmd == "podium" or cmd == "details" then
-        ns.OpenRunWindow("podium", ns.ViewedRun())
     elseif cmd == "paper" then
         ns.OpenRunWindow("paper", ns.ViewedRun())
+    elseif cmd == "race" then
+        ns.ShowWindow(true, ns.ViewedRun()) -- the reveal again, for the run on show
+        if not ns.Racing() then
+            Print("No race: it takes the Race option, columns in podium order, and two players with loot.")
+        end
     elseif cmd == "analysis" or cmd == "timeline" or cmd == "rolls" or cmd == "numbers" then
         ns.ShowAnalysis(cmd ~= "analysis" and cmd or nil, ns.ViewedRun())
     elseif cmd == "export" then
@@ -2632,7 +2659,8 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
     else
         Print("/tlb - the breakdown window")
         Print("/tlb options")
-        Print("/tlb podium, /tlb paper - those windows for the run on show")
+        Print("/tlb paper - the front page of the run on show")
+        Print("/tlb race - the race again, for the run on show")
         Print("/tlb analysis - its timeline, rolls and numbers (also /tlb timeline, rolls, numbers)")
         Print("/tlb stats - dungeons, records, runs, luck, regulars, drops, roles")
         Print("/tlb search <item> - find an item in past runs")

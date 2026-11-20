@@ -333,18 +333,14 @@ do
         end
     end
 
-    -- In the order the window shows them.
+    -- The window's own list of categories, in its order.
     Section(p, "Categories shown")
     local defs = {}
-    for i, cat in ipairs({
-        { "Epic BoE", "epic" }, { "Blue BoE", "rare" }, { "Green BoE", "uncommon" },
-        { "Bind on Pickup", "bop" }, { "Profession materials", "prof" }, { "Other", "other" },
-        { "Junk", "junk" }, { "Quest items", "quest" },
-    }) do
+    for i, cat in ipairs(ns.CATS) do
         defs[i] = {
-            cat[1],
-            function() return Opt().cats[cat[2]] ~= false end,
-            function(on) Opt().cats[cat[2]] = on end,
+            cat.name or cat.label,
+            function() return Opt().cats[cat.key] ~= false end,
+            function(on) Opt().cats[cat.key] = on end,
         }
     end
     Group(p, defs, 2)
@@ -365,34 +361,25 @@ end
 do
     local p = NewPage("End of run", "When you leave a dungeon alive.")
 
-    -- Two saved switches (the breakdown, the podium), offered as the four
-    -- ways they can combine.
     Section(p, "Open")
-    local function Open(window, podium)
-        return function() return Opt().popupLeave == window and Opt().podiumOnLeave == podium end,
-            function() Opt().popupLeave, Opt().podiumOnLeave = window, podium end
-    end
-    Group(p, {
-        { "The breakdown and the podium", Open(true, true) },
-        { "The breakdown", Open(true, false) },
-        { "The podium", Open(false, true) },
-        { "Nothing", Open(false, false) },
-    }, 1, true)
+    Toggles(p, { { "The breakdown", "popupLeave" } })
 
     Section(p, "Awards")
     Toggles(p, { { "Hand out awards (Ninja, Jackpot and more)", "showAwards" } })
     Hint(p, "/tlb awards lists them all.")
 
-    -- The podium reveals its players one by one; the breakdown reveals the
-    -- awards, when it opens without the podium.
+    -- As a run is left, its columns race for their places: that takes
+    -- the columns, in podium order. Without the race, the awards come up
+    -- one by one.
     Section(p, "The reveal")
-    local function Reveals()
-        return Opt().podiumOnLeave or (Opt().popupLeave and Opt().showAwards) or false
-    end
+    local function CanRace() return Opt().useColumns and Opt().sortPlayers == "podium" end
+    local function Reveals() return (Opt().race and CanRace()) or Opt().showAwards or false end
     Toggles(p, {
+        { "Race", "race", CanRace },
         { "Sounds", "ceremonySound", Reveals },
         { "Screenshot at the end", "ceremonyScreenshot", Reveals },
     })
+    Hint(p, "Race: every total counts up, and the last one still counting wins. In podium order.")
 
     Section(p, "Also")
     Toggles(p, {
@@ -426,10 +413,22 @@ do
         { "Players: our runs together", "tipPlayers" },
         { "Items: seen in my runs", "tipItems" },
     })
+    -- Under the items' switch, the kinds of item that get the line.
+    local function ItemLine() return Opt().tipItems end
+    local kinds = {}
+    for i, cat in ipairs(ns.CATS) do
+        kinds[i] = {
+            cat.name or cat.label,
+            function() return Opt().tipCats[cat.key] ~= false end,
+            function(on) Opt().tipCats[cat.key] = on end,
+            ItemLine,
+        }
+    end
+    Group(p, kinds, 2, false, 180, 22)
 
     Section(p, "Bingo")
     Toggles(p, { { "Loot bingo", "bingo" } })
-    Hint(p, "A private card dealt each run.")
+    Hint(p, "A private card each run. Pick a line on it: it wins if it fills.")
 end
 
 ----------------------------------------------------------------------

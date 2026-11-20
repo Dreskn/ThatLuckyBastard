@@ -89,6 +89,11 @@ function known.GetSize(self) return self.__w or 700, self.__h or 400 end
 function known.GetStringHeight() return 12 end
 function known.GetStringWidth(self) return #(self.__text or "") * 6 end
 function known.GetFrameLevel() return 1 end
+-- The plain colour a texture was last filled with: { r, g, b, a }.
+function known.SetColorTexture(self, r, g, b, a) self.__color = { r, g, b, a } end
+-- How see-through a widget was last made.
+function known.SetAlpha(self, alpha) self.__alpha = alpha end
+function known.GetAlpha(self) return self.__alpha or 1 end
 function known.SetScale(self, scale) self.__scale = scale end
 function known.GetScale(self) return self.__scale or 1 end
 -- The font a text was last given (a font object or its name), and whether
@@ -237,9 +242,11 @@ function IsInInstance() return WORLD.inInstance, WORLD.inInstance and "party" or
 function GetInstanceInfo() return WORLD.instance, "party", 1, "Normal", 5, 0, false, WORLD.instanceID end
 
 -- Items: [id] = { quality, sell price, classID, bindType }. An item
--- string (no link) gets a full link back, as in the game.
+-- string (no link) gets a full link back, as in the game; so does an
+-- item's number.
 ITEMS = {}
 function GetItemInfo(link)
+    if type(link) == "number" then link = "item:" .. link end
     local id = tonumber(tostring(link):match("item:(%d+)"))
     local it = id and ITEMS[id]
     if not it then return end

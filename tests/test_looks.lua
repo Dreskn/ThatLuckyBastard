@@ -22,11 +22,9 @@ check(old.players["Kett Longstride"].gear == nil and old.players["Mira Vale"].ra
       "nothing of the players' looks is saved")
 
 -- The group is still together and in sight: everyone gets their own
--- picture. (The podium, which opens as the run in progress is left, is
--- closed so that only the main window draws.)
+-- picture.
 WORLD.inInstance, WORLD.visible = false, true
 Fire("PLAYER_ENTERING_WORLD", false, false)
-ThatLuckyBastardPodiumFrame:Hide()
 db.options.useColumns = true
 db.options.portrait = "3d"
 PICTURES = {}
@@ -49,11 +47,6 @@ for _, mode in ipairs({ "2d", "class", "3d" }) do
           and drawn("model:party") + drawn("portrait:party") == 0,
           mode .. ", group gone: everyone else gets their class icon (" .. table.concat(PICTURES, " ") .. ")")
 end
-
--- The podium likewise.
-PICTURES = {}
-ns.OpenRunWindow("podium", old)
-check(drawn("class") == 4 and drawn("model:player") == 1, "podium, group gone: four class icons, and my own model")
 
 -- Saved looks from earlier versions are dropped when the addon loads.
 old.players["Kett Longstride"].race, old.players["Kett Longstride"].gear = "Orc", { [1] = 5001 }

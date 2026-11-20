@@ -6,22 +6,22 @@ A World of Warcraft addon for **WoW Forever** that shows who got what in a dunge
 
 It records what every player in your group loots, puts a gold value on it, and shows the result when you leave the dungeon. It never sends a chat message on its own: what it shows stays on your screen unless you share a run.
 
-![The breakdown window after a run of Uldaman](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/run.png)
+![The breakdown window after a run of Alcaz Prison](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/run.png)
 
 ## What you get
 
 - **The breakdown:** each player's total, their share of the run and how far they are from an equal split, with every item they looted.
 - **Awards:** one per player when the run ends, out of about fifty: Jackpot, Ninja, Luckiest, Heartbreak, Empty Pockets... In raids an award can go to two or three players. Hover one to see its rule.
 - **Need rolls:** one button shows only what was won on Need. Hover an item to see everyone's roll on it.
-- **Podium, front page, analysis:** your group's characters on a podium, a mock newspaper, and the run's timeline, rolls and numbers, each in its own window.
+- **The race:** as you leave, every player's total counts up at once. The last one still counting has won.
+- **Front page, analysis:** a mock newspaper, and the run's timeline, rolls and numbers, each in its own window.
 - **Statistics:** your dungeons, records, luck, the people you run with and what dropped where, with item search and an export for spreadsheets.
-- **While you play:** notices for valuable loot and familiar faces, one line in player and item tooltips, and a private loot bingo card.
+- **While you play:** notices for valuable loot and familiar faces, one line in player and item tooltips, and a private loot bingo card to bet a line on.
 - **Sharing:** post a run as a link in chat or as a short summary anyone can read, or copy it as a code to paste anywhere. Players with the addon open links and codes.
 
-| ![The podium](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/podium.png) | ![The front page](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/paper.png) |
+| ![The front page](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/paper.png) | ![The timeline](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/timeline.png) |
 | --- | --- |
-| ![The timeline](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/timeline.png) | ![Statistics: dungeons](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/stats.png) |
-| ![Sharing a run](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/share.png) | |
+| ![Statistics: dungeons](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/stats.png) | ![Sharing a run](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/share.png) |
 
 ## How loot is valued
 

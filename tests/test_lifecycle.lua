@@ -24,7 +24,7 @@ Fire("ADDON_LOADED", "ThatLuckyBastard")
 Fire("PLAYER_LOGIN")
 Fire("PLAYER_ENTERING_WORLD", true, false)
 local db = ThatLuckyBastardDB
-local main, podium = ThatLuckyBastardFrame, ThatLuckyBastardPodiumFrame
+local main = ThatLuckyBastardFrame
 
 ITEMS[100] = { 2, 1500, 4, 2 }  -- green BoE
 ITEMS[101] = { 3, 9000, 4, 2 }  -- blue BoE
@@ -59,7 +59,6 @@ local function Reset()
     Fire("PLAYER_ENTERING_WORLD", false, false)
     if db.active then SlashCmdList.THATLUCKYBASTARD("stop") end
     main:Hide()
-    podium:Hide()
     NOW = NOW + 3600
 end
 local function Count(s)
@@ -82,17 +81,15 @@ Loot(("You receive loot: %s."):format(blue))
 Loot(("%s receives loot: %s."):format("Borin Oak", green))
 WORLD.dead = true
 Leave()
-check(s.leftAt ~= nil and s.leftDead and not main:IsShown() and not podium:IsShown(), "leaving dead opens nothing")
+check(s.leftAt ~= nil and s.leftDead and not main:IsShown(), "leaving dead opens nothing")
 Fire("PLAYER_ALIVE") -- released: a ghost at the graveyard
 check(s.leftDead and not main:IsShown(), "a ghost outside may still be on the way back: nothing yet")
 WORLD.dead = false
 Fire("PLAYER_UNGHOST")
-check(main:IsShown() and podium:IsShown() and not s.leftDead,
-      "alive again outside: the window and the podium open, as on leaving alive")
+check(main:IsShown() and not s.leftDead, "alive again outside: the window opens, as on leaving alive")
 main:Hide()
-podium:Hide()
 Fire("PLAYER_ALIVE")
-check(not main:IsShown() and not podium:IsShown(), "a second event for the same return to life does nothing")
+check(not main:IsShown(), "a second event for the same return to life does nothing")
 local asked = #POPUPS
 NOW = NOW + 60
 Enter(9001, "Test Keep")
@@ -135,7 +132,6 @@ check(db.history[1] == s and #db.history == runs + 1 and Count(s) == 6 and not H
 check(db.active ~= s and db.active.instanceID == 9001 and Has(db.active, NEW) and main:IsShown(),
       "what follows is a new run with the new group, and the old one is shown")
 main:Hide()
-podium:Hide()
 runs = #db.history
 NOW = NOW + 5
 local next9002 = Enter(9002, "Other Keep")
@@ -175,14 +171,12 @@ NOW = NOW + 300
 Loot(("You receive loot: %s."):format(blue))
 Leave()
 main:Hide()
-podium:Hide()
 NOW = NOW + 300
 asked = #POPUPS
 Enter(9001, "Test Keep")
 check(db.active == s and #POPUPS == asked + 1, "back with the same group: the question, as before")
 Leave()
 main:Hide()
-podium:Hide()
 NOW = NOW + 300
 asked = #POPUPS
 WORLD.party = Party(unpack(NEW))
@@ -376,13 +370,6 @@ local function FirstLine()
     end
     return top
 end
--- The line under the Podium's stage: the text that names `name`.
-local function PodiumLine(name)
-    for _, text in ipairs(TEXTLOG) do
-        local plain = Plain(text)
-        if plain:find(name .. " ", 1, true) then return plain end
-    end
-end
 local WIDTH -- how wide the window's contents are: read off the first card's parent, below
 local CARD, GAP, ARROW = 104, 6, 64 -- a card, the gap after it, the arrow
 
@@ -465,14 +452,6 @@ check(More() == nil and Back() == nil and Shown("Expand all"),
       "with Always a list chosen there is no arrow: every run is a list")
 o.useColumns = true
 
--- The Podium window: the top five on the podium, the others named below.
-TEXTLOG = {}
-ns.OpenRunWindow("podium", six)
-RunTimers()
-check(PodiumLine("Juno Ash") == "Juno Ash " .. junoAward .. " " .. Plain(ns.Money(300)),
-      "the Podium names the sixth under the stage, with award and loot value (" .. tostring(PodiumLine("Juno Ash")) .. ")")
-podium:Hide()
-
 -- A raid of forty: five columns, and of the thirty-five others as many
 -- cards as one row holds; the arrow says how many are left.
 local raid = { name = "Raid Keep", startedAt = NOW - 9000, endedAt = NOW - 600, owner = WORLD.me, players = {} }
@@ -516,18 +495,6 @@ Draw(raid)
 check(#Seats() == fits and More().label == "List\n" .. (35 - fits) .. " more", "the Classic theme has them too")
 ns.SetTheme("modern")
 Draw(raid)
-
-TEXTLOG = {}
-ns.OpenRunWindow("podium", raid)
-RunTimers()
-local line = PodiumLine("Raider 13") or ""
-check(line:find("Raider 06 ", 1, true) and not line:find("Raider 14", 1, true) and line:find("and 27 more", 1, true),
-      "its Podium names eight of them and counts the other twenty-seven")
-TEXTLOG = {}
-ns.OpenRunWindow("podium", made[3])
-RunTimers()
-check(PodiumLine("Raider 13") == nil and not drew("more"), "and names nobody under a run of five or fewer")
-podium:Hide()
 
 -- The example addon's raid has forty players, so that it shows all of this.
 local file = io.open(TEST_DIR .. "/../ThatLuckyBastard_Example/Example.lua", "r")

@@ -131,7 +131,6 @@ local function Play(id, name)
     Fire("PLAYER_ENTERING_WORLD", false, false)
     SlashCmdList.THATLUCKYBASTARD("stop")
     ThatLuckyBastardFrame:Hide()
-    ThatLuckyBastardPodiumFrame:Hide()
     NOW = NOW + 3600
     return s
 end
@@ -203,7 +202,6 @@ WORLD.inInstance = false
 Fire("PLAYER_ENTERING_WORLD", false, false)
 SlashCmdList.THATLUCKYBASTARD("stop")
 ThatLuckyBastardFrame:Hide()
-ThatLuckyBastardPodiumFrame:Hide()
 check(#db.history == 2, "it goes on, and closes like any other")
 
 print("-- everything a run holds is kept")

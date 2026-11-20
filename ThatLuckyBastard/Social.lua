@@ -6,7 +6,8 @@ local _, ns = ...
 --     group.
 --   * One line in a player's tooltip: runs together, Ninja and Luckiest.
 --   * One line in an item's tooltip: in how many of your runs it was
---     seen, and who got it last.
+--     seen, and who got it last. The options say which kinds of item
+--     get it.
 -- Each can be switched off in the options.
 
 local issecret = issecretvalue or function() return false end
@@ -106,6 +107,10 @@ local function ItemTip(tooltip, data)
     if tooltip ~= GameTooltip and tooltip ~= ItemRefTooltip then return end
     local id = data and data.id
     if not id or issecret(id) or type(id) ~= "number" then return end
+    -- Only the kinds of item the options ask for. One the game cannot
+    -- tell the kind of yet gets no line.
+    local cat = ns.ItemCategory(id)
+    if not cat or ns.db.options.tipCats[cat] == false then return end
     local runs, by = ns.ItemSeen(id)
     if runs then
         tooltip:AddLine(("%s Seen in %d %s%s"):format(
