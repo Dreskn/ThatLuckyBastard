@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.5.6
 
 - **Mini mode.** A new box beside the themes, under Options › Window, for a small window: one card per player with their picture, name, award and total, and nothing else. No loot, no footer, and a single button, the cogwheel beside the cross; the window is exactly as big as its cards (about 570 by 150 for five players) in every theme. Past five players, an arrow after the top five counts the others and shows the run as a list in the full window, where Columns leads back.
 - **Your own accent colour.** A Color section under the themes, in Options › Window, changes the Modern theme's teal: pick Class (your class colour), Amber, Light or Dark, or choose Custom and set red, green and blue yourself. It tints the title bars, the middle word of the titles, the marks under selected buttons, the arrows and what lights up under the mouse. The other themes keep their own colours.
