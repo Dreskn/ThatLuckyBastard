@@ -75,7 +75,7 @@ check(pagesFound, "seven pages: Window, Players, Loot, End of run, While you pla
 check(not has("Appearance") and not has("Behaviour") and not has("Extras") and not has("Items and values"),
       "the old pages are gone")
 for _, label in ipairs({
-    "Modern", "Classic", "One column per player, up to 5", "Always a list", "Group items by category",
+    "Modern", "Classic", "Receipt", "Mini", "One column per player, up to 5", "Always a list", "Group items by category",
     "Line up the same item across columns", "Picture", "Award", "Gold", "Item icons", "Each share, and its gap to an equal split", "Share bar",
     "Run total and equal split", "Run time, records and averages", "12g 34s 56c", "12g 34s", "12g",
     "2D portrait", "3D model", "Class icon", "None", "As the game shows them", "Full name", "First name only",
@@ -147,8 +147,34 @@ check(not greyed("Line up the same item across columns"), "lining items up works
 click("Always a list")
 check(o.useColumns == false and greyed("Line up the same item across columns"), "but not in the list")
 check(greyed("Race"), "nor does the race, which the columns run")
+check(greyed("Mini"), "nor does mini mode, which is the columns' own")
 click("One column per player, up to 5")
 check(not greyed("Race"), "which is back with them")
+-- Mini mode keeps the player, their total and their award: what is about
+-- the rest does nothing while it is on.
+local rest = { "Group items by category", "Line up the same item across columns", "Item icons",
+               "Each share, and its gap to an equal split", "Share bar", "Run total and equal split",
+               "Run time, records and averages", "Vendor totals too" }
+local function Greyed()
+    local n = 0
+    for _, label in ipairs(rest) do
+        if greyed(label) then n = n + 1 end
+    end
+    return n
+end
+check(not ticked("Mini") and not greyed("Mini") and Greyed() == 0, "mini mode is off to begin with, and nothing is greyed out for it")
+click("Mini")
+check(o.mini == true and ticked("Mini") and Greyed() == #rest,
+      "switched on, the eight options about what it leaves out are greyed out (" .. Greyed() .. ")")
+check(not greyed("Podium (top looter in the middle)") and not greyed("2D portrait") and not greyed("Picture"),
+      "those about the players, their order and the bench are not")
+check(greyed("Race"), "the race is, which takes columns")
+click("Always a list")
+check(Greyed() == 1 and greyed("Line up the same item across columns"),
+      "in the list it changes nothing: they count again, but for lining items up, which a list never does")
+click("One column per player, up to 5")
+click("Mini")
+check(o.mini == false and Greyed() == 0 and not greyed("Race"), "and switched off, they are back")
 check(not greyed("Share bar"), "the share bar works in Modern")
 click("Classic")
 check(db.theme == "classic" and greyed("Share bar"), "but not in Classic")

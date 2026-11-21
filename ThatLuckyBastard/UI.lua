@@ -4,6 +4,7 @@ local issecret = issecretvalue or function() return false end
 
 local WIDTH, HEIGHT = 780, 540
 local MAX_COLUMNS = 5     -- groups up to this size get one column per player
+local MINI_W = 150        -- the mini window is at least this wide, for its title bar
 local COL_GAP = 6
 local ACCENT = ns.ACCENT
 
@@ -389,10 +390,14 @@ end
 f:EnableMouse(true)
 f:SetClampedToScreen(true)
 f:RegisterForDrag("LeftButton")
--- The window's place and size are remembered between sessions.
+-- The window's place and size are remembered between sessions. In mini
+-- mode it is only as big as its cards (see Render): the size kept is the
+-- one it has otherwise, set aside in f.full meanwhile.
 local function SaveWindow()
     local point, _, relPoint, x, y = f:GetPoint(1)
-    ns.db.window = { point = point, relPoint = relPoint, x = x, y = y, w = f:GetWidth(), h = f:GetHeight() }
+    local full = f.full
+    ns.db.window = { point = point, relPoint = relPoint, x = x, y = y,
+                     w = full and full[1] or f:GetWidth(), h = full and full[2] or f:GetHeight() }
 end
 
 local windowRestored = false
@@ -448,16 +453,22 @@ local function BuildSkins(frame, onClose)
         bar:SetPoint("TOPLEFT")
         bar:SetPoint("TOPRIGHT")
         bar:SetHeight(TITLE_BAR_H)
-        -- The header carries the accent colour, strongest on the left
-        -- where the name is. Plain where the client cannot do gradients.
-        if not SetFade(bar, "HORIZONTAL", ACCENT[1], ACCENT[2], ACCENT[3], 0.26, 0.03) then
-            bar:SetColorTexture(1, 1, 1, 0.04)
-        end
         local line = s:CreateTexture(nil, "ARTWORK")
         line:SetPoint("TOPLEFT", 0, -TITLE_BAR_H)
         line:SetPoint("TOPRIGHT", 0, -TITLE_BAR_H)
         line:SetHeight(2)
-        line:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 0.9)
+        s.accentLine = line
+        -- The header carries the accent colour, strongest on the left
+        -- where the name is (plain where the client cannot do gradients),
+        -- and so does the line under it: now, and whenever it changes.
+        local function Tint()
+            if not SetFade(bar, "HORIZONTAL", ACCENT[1], ACCENT[2], ACCENT[3], 0.26, 0.03) then
+                bar:SetColorTexture(1, 1, 1, 0.04)
+            end
+            line:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 0.9)
+        end
+        Tint()
+        ns.OnAccent(Tint)
         local function Edge(p1, p2, w, h)
             local t = s:CreateTexture(nil, "OVERLAY")
             t:SetPoint(p1)
@@ -662,7 +673,13 @@ do
     Edge("TOPLEFT", "BOTTOMLEFT", 2, nil)
     Edge("TOPRIGHT", "BOTTOMRIGHT", 2, nil)
 end
+-- The game says so when the scroll area changes size: when the window
+-- is dragged wider, what is in it is laid out again. Render sizes the
+-- window itself at times (mini mode) and lays things out for the width it
+-- gives it, in the same go: a size that comes in while it draws, or that
+-- is the one it drew for, asks for nothing more.
 scroll:SetScript("OnSizeChanged", function(_, w)
+    if drawing or math.abs(content:GetWidth() - w) < 0.5 then return end
     content:SetWidth(w)
     if ns.Refresh then ns.Refresh() end -- defined at the end of this file
 end)
@@ -686,6 +703,7 @@ end
 -- Resize grip
 do
     local grip = CreateFrame("Button", nil, ui)
+    f.grip = grip
     grip:SetSize(16, 16)
     grip:SetPoint("BOTTOMRIGHT", -3, 3)
     grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
@@ -1527,7 +1545,7 @@ local HEADER_GLOW_H = 72 -- Modern theme: the class-coloured glow at the top of 
 
 -- The bench (see below) keeps its many constants and helpers to itself:
 -- a Lua function, this file included, can hold 200 local variables.
-local RenderBench, HideBench, ShowBackButton
+local RenderBench, HideBench, ShowBackButton, BenchRoom
 do
     -- The bench: in a group too big for one column each, the columns go to
     -- the top five and everyone else follows under them, side by side, on
@@ -1556,6 +1574,18 @@ do
     function HideBench()
         if benchMore then benchMore:Hide() end
         for _, seat in ipairs(benchSeats) do seat:Hide() end
+    end
+
+    -- How wide a row of `n` cards is; `more`: with the arrow after them.
+    function BenchRoom(n, more)
+        return n * (CARD_W + CARD_GAP) - CARD_GAP + (more and CARD_GAP + MORE_W or 0)
+    end
+
+    -- The race stands its columns taller than they will be: the bench
+    -- under them is out of sight until it is over.
+    function race.Bench(alpha)
+        if benchMore then benchMore:SetAlpha(alpha) end
+        for _, seat in ipairs(benchSeats) do seat:SetAlpha(alpha) end
     end
 
     local function BenchSeat(i)
@@ -1673,19 +1703,34 @@ do
 
     -- Draws the bench for the players in `bench` (in rank order), `top` down
     -- from the top of the content, and returns where what follows starts.
-    function RenderBench(bench, awards, top, paper)
+    -- `all`: the cards are the whole window (mini mode). They show their
+    -- picture, award and total whatever the bench's own options say; there
+    -- are up to five of them, and the arrow only when there are more
+    -- players than that.
+    function RenderBench(bench, awards, top, paper, all)
         HideBench()
         if #bench == 0 then return top end
         local o = ns.db.options
         local flat = theme.flat
-        local picture = o.benchPicture and o.portrait ~= "none"
-        local title = o.benchAward and next(awards) ~= nil -- no awards yet while a run is going
-        local height = CARD_PAD * 2 + (picture and CARD_PICTURE + 6 or 0) + 14 + (title and 13 or 0) + (o.benchValue and 13 or 0)
+        local picture = (all or o.benchPicture) and o.portrait ~= "none"
+        local title = (all or o.benchAward) and next(awards) ~= nil -- no awards yet while a run is going
+        local gold = all or o.benchValue
+        local height = CARD_PAD * 2 + (picture and CARD_PICTURE + 6 or 0) + 14 + (title and 13 or 0) + (gold and 13 or 0)
 
-        -- As many cards as the row holds beside the arrow, the whole of it centred.
+        -- As many cards as the row holds beside the arrow, the whole of it
+        -- centred. (The mini window is made to measure: its cards are
+        -- counted, not fitted, since a width that fits exactly may be a
+        -- hair short once the game has rounded it.)
         local width = content:GetWidth()
-        local shown = math.min(#bench, math.max(0, math.floor((width - MORE_W) / (CARD_W + CARD_GAP))))
-        local x = math.max(0, (width - shown * (CARD_W + CARD_GAP) - MORE_W) / 2)
+        local shown, arrow
+        if all then
+            shown = math.min(#bench, MAX_COLUMNS)
+            arrow = #bench > shown
+        else
+            shown = math.min(#bench, math.max(0, math.floor((width - MORE_W) / (CARD_W + CARD_GAP))))
+            arrow = true
+        end
+        local x = math.max(0, (width - BenchRoom(shown, arrow)) / 2)
 
         inkMode = paper -- a ticket is paper: its text is printed in ink
         for i = 1, shown do
@@ -1735,7 +1780,7 @@ do
                 ClassColored(DisplayName(p.name), p.class), 14)
             Put(seat.title, title, paper and "ThatLuckyBastardReceiptSmall" or "GameFontHighlightSmall",
                 seat.won and AwardTitle(seat.won) or "", 13)
-            Put(seat.gold, o.benchValue, paper and "ThatLuckyBastardReceiptInk" or "GameFontHighlightSmall",
+            Put(seat.gold, gold, paper and "ThatLuckyBastardReceiptInk" or "GameFontHighlightSmall",
                 Money(p.market), 13)
 
             seat:ClearAllPoints()
@@ -1746,6 +1791,7 @@ do
         end
         inkMode = false
 
+        if not arrow then return top + height + 10 end
         -- The arrow at the end of the row: this run as a list.
         local more = BenchMore()
         more.hidden = #bench - shown
@@ -1794,17 +1840,21 @@ end
 ----------------------------------------------------------------------
 -- The race: how a run is revealed when it is left (each time it is),
 -- with one column per player in podium order. The columns start side by
--- side in name order, showing who is in them and nothing else. Every
--- total counts up at the same speed, so the smallest stops first and
--- takes the last place, and the one still counting at the end has won.
--- Then the columns walk to their places on the podium, and the rest
--- (awards, shares, loot, the footer) fades in. A click on the columns
--- skips to the end. About five seconds in all.
+-- side in name order, showing who is in them and nothing else, each as
+-- tall as its head and the room for a bar. A bar grows under each player,
+-- all at the same speed, and stops when it stands for that player's
+-- total: the total is shown at that moment, with the player's place. So
+-- the smallest stops first and takes the last place, and the one still
+-- growing at the end has won. Then the columns walk to their places on
+-- the podium, taking their own height, and the rest (awards, shares,
+-- loot, the footer, the bench) fades in. A click on the columns skips to
+-- the end. About five seconds in all.
 ----------------------------------------------------------------------
 do
     -- Seconds: a beat before the count, the count up to the biggest total,
     -- a beat on the result, the walk to the podium, the rest fading in.
     local HOLD, COUNT, PAUSE, WALK, FADE = 0.3, 3.4, 0.3, 0.6, 0.4
+    local BAR_ROOM = 150 -- a racing column is this much taller than its head, for its bar
     local token = 0
     -- When the race began: with its first frame on screen, nil until then.
     -- The window is often opened under a loading screen, where time
@@ -1847,6 +1897,27 @@ do
             end
         end
         for _, fs in ipairs(footLines) do fs:SetAlpha(alpha) end
+        race.Bench(alpha)
+    end
+
+    -- A column's bar, in the player's class colour (in ink on a receipt).
+    -- It stands right under the column's head, where it is in sight
+    -- however long the column will be.
+    local function Bar(c, p)
+        local bar = c.raceBar
+        if not bar then
+            bar = c:CreateTexture(nil, "ARTWORK")
+            c.raceBar = bar
+        end
+        bar:ClearAllPoints()
+        bar:SetPoint("BOTTOM", c, "TOP", 0, -(lay.head + BAR_ROOM - 6))
+        if lay.paper then
+            bar:SetColorTexture(INK[1], INK[2], INK[3], 1)
+        else
+            local r, g, b = ClassRGB(p.class)
+            bar:SetColorTexture(r, g, b, 0.85)
+        end
+        return bar
     end
 
     -- Puts the columns where the race has got to.
@@ -1856,32 +1927,40 @@ do
         local walk = math.max(0, math.min(1, (t - HOLD - COUNT - PAUSE) / WALK))
         walk = walk * walk * (3 - 2 * walk) -- sets off and arrives gently
         local fade = math.max(0, math.min(1, (t - HOLD - COUNT - PAUSE - WALK) / FADE))
-        inkMode = lay.paper
         for i, p in ipairs(lay.players) do
             local c = cols[i]
             local shown = math.min(p.market, lay.top * count)
             local done = count > 0 and shown >= p.market
-            c.market:SetText(Money(math.floor(shown)))
             if done and not stopped[i] then
                 stopped[i] = true
                 if lay.sound and p.rank ~= 1 then PlayKit("IG_MAINMENU_OPTION_CHECKBOX_ON", 856) end
             end
-            -- Its place, once it has one.
+            -- Its total and its place, once its bar has stopped.
+            c.market:SetAlpha(done and 1 or 0)
             c.rank:SetAlpha(done and 1 or 0)
             c.medal:SetAlpha(done and 1 or 0)
             local slot = lay.from[i] + (i - 1 - lay.from[i]) * walk
             local drop = c.offset * walk
             c:ClearAllPoints()
             c:SetPoint("TOPLEFT", slot * lay.pitch, -drop)
+            -- As tall as the race needs while the bars grow, taking its
+            -- own height on the way to its place.
+            local height
             if lay.paper then
                 -- Receipts are torn off once they are in place.
-                c:SetHeight(walk < 1 and lay.tall or c.ownH)
+                height = walk < 1 and lay.high or c.ownH
             else
-                c:SetHeight(lay.tall - drop)
+                height = lay.high + (lay.tall - lay.high) * walk - drop
                 c.bg:SetColorTexture(1, 1, 1, lay.tint + (p.rank == 1 and 0.04 * fade or 0))
             end
+            c:SetHeight(height)
+            -- The bar: as much of its room as the total is of the biggest
+            -- one. It goes as the columns walk.
+            local bar = Bar(c, p)
+            bar:SetSize(lay.pitch * 0.4, math.max(1, (BAR_ROOM - 12) * shown / lay.top))
+            bar:SetAlpha(1 - walk)
+            bar:SetShown(shown > 0 and walk < 1)
         end
-        inkMode = false
         if count >= 1 and not fanfare then
             fanfare = true
             if lay.sound then PlayKit("IG_QUEST_LIST_COMPLETE", 878) end
@@ -1892,8 +1971,9 @@ do
     -- Called by RenderColumns once it has drawn the columns as they will
     -- end up, while a race is on: `players` in column order, `pitch` from
     -- one column to the next, `tall` the height the columns share (the
-    -- longest receipt, on paper) and `tint` how bright a column's panel is.
-    function race.Lay(players, pitch, tall, paper, tint)
+    -- longest receipt, on paper), `tint` how bright a column's panel is
+    -- and `head` how much of a column its head takes.
+    function race.Lay(players, pitch, tall, paper, tint, head)
         local order = {}
         for i in ipairs(players) do order[i] = i end
         table.sort(order, function(a, b)
@@ -1905,7 +1985,7 @@ do
         for slot, i in ipairs(order) do from[i] = slot - 1 end
         for _, p in ipairs(players) do top = math.max(top, p.market) end
         lay = { players = players, pitch = pitch, tall = tall, paper = paper, tint = tint, from = from, top = top,
-                sound = ns.db.options.ceremonySound }
+                head = head, high = head + BAR_ROOM, sound = ns.db.options.ceremonySound }
         detail = nil -- the draw may have made new rows
         Apply()
     end
@@ -1913,6 +1993,7 @@ do
     function race.Start()
         token = token + 1
         startedAt, fanfare = nil, false
+        if scroll.SetVerticalScroll then scroll:SetVerticalScroll(0) end -- the heads of the columns in sight
         wipe(stopped)
         race.on = true
         curtain:Show()
@@ -1927,8 +2008,10 @@ do
         detail = nil
         Details(1)
         for _, c in ipairs(cols) do
+            c.market:SetAlpha(1)
             c.rank:SetAlpha(1)
             c.medal:SetAlpha(1)
+            if c.raceBar then c.raceBar:Hide() end
         end
     end
 
@@ -2295,7 +2378,7 @@ local function RenderColumns(sum, awards, insights)
             tall = 0
             for i = 1, n do tall = math.max(tall, cols[i].ownH) end
         end
-        race.Lay(view.players, colW + gap, tall, paper, tint)
+        race.Lay(view.players, colW + gap, tall, paper, tint, headerH)
     end
 end
 
@@ -2426,6 +2509,8 @@ local function MakeButton(text, width, onClick, parent)
 
     function b:Paint()
         local fb = self.flat
+        self.tpl.mark:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 1)
+        fb.mark:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 1)
         if self.key then
             -- Delete (tinted) and Share (loud) are red keys.
             local red = self.loud or self.tint ~= nil
@@ -2494,6 +2579,7 @@ local function MakeButton(text, width, onClick, parent)
         self:Paint()
     end
     b:Paint()
+    ns.OnAccent(function() b:Paint() end)
     if not parent then buttons[#buttons + 1] = b end
     return b
 end
@@ -2519,13 +2605,13 @@ deleteBtn:SetPoint("LEFT", pinBtn, "RIGHT", 4, 0)
 deleteBtn:SetTextColor(1, 0.36, 0.32)
 
 -- Bottom right, what is about the whole addon rather than the run on
--- show: Statistics (the tables over all runs) and Options, with the
--- addon's version quietly beside them.
+-- show: Statistics (the tables over all runs) and the cogwheel that opens
+-- the options (made further down), with the addon's version quietly
+-- beside them.
 local RIGHT_EDGE = -24 -- right margin of the buttons on the right, clear of the resize grip
-local optionsBtn = MakeButton("Options", 80, function() ns.ToggleOptions() end)
-optionsBtn:SetPoint("BOTTOMRIGHT", RIGHT_EDGE, 10)
+local COG = 22         -- the cogwheel's side, as high as a button
 local statsBtn = MakeButton("Statistics", 80, function() ns.ToggleBrowse() end)
-statsBtn:SetPoint("RIGHT", optionsBtn, "LEFT", -4, 0)
+statsBtn:SetPoint("BOTTOMRIGHT", RIGHT_EDGE - COG - 4, 10)
 
 local versionLabel = ui:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
 versionLabel:SetPoint("RIGHT", statsBtn, "LEFT", -10, 0)
@@ -2578,6 +2664,31 @@ runLabel:SetPoint("LEFT", deleteBtn, "RIGHT", 10, 0)
 runLabel:SetPoint("RIGHT", versionLabel, "LEFT", -10, 0)
 runLabel:SetJustifyH("LEFT")
 runLabel:SetWordWrap(false)
+-- What the mini window does without: the bar at the foot of the window.
+f.footRow = { older, newer, pinBtn, deleteBtn, runLabel, versionLabel, statsBtn, f.grip }
+-- The cogwheel that opens the options: at the foot of the full window,
+-- right of Statistics; in the mini window, which has no foot, in the
+-- title bar beside the cross (and so the way out of mini mode). Render
+-- places it. It is the bare icon in every theme, with a wash under the
+-- mouse.
+do
+    local cog = CreateFrame("Button", nil, ui)
+    cog.cog = true
+    cog.hl = cog:CreateTexture(nil, "HIGHLIGHT")
+    cog.hl:SetAllPoints()
+    cog.icon = cog:CreateTexture(nil, "ARTWORK")
+    cog.icon:SetPoint("CENTER")
+    cog.icon:SetTexture("Interface\\Icons\\INV_Misc_Gear_01")
+    cog.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    cog:SetScript("OnClick", function() ns.ToggleOptions() end)
+    cog:SetScript("OnEnter", function(self)
+        GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
+        GameTooltip:AddLine("Options")
+        GameTooltip:Show()
+    end)
+    cog:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    f.cog = cog
+end
 
 ----------------------------------------------------------------------
 -- Themes
@@ -2587,6 +2698,14 @@ local function ApplyTheme()
     currentTheme = ThemeName()
     theme = THEMES[currentTheme]
     ns.ApplyWindowTheme(skins, title)
+
+    -- Under the mouse the cogwheel has a wash of the accent in Modern,
+    -- of white elsewhere.
+    if theme.flat and not theme.paper then
+        f.cog.hl:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 0.35)
+    else
+        f.cog.hl:SetColorTexture(1, 1, 1, 0.25)
+    end
     for _, c in ipairs(cols) do c.glowClass = nil end -- the glow is drawn afresh
 
     needBtn:ClearAllPoints()
@@ -2613,6 +2732,7 @@ end
 function ns.SetTheme(name)
     if not THEMES[name] then return false end
     ns.db.theme = name
+    ns.ApplyAccent() -- the accent is the Modern theme's to choose
     ns.Rerender()
     if ns.SyncOptions then ns.SyncOptions() end
     return true
@@ -2662,7 +2782,6 @@ function Render()
     end
 
     needBtn:SetSelected(needOnly) -- lit while on; a second click shows all loot again
-    bingoBtn:SetShown(o.bingo and true or false)
     older:SetOn(viewIndex < #runs)
     newer:SetOn(viewIndex > 1)
     local stored = s ~= nil and not s.example
@@ -2709,7 +2828,54 @@ function Render()
     -- others on a bench under them. The list is for whoever chose it: in
     -- the options for every run, or with the bench's button for this one.
     local big = sum ~= nil and #sum.players > MAX_COLUMNS
+    local mini = o.mini and true or false
     local useColumns = sum ~= nil and o.useColumns and #sum.players > 0 and not (big and listRuns[s])
+    -- Mini mode: in place of the columns, a row of small cards (the
+    -- bench's: picture, name, award, total) for up to five players, under
+    -- the title bar alone. The window has no rows of buttons then, only
+    -- the cogwheel beside its cross, and is as big as its cards. With more
+    -- players the row ends with an arrow that shows the run as a list, in
+    -- the full window, whose Columns arrow leads back.
+    local small = useColumns and mini
+    for _, b in ipairs(topRow) do b:SetShown(not small) end
+    bingoBtn:SetShown(not small and o.bingo and true or false)
+    shareBtn:SetShown(not small)
+    for _, w in ipairs(f.footRow) do w:SetShown(not small) end
+    scroll:ClearAllPoints()
+    if small then
+        scroll:SetPoint("TOPLEFT", 12, theme.flat and -46 or -30)
+        scroll:SetPoint("BOTTOMRIGHT", -12, 12)
+    else
+        scroll:SetPoint("TOPLEFT", 12, theme.scrollTop)
+        scroll:SetPoint("BOTTOMRIGHT", theme.scrollRight, 42)
+        -- Out of mini mode, the window first takes back the size it had,
+        -- so that what follows is drawn for it.
+        if f.full then
+            if f.SetResizeBounds then f:SetResizeBounds(620, 320, 1100, 1000) end
+            f:SetSize(f.full[1], f.full[2])
+            f.full = nil
+            title:SetWidth(0) -- as long as it is
+        end
+        -- The width there is to draw in: the window's, less its margins.
+        content:SetWidth(f:GetWidth() - 12 + theme.scrollRight)
+    end
+    if scroll.ScrollBar then scroll.ScrollBar:SetAlpha((theme.flat or small) and 0 or 1) end
+    -- The cogwheel: at the foot of the full window, where its buttons are;
+    -- in the mini window, beside the cross (smaller and nearer the corner
+    -- on Classic's title bar, which is the game's own and lower).
+    local cog = f.cog
+    cog:ClearAllPoints()
+    if not small then
+        cog:SetSize(COG, COG)
+        cog:SetPoint("BOTTOMRIGHT", RIGHT_EDGE, 10)
+    elseif theme.flat then
+        cog:SetSize(COG, COG)
+        cog:SetPoint("TOPRIGHT", -34, -7)
+    else
+        cog:SetSize(18, 18)
+        cog:SetPoint("TOPRIGHT", -26, -2)
+    end
+    cog.icon:SetSize(cog:GetHeight() - 4, cog:GetHeight() - 4)
     -- The list view honours the same "show" options as the columns.
     local showVendor = o.showVendor and o.valueMode ~= "vendor"
     local showShare = o.showShare
@@ -2723,10 +2889,34 @@ function Render()
     -- Receipt theme: receipts come out of a printer slot; the list is
     -- printed on one long sheet.
     local paper = theme.paper and true or false
-    slot:SetShown(paper and useColumns)
-    slotLip:SetShown(paper and useColumns)
+    slot:SetShown(paper and useColumns and not small)
+    slotLip:SetShown(paper and useColumns and not small)
     listPaper:SetShown(paper and not useColumns)
-    if useColumns then
+    if small then
+        -- No columns, so no reveal either.
+        ceremonyPending = false
+        CancelReveal()
+        for _, r in ipairs(rows) do r:Hide() end
+        for _, c in ipairs(cols) do c:Hide() end
+        for _, fs in ipairs(footLines) do fs:Hide() end
+        ShowBackButton(false)
+        -- As many cards as there are players, up to the columns' five,
+        -- and the title bar says where: there is no room for more.
+        local n = math.min(#sum.players, MAX_COLUMNS)
+        local wide = math.max(MINI_W - 24, BenchRoom(n, #sum.players > n))
+        content:SetWidth(wide)
+        local high = RenderBench(sum.players, awards, 0, paper, true) - 10
+        content:SetHeight(high)
+        title:SetText(("|T%s:16:16:0:0|t %s"):format(ns.LOGO, s.name or "Run"))
+        title:SetWidth(math.max(20, wide - 54)) -- cut short before the cogwheel and the cross
+        -- The window is as big as its cards, there and then: its own size
+        -- is set aside for when they are no longer on show (the list, or
+        -- the mode switched off). It may be smaller than a window can be
+        -- dragged to.
+        f.full = f.full or { f:GetWidth(), f:GetHeight() }
+        if f.SetResizeBounds then f:SetResizeBounds(MINI_W, 80, 1100, 1000) end
+        f:SetSize(wide + 24, high + (theme.flat and 46 or 30) + 12)
+    elseif useColumns then
         for _, r in ipairs(rows) do r:Hide() end
         ShowBackButton(false)
         RenderColumns(sum, awards, insights)
@@ -2747,6 +2937,7 @@ function Render()
         }, showVendor, showShare, top)
         inkMode = false
     end
+    title:SetWordWrap(false)
     drawing = false
     wipe(drawCache)
     if s ~= followedRun then
@@ -2872,6 +3063,10 @@ end
 -- the theme changes, when a run is pinned or deleted, and when an item is
 -- switched to its other price. (New loot only redraws this window: see
 -- ns.Refresh.)
+-- A new accent colour: the theme is applied afresh at the next draw,
+-- for what it paints in that colour.
+ns.OnAccent(function() currentTheme = nil end)
+
 function ns.Rerender()
     ns.ApplyScale()
     if f:IsShown() then Render() end

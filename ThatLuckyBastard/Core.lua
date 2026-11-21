@@ -20,9 +20,14 @@ local db
 -- The addon's look, in one place: its name in two tones, its accent
 -- colour and its mark. tools/make_logo.py draws the mark in the same
 -- colours.
+-- Its own teal is what it goes by in chat, on links and in tooltips. In
+-- its windows the accent is the teal too, unless the options choose
+-- another for the Modern theme: ns.ACCENT is then given other values (it
+-- stays the same table, which the windows hold) by ns.ApplyAccent.
+ns.TEAL_HEX = "|cff40c7b8"
 ns.ACCENT = { 0.25, 0.78, 0.72 }
-ns.ACCENT_HEX = "|cff40c7b8"
-ns.BRAND = "|cffffffffThat|r " .. ns.ACCENT_HEX .. "Lucky|r |cffffffffBastard|r"
+ns.ACCENT_HEX = ns.TEAL_HEX
+ns.BRAND = "|cffffffffThat|r " .. ns.TEAL_HEX .. "Lucky|r |cffffffffBastard|r"
 ns.NAME = "That Lucky Bastard" -- the same, where colour codes are not wanted
 -- The version, from the .toc file, so that it is only ever written there.
 local GetAddOnMetadata = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
@@ -30,10 +35,10 @@ ns.VERSION = GetAddOnMetadata and GetAddOnMetadata(ADDON, "Version") or ""
 ns.LOGO = "Interface\\AddOns\\ThatLuckyBastard\\Media\\logo.tga"
 ns.MARK = ("|T%s:0|t"):format(ns.LOGO) -- the mark alone, for a line in a tooltip
 
--- The title of every window: the mark, the name, then what the window
--- shows.
+-- The title of every window: the mark, the name (its middle word in the
+-- accent colour), then what the window shows.
 function ns.Title(sub)
-    local text = ("|T%s:16:16:0:0|t %s"):format(ns.LOGO, ns.BRAND)
+    local text = ("|T%s:16:16:0:0|t |cffffffffThat|r %sLucky|r |cffffffffBastard|r"):format(ns.LOGO, ns.ACCENT_HEX)
     if sub and sub ~= "" then text = text .. "  |cff707070/|r  " .. sub end
     return text
 end
@@ -55,6 +60,12 @@ ns.OPTION_DEFAULTS = {
     tickerMin = 50000,   -- copper: smallest pickup worth a notice
     alignItems = false,  -- put the same item on the same line in every column
     useColumns = true,   -- one column per player; past five, for the top five, the others on a bench
+    -- The Modern theme's accent colour: "teal", "class" (the player's class
+    -- colour), "amber", "light", "dark", or "custom" (accentCustom: red,
+    -- green and blue, each from 0 to 1).
+    accent = "teal",
+    accentCustom = { 0.25, 0.78, 0.72 },
+    mini = false,        -- a small window: a card per player (picture, name, award, total) and no buttons
     -- What each player on the bench shows besides their name.
     benchPicture = true, -- their picture (the Picture options say which; none with "None")
     benchAward = true,
@@ -109,6 +120,51 @@ ns.OPTION_DEFAULTS = {
 
 -- Fills in the options `o` lacks with their defaults. With `all`, puts
 -- every option back to its default instead.
+-- The accent colours on offer by name; the class colour and the player's
+-- own are worked out in ns.ApplyAccent.
+ns.ACCENTS = {
+    teal = { 0.25, 0.78, 0.72 },
+    amber = { 1.00, 0.82, 0.00 },
+    light = { 0.90, 0.93, 0.98 },
+    dark = { 0.42, 0.47, 0.56 },
+}
+
+-- Whoever draws something in the accent colour once, and not at every
+-- draw, asks here to be told when it changes.
+local accentListeners = {}
+function ns.OnAccent(fn)
+    accentListeners[#accentListeners + 1] = fn
+end
+
+-- Gives ns.ACCENT the colour the options ask for. Only the Modern theme
+-- has a choice: the others keep the teal for the little they draw in it.
+function ns.ApplyAccent()
+    local o = db and db.options
+    local c
+    if o and db.theme == "modern" then
+        if o.accent == "class" then
+            local _, class = UnitClass("player")
+            local rc = class and not issecret(class) and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
+            c = rc and { rc.r, rc.g, rc.b }
+        elseif o.accent == "custom" then
+            c = type(o.accentCustom) == "table" and o.accentCustom
+        else
+            c = ns.ACCENTS[o.accent]
+        end
+    end
+    c = c or ns.ACCENTS.teal
+    local function Part(v)
+        return math.max(0, math.min(1, tonumber(v) or 0))
+    end
+    local r, g, b = Part(c[1]), Part(c[2]), Part(c[3])
+    local a = ns.ACCENT
+    if a[1] == r and a[2] == g and a[3] == b then return end
+    a[1], a[2], a[3] = r, g, b
+    ns.ACCENT_HEX = ("|cff%02x%02x%02x"):format(math.floor(r * 255 + 0.5), math.floor(g * 255 + 0.5),
+                                                math.floor(b * 255 + 0.5))
+    for _, fn in ipairs(accentListeners) do fn() end
+end
+
 function ns.FillDefaults(o, all)
     for key, value in pairs(ns.OPTION_DEFAULTS) do
         if type(value) == "table" then
@@ -2270,6 +2326,7 @@ function handlers.ADDON_LOADED(name)
     -- the options no longer offer: it reads as 12g.
     if not db.options.showSilver then db.options.showCopper = false end
     ns.db = db
+    ns.ApplyAccent()
 end
 
 -- Once, when the version that keeps your side arrives: each player's total
@@ -2320,6 +2377,7 @@ function handlers.PLAYER_LOGIN()
     PLAYER_NAME = GetUnitName("player", true) or UnitName("player")
     ns.playerName = PLAYER_NAME
     PLAYER_CLASS = select(2, UnitClass("player"))
+    ns.ApplyAccent() -- the class is known by now, should the accent be its colour
     if ns.ApplyScale then ns.ApplyScale() end -- the windows' size, from the options
     if (ns.unread or 0) > 0 then
         Print(("%d saved %s could not be read. Nothing was deleted: they are kept aside in the saved file.")

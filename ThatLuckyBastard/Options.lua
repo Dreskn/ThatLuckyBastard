@@ -7,7 +7,7 @@ local _, ns = ...
 -- so that nothing moves as you click.
 
 local GOLD = { 1.00, 0.82, 0.00 }
-local WIDTH, HEIGHT = 590, 550
+local WIDTH, HEIGHT = 590, 630
 local SIDEBAR_W = 140
 local ROW_H = 22
 local COL_W = 200 -- width of a column in two-column groups
@@ -29,6 +29,7 @@ local live = {} -- texts that follow the saved data, rewritten on every sync
 local currentPage = 1
 local flat = false
 local scaleSlider, scaleLabel
+local hueSliders, swatch = {}, nil -- the accent's three values, and the colour they make
 local Sync
 
 local function Opt() return ns.db.options end
@@ -198,21 +199,72 @@ do
             function() ns.db.theme = t[2] end,
         }
     end
-    Group(p, defs, 3, true, 130)
+    -- Beside the themes, a mode that goes with any of them: a small
+    -- window with a card per player (picture, name, award, total).
+    local function Columns() return Opt().useColumns end
+    local function Full() return not (Opt().useColumns and Opt().mini) end
+    MakeCheck(p, 300, "Mini", function() return Opt().mini end, function(on) Opt().mini = on end, false, Columns)
+    Group(p, defs, 3, true, 100)
+
+    -- A slider drawn by the panel, restyled per theme like its checkboxes.
+    local function Slider(width, x, y)
+        local s = CreateFrame("Slider", nil, p)
+        s:SetOrientation("HORIZONTAL")
+        s:EnableMouse(true)
+        s:SetSize(width, 16)
+        s:SetPoint("TOPLEFT", x, y)
+        s.track = s:CreateTexture(nil, "BACKGROUND")
+        s.track:SetPoint("LEFT")
+        s.track:SetPoint("RIGHT")
+        s.track:SetHeight(4)
+        s:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
+        return s
+    end
+
+    -- The Modern theme's accent colour: a few to pick from, the player's
+    -- class colour, or their own, as three values from 0 to 255. The other
+    -- themes have their colours, so it is greyed out in them.
+    Section(p, "Color")
+    local function Modern() return (ns.db.theme or "modern") == "modern" end
+    local hues = {}
+    for i, hue in ipairs({ { "Teal", "teal" }, { "Class", "class" }, { "Amber", "amber" }, { "Light", "light" },
+                           { "Dark", "dark" } }) do
+        hues[i] = { hue[1], function() return Opt().accent == hue[2] end, function() Opt().accent = hue[2] end, Modern }
+    end
+    Group(p, hues, 5, true, 70)
+    MakeCheck(p, 0, "Custom", function() return Opt().accent == "custom" end, function() Opt().accent = "custom" end,
+              true, Modern)
+    for i, letter in ipairs({ "R", "G", "B" }) do
+        local x = 80 + (i - 1) * 98
+        local s = Slider(70, x + 14, p.y - 3)
+        s.channel = i
+        s.label = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        s.label:SetPoint("TOPLEFT", x, p.y - 5)
+        s.label:SetText(letter)
+        s:SetMinMaxValues(0, 255)
+        s:SetValueStep(1)
+        if s.SetObeyStepOnDrag then s:SetObeyStepOnDrag(true) end
+        s:SetScript("OnValueChanged", function(_, value)
+            if not ns.db then return end
+            value = math.floor(value + 0.5)
+            local custom = Opt().accentCustom
+            -- Only a value that is new: Sync sets the sliders too.
+            if math.floor((custom[i] or 0) * 255 + 0.5) ~= value then
+                custom[i] = value / 255
+                Sync()
+            end
+        end)
+        hueSliders[i] = s
+    end
+    swatch = p:CreateTexture(nil, "ARTWORK")
+    swatch:SetSize(16, 16)
+    swatch:SetPoint("TOPLEFT", 80 + 3 * 98, p.y - 3)
+    p.y = p.y - 26
 
     Section(p, "Size")
     scaleLabel = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
     scaleLabel:SetPoint("TOPLEFT", 4, p.y - 2)
-    local s = CreateFrame("Slider", nil, p)
-    s:SetOrientation("HORIZONTAL")
-    s:EnableMouse(true)
-    s:SetSize(220, 16)
-    s:SetPoint("TOPLEFT", 90, p.y)
-    s.track = s:CreateTexture(nil, "BACKGROUND")
-    s.track:SetPoint("LEFT")
-    s.track:SetPoint("RIGHT")
-    s.track:SetHeight(4)
-    s:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
+    local s = Slider(220, 90, p.y)
     s:SetMinMaxValues(0.6, 1.6)
     s:SetValueStep(0.05)
     if s.SetObeyStepOnDrag then s:SetObeyStepOnDrag(true) end
@@ -230,16 +282,16 @@ do
 
     Section(p, "Layout")
     Choices(p, "useColumns", { { "One column per player, up to 5", true }, { "Always a list", false } }, 2)
+    -- What is about the loot under the players does nothing in mini mode.
     Toggles(p, {
-        { "Group items by category", "groupByCategory" },
-        { "Line up the same item across columns", "alignItems", function() return Opt().useColumns end },
+        { "Group items by category", "groupByCategory", Full },
+        { "Line up the same item across columns", "alignItems", function() return Opt().useColumns and Full() end },
     })
     RowLabel(p, "Order items by")
     Choices(p, "sortItems", { { "Value", "value" }, { "Name", "name" } }, 2, 90, 110)
     -- Past five players, the others follow the columns on a bench: what
     -- each of them shows there besides their name.
     RowLabel(p, "On the bench")
-    local function Columns() return Opt().useColumns end
     local function Bench(label, key)
         return { label, function() return Opt()[key] end, function(on) Opt()[key] = on end, Columns }
     end
@@ -248,11 +300,11 @@ do
 
     Section(p, "Show")
     Toggles(p, {
-        { "Item icons", "showIcons", function() return ns.db.theme ~= "receipt" end }, -- a receipt prints none
-        { "Each share, and its gap to an equal split", "showShare" },
-        { "Share bar", "showBar", function() return ns.db.theme ~= "classic" end },
-        { "Run total and equal split", "showTotals" },
-        { "Run time, records and averages", "showInsights" },
+        { "Item icons", "showIcons", function() return ns.db.theme ~= "receipt" and Full() end }, -- a receipt prints none
+        { "Each share, and its gap to an equal split", "showShare", Full },
+        { "Share bar", "showBar", function() return ns.db.theme ~= "classic" and Full() end },
+        { "Run total and equal split", "showTotals", Full },
+        { "Run time, records and averages", "showInsights", Full },
     })
 
     -- Two saved switches, offered as the three ways they can combine.
@@ -319,7 +371,9 @@ do
         { "Current auction prices", function() return Opt().priceTime == "now" end,
           function() Opt().priceTime = "now" end, Auction },
     }, 2, true)
-    Toggles(p, { { "Vendor totals too", "showVendor", function() return Opt().valueMode ~= "vendor" end } })
+    Toggles(p, { { "Vendor totals too", "showVendor", function()
+        return Opt().valueMode ~= "vendor" and not (Opt().useColumns and Opt().mini) -- mini mode shows one total
+    end } })
     local source = Hint(p, "")
     live[#live + 1] = function()
         local name = ns.PriceSourceName()
@@ -372,14 +426,14 @@ do
     -- the columns, in podium order. Without the race, the awards come up
     -- one by one.
     Section(p, "The reveal")
-    local function CanRace() return Opt().useColumns and Opt().sortPlayers == "podium" end
+    local function CanRace() return Opt().useColumns and not Opt().mini and Opt().sortPlayers == "podium" end
     local function Reveals() return (Opt().race and CanRace()) or Opt().showAwards or false end
     Toggles(p, {
         { "Race", "race", CanRace },
         { "Sounds", "ceremonySound", Reveals },
         { "Screenshot at the end", "ceremonyScreenshot", Reveals },
     })
-    Hint(p, "Race: every total counts up, and the last one still counting wins. In podium order.")
+    Hint(p, "Race: a bar grows for each player and stops at their total. The last one growing wins. In podium order.")
 
     Section(p, "Also")
     Toggles(p, {
@@ -682,22 +736,26 @@ local function ApplyTheme()
     end
     for _, b in ipairs(checks) do StyleCheck(b) end
 
-    if flat then
-        scaleSlider:SetThumbTexture("Interface\\Buttons\\WHITE8x8")
-        local thumb = scaleSlider:GetThumbTexture()
-        thumb:SetSize(8, 16)
-        thumb:SetVertexColor(hue[1], hue[2], hue[3])
-        scaleSlider.track:SetColorTexture(1, 1, 1, 0.12)
-    else
-        scaleSlider:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
-        local thumb = scaleSlider:GetThumbTexture()
-        thumb:SetSize(32, 32)
-        thumb:SetVertexColor(1, 1, 1)
-        scaleSlider.track:SetColorTexture(1, 1, 1, 0.20)
+    for _, s in ipairs({ scaleSlider, hueSliders[1], hueSliders[2], hueSliders[3] }) do
+        if flat then
+            s:SetThumbTexture("Interface\\Buttons\\WHITE8x8")
+            local thumb = s:GetThumbTexture()
+            thumb:SetSize(8, 16)
+            thumb:SetVertexColor(hue[1], hue[2], hue[3])
+            s.track:SetColorTexture(1, 1, 1, 0.12)
+        else
+            s:SetThumbTexture("Interface\\Buttons\\UI-SliderBar-Button-Horizontal")
+            local thumb = s:GetThumbTexture()
+            thumb:SetSize(32, 32)
+            thumb:SetVertexColor(1, 1, 1)
+            s.track:SetColorTexture(1, 1, 1, 0.20)
+        end
     end
 end
 
 function Sync()
+    ns.ApplyAccent() -- the accent, or the theme it belongs to, may be what was just chosen
+    title:SetText(ns.Title("Options"))
     ApplyTheme()
     for _, b in ipairs(checks) do
         local on = true
@@ -707,6 +765,17 @@ function Sync()
         b.tick:SetShown(b.get() and true or false)
     end
     for _, fn in ipairs(live) do fn() end
+    -- The accent's own three values count while Custom is the choice.
+    local custom = Opt().accentCustom
+    local own = (ns.db.theme or "modern") == "modern" and Opt().accent == "custom"
+    for i, s in ipairs(hueSliders) do
+        s:SetValue(math.floor((custom[i] or 0) * 255 + 0.5))
+        s:EnableMouse(own)
+        s:SetAlpha(own and 1 or 0.4)
+        s.label:SetAlpha(own and 1 or 0.4)
+    end
+    swatch:SetColorTexture(custom[1] or 0, custom[2] or 0, custom[3] or 0, 1)
+    swatch:SetAlpha(own and 1 or 0.4)
     local scale = Opt().scale or 1
     scaleSlider:SetValue(scale)
     scaleLabel:SetText(("Scale: %d%%"):format(scale * 100 + 0.5))

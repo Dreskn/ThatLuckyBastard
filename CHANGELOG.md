@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **Mini mode.** A new box beside the themes, under Options › Window, for a small window: one card per player with their picture, name, award and total, and nothing else. No loot, no footer, and a single button, the cogwheel beside the cross; the window is exactly as big as its cards (about 570 by 150 for five players) in every theme. Past five players, an arrow after the top five counts the others and shows the run as a list in the full window, where Columns leads back.
+- **Your own accent colour.** A Color section under the themes, in Options › Window, changes the Modern theme's teal: pick Class (your class colour), Amber, Light or Dark, or choose Custom and set red, green and blue yourself. It tints the title bars, the middle word of the titles, the marks under selected buttons, the arrows and what lights up under the mouse. The other themes keep their own colours.
+- **Options is a cogwheel.** It stands where the Options button was, at the foot of the window; the mini window has it beside its cross.
+- **The race is run with bars.** A bar grows under each player, all at the same speed, and stops at that player's total, which is shown at that moment: no more numbers spinning. The bench stays out of sight until it is over.
+
 ## 0.5.5
 
 - **The race replaces the Podium window.** When you leave a run, its columns race for their places: every total counts up at the same speed, the smallest stops first, and the last one still counting has won. The columns then move to their places and the loot, shares and awards appear. It takes about five seconds and a click skips it; `/tlb race` plays it again for the run on show. It needs the columns in podium order (the default) and can be switched off under Options › End of run. The Podium window, its button and `/tlb podium` are gone: its characters could only be shown in the moment before the group broke up. If the Podium was all you had open at the end of a run, the breakdown now opens in its place.

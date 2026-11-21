@@ -302,7 +302,7 @@ local function Linkify(_, event, msg, author, ...)
     -- In a whisper you sent, `author` is who it went to; the run is yours.
     local from = event == "CHAT_MSG_WHISPER_INFORM" and ns.playerName or author
     local out = msg:gsub(TAG_PATTERN, function(name, id)
-        return ("|Haddon:%s:run:%s:%s|h%s[%s: %s]|r|h"):format(ADDON, id, from, ns.ACCENT_HEX, TAG, name)
+        return ("|Haddon:%s:run:%s:%s|h%s[%s: %s]|r|h"):format(ADDON, id, from, ns.TEAL_HEX, TAG, name)
     end)
     if out == msg then return false end
     return false, out, author, ...
@@ -805,6 +805,7 @@ local ROW_H = 18
 local imp, iui, ititle, iskins = ns.MakeWindow("ThatLuckyBastardImportFrame", IMPORT_W, IMPORT_H, "HIGH", true)
 imp:SetPoint("CENTER", 0, 40)
 ititle:SetText(ns.Title("Shared runs"))
+ns.OnAccent(function() ititle:SetText(ns.Title("Shared runs")) end)
 
 local pasteHint = iui:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 pasteHint:SetJustifyH("LEFT")

@@ -56,9 +56,14 @@ end
 local function Col(name)
     for i, w in ipairs(Cols()) do
         if w.hover.p.name == name then
-            return { at = i, x = w.__points[1][2], drop = -w.__points[1][3], h = w.__h, total = Plain(w.market.__text),
+            return { at = i, x = w.__points[1][2], drop = -w.__points[1][3], h = w.__h,
+                     total = w.market:GetAlpha() == 0 and "" or Plain(w.market.__text),
                      place = w.rank:GetAlpha(), loot = w.rows[1]:GetAlpha(), share = w.share:GetAlpha(),
                      tint = w.bg.__color[4],
+                     bar = w.raceBar and w.raceBar:IsShown() and w.raceBar.__h or 0,
+                     barAlpha = w.raceBar and w.raceBar:GetAlpha() or 0,
+                     -- how far under the top of the column its bar stands
+                     barTop = w.raceBar and w.raceBar.__points[1] and -w.raceBar.__points[1][5] or 0,
                      award = w.awardFrame and w.awardFrame:GetAlpha() or nil }
         end
     end
@@ -81,6 +86,8 @@ local function Racing() return curtain:IsShown() end
 -- the clock counts in billions of seconds, and is not exact to the last
 -- digit.)
 local began
+local HOLD, COUNT, PAUSE, WALK, FADE = 0.3, 3.4, 0.3, 0.6, 0.4 -- the race's five parts, in seconds
+local TOTAL = HOLD + COUNT + PAUSE + WALK + FADE
 local function At(t)
     if not began then
         began = NOW
@@ -131,56 +138,68 @@ Leave()
 check(main:IsShown() and Racing(), "leaving the run opens the breakdown, with the race on")
 check(Order() == "Borin Juno Kett Mira Sela", "the columns start side by side in name order (" .. Order() .. ")")
 local me, borin, juno = Col("Mira Vale"), Col("Borin Oak"), Col("Juno Ash")
-check(me.total == "-" and borin.total == "-" and me.drop == 0 and borin.drop == 0 and me.h == borin.h,
-      "level with one another, every total at nothing")
+check(me.total == "" and borin.total == "" and juno.total == "" and me.drop == 0 and borin.drop == 0 and me.h == borin.h,
+      "level with one another, no total showing")
 check(me.place == 0 and juno.place == 0 and me.loot == 0 and me.share == 0 and (me.award or 0) == 0,
       "with no place, no loot, no share and no award to give the result away")
 check(me.tint == borin.tint and me.tint == juno.tint and me.tint > 0, "and no column brighter than another")
+check(me.bar == 0 and borin.bar == 0, "no bar yet")
 local racingTint = borin.tint
 
 print("-- the count")
-At(0.2)
-check(Col("Juno Ash").place == 0 and Col("Mira Vale").total == "-", "a beat before anything moves")
-At(0.3 + 3.4 * 0.501) -- half of the count: 2g 50s
+At(HOLD / 2)
+check(Col("Juno Ash").place == 0 and Col("Juno Ash").total == "" and Col("Mira Vale").bar == 0, "a beat before anything moves")
+At(HOLD + COUNT * 0.501) -- half of the count: 2g 50s
 me, borin = Col("Mira Vale"), Col("Borin Oak")
 local sela, kett = Col("Sela Marrow"), Col("Kett Longstride")
 juno = Col("Juno Ash")
-check(me.total == Gold(25000) and borin.total == Gold(25000), "the two biggest are level, still counting (" .. me.total .. ")")
-check(sela.total == Gold(20000) and kett.total == Gold(10000) and juno.total == "-", "the others have stopped at theirs")
+check(me.total == "" and borin.total == "", "the two biggest are still growing: their totals are not shown")
+check(sela.total == Gold(20000) and kett.total == Gold(10000) and juno.total == "-",
+      "the others have stopped, and show theirs (" .. sela.total .. ", " .. kett.total .. ")")
 check(sela.place == 1 and kett.place == 1 and juno.place == 1 and me.place == 0 and borin.place == 0,
       "a column that has stopped has its place; one still counting has none")
 check(Order() == "Borin Juno Kett Mira Sela" and me.loot == 0, "nobody has moved, and no loot shows")
-At(0.3 + 3.4 * 0.901) -- 4g 50s
+check(me.bar > 0 and me.bar == borin.bar and math.abs(sela.bar / me.bar - 20000 / 25050) < 0.001
+      and math.abs(kett.bar / sela.bar - 0.5) < 0.001 and juno.bar == 0,
+      "under each total a bar as tall as the total is big: level for the two still counting, none for nothing")
+At(HOLD + COUNT * 0.901) -- 4g 50s
 me, borin = Col("Mira Vale"), Col("Borin Oak")
-check(borin.total == Gold(40000) and borin.place == 1 and me.total == Gold(45000) and me.place == 0,
+check(borin.total == Gold(40000) and borin.place == 1 and me.total == "" and me.place == 0,
       "the second stops at 4g; the last one still counting is the winner")
 check(sounds == 4, "each of the four who stopped ticked (" .. sounds .. ")")
-At(0.3 + 3.4 + 0.01)
+At(HOLD + COUNT + 0.01)
 me = Col("Mira Vale")
 check(me.total == Gold(50000) and me.place == 1 and sounds == 5, "the count ends on the winner's 5g, with the fanfare")
+borin = Col("Borin Oak")
+check(me.bar >= 138 and math.abs(borin.bar / me.bar - 0.8) < 0.001 and me.barAlpha == 1,
+      ("the winner's bar is the tallest, with room to be seen (%d), and 4g stands at four fifths of it"):format(me.bar))
+check(me.h == borin.h and me.h >= me.bar + 150 and me.barTop == me.h - 6,
+      "the columns stand level, each as tall as its head and its bar, the bar standing on its foot")
 
 print("-- the walk to the podium")
-At(0.3 + 3.4 + 0.29)
+At(HOLD + COUNT + PAUSE - 0.01)
 check(Order() == "Borin Juno Kett Mira Sela" and Col("Mira Vale").drop == 0, "a beat on the result")
 local pitch = Col("Juno Ash").x - Col("Borin Oak").x
-At(0.3 + 3.4 + 0.3 + 0.3)
+At(HOLD + COUNT + PAUSE + WALK / 2)
 me, kett = Col("Mira Vale"), Col("Kett Longstride")
 check(math.abs(me.x - 2.5 * pitch) < 0.001 and math.abs(kett.x - 1 * pitch) < 0.001,
       "half way, each column is half way to its place")
-At(0.3 + 3.4 + 0.3 + 0.6 + 0.001)
+check(math.abs(me.barAlpha - 0.5) < 0.001 and me.bar > 0, "and the bars are half gone")
+At(HOLD + COUNT + PAUSE + WALK + 0.001)
 me, borin, kett = Col("Mira Vale"), Col("Borin Oak"), Col("Kett Longstride")
 check(Order() == "Kett Borin Mira Sela Juno", "they end in podium order: the winner in the middle (" .. Order() .. ")")
 check(me.drop == 0 and borin.drop == 14 and kett.drop == 42 and me.h - borin.h == 14,
       "stepping down by place, their feet level")
 check(me.loot < 0.01 and Racing(), "the loot has yet to show")
+check(me.bar == 0 and borin.bar == 0, "the bars are gone")
 
 print("-- the rest fades in")
-At(0.3 + 3.4 + 0.3 + 0.6 + 0.2)
+At(HOLD + COUNT + PAUSE + WALK + FADE / 2)
 me = Col("Mira Vale")
 check(math.abs(me.loot - 0.5) < 0.001 and math.abs(me.share - 0.5) < 0.001 and me.loot == me.share,
       "half way through, at half strength")
 o.ceremonyScreenshot = true
-At(5.0)
+At(TOTAL)
 me = Col("Mira Vale")
 check(not Racing() and me.loot == 1 and me.share == 1 and me.place == 1 and me.total == Gold(50000)
       and (me.award or 1) == 1, "after five seconds the run is shown as it is")
@@ -189,7 +208,7 @@ check(math.abs(me.tint - Col("Borin Oak").tint - 0.04) < 0.0001, "the winner's c
 check(Col("Borin Oak").tint == racingTint, "and the others as bright as they were during it")
 RunTimers()
 check(shots == 1, "and its photo is taken, when the option asks for one")
-NOW = began + 9
+NOW = began + TOTAL + 4
 driver.__scripts.OnUpdate(driver, 0.01)
 check(not Racing() and shots == 1, "it is run once")
 o.ceremonyScreenshot = false
@@ -205,15 +224,16 @@ curtain.__scripts.OnClick(curtain, "LeftButton")
 me = Col("Mira Vale")
 check(not Racing() and me.loot == 1 and me.total == Gold(50000) and Order() == "Kett Borin Mira Sela Juno",
       "a click on the columns shows the run as it is")
+check(me.bar == 0 and Col("Borin Oak").bar == 0, "with no bar left standing")
 check(sounds == 0, "without the fanfare")
 
 print("-- what the window does meanwhile")
 began = nil
 ns.ShowWindow(true, s)
-At(2)
+At(HOLD + COUNT * 0.501)
 ns.Rerender() -- an option changed, say
 me = Col("Mira Vale")
-check(Racing() and me.total == Gold(25000) and me.loot == 0 and Order() == "Borin Juno Kett Mira Sela",
+check(Racing() and me.total == "" and me.bar > 0 and me.bar < 138 and me.loot == 0 and Order() == "Borin Juno Kett Mira Sela",
       "a redraw in the middle of the race leaves it where it was")
 o.useColumns = false
 ns.Rerender()
@@ -235,11 +255,12 @@ main:Hide()
 began = nil
 ns.ShowWindow(true, s)
 NOW = NOW + 3 -- three seconds pass before the first frame is drawn
-At(0.2)
-check(Racing() and Col("Juno Ash").place == 0 and Col("Mira Vale").total == "-",
+At(HOLD / 2)
+check(Racing() and Col("Juno Ash").place == 0 and Col("Mira Vale").bar == 0,
       "time that passes before the first frame is not the race's: it starts from nothing")
-At(0.3 + 3.4 * 0.501)
-check(Col("Mira Vale").total == Gold(25000) and Col("Sela Marrow").place == 1, "and is half way when half its own time has passed")
+At(HOLD + COUNT * 0.501)
+check(Col("Mira Vale").bar > 60 and Col("Mira Vale").bar < 78 and Col("Sela Marrow").place == 1,
+      "and is half way when half its own time has passed")
 curtain.__scripts.OnClick(curtain, "LeftButton")
 NOW = math.floor(NOW) + 1
 
@@ -247,7 +268,7 @@ print("-- played again on request")
 main:Hide()
 began = nil
 local said = Printed(function() SlashCmdList.THATLUCKYBASTARD("race") end)
-check(main:IsShown() and Racing() and Col("Mira Vale").total == "-" and said == "",
+check(main:IsShown() and Racing() and Col("Mira Vale").total == "" and said == "",
       "/tlb race plays it again for the run on show")
 curtain.__scripts.OnClick(curtain, "LeftButton")
 o.race = false
@@ -303,7 +324,7 @@ check(not main:IsShown() and not Racing(), "with the breakdown switched off, lea
 began = nil
 ns.ToggleWindow()
 check(main:IsShown() and Racing(), "the race is run the first time the window is opened on that run")
-At(5.1)
+At(TOTAL + 0.1)
 check(not Racing(), "to its end")
 ns.ToggleWindow()
 ns.ToggleWindow()
@@ -369,13 +390,36 @@ Loot(("%s receives loot: %s."):format("Juno Ash", one))
 RunTimers()
 began = nil
 Leave()
-local seats = 0
-for _, w in ipairs(FRAMES) do
-    if rawget(w, "bench") and w:IsShown() and w:GetAlpha() == 1 then seats = seats + 1 end
+local function Seats(alpha)
+    local seats = 0
+    for _, w in ipairs(FRAMES) do
+        if rawget(w, "bench") and w:IsShown() and w:GetAlpha() == alpha then seats = seats + 1 end
+    end
+    return seats
 end
-check(Racing() and #Cols() == 5 and seats == 1, "the top five race; the sixth is on the bench from the start")
-At(5.1)
-check(not Racing() and #Cols() == 5, "and the race ends as with five")
+check(Racing() and #Cols() == 5 and Seats(0) == 1 and Seats(1) == 0,
+      "the top five race; the sixth, on the bench, is out of sight while they stand tall")
+At(TOTAL + 0.1)
+check(not Racing() and #Cols() == 5 and Seats(1) == 1, "the race ends as with five, and the bench is back")
+Reset()
+
+print("-- a column much longer than the window")
+for id = 300, 329 do ITEMS[id] = { 2, 1000, 4, 1 } end
+WORLD.party = Party("Borin Oak", "Sela Marrow")
+s = Enter(9111, "Long Keep")
+NOW = NOW + 600
+for id = 300, 329 do Loot(("You receive loot: %s."):format(ItemLink(id, "Thing " .. id, 2))) end
+Loot(("%s receives loot: %s."):format("Borin Oak", four))
+RunTimers()
+began = nil
+Leave()
+At(HOLD + COUNT * 0.501)
+me, borin = Col("Mira Vale"), Col("Borin Oak")
+check(Racing() and me.bar > 0 and me.h < 400 and me.barTop == me.h - 6,
+      ("thirty lines of loot to come: the column races short (%d), its bar in sight under its head"):format(me.h))
+At(TOTAL + 0.1)
+check(not Racing() and Col("Mira Vale").h > 600 and Col("Mira Vale").bar == 0,
+      ("and has its own length once the race is over (%d)"):format(Col("Mira Vale").h))
 Reset()
 
 print("-- on receipts")
@@ -384,11 +428,11 @@ s = Run(9106, "Paper Keep")
 began = nil
 Leave()
 me, juno = Col("Mira Vale"), Col("Juno Ash")
-check(Racing() and me.h == juno.h and me.total == "-", "receipts race at one length, so that a long one says nothing")
-At(0.3 + 3.4 + 0.3 + 0.6 + 0.001)
+check(Racing() and me.h == juno.h and me.total == "", "receipts race at one length, so that a long one says nothing")
+At(HOLD + COUNT + PAUSE + WALK + 0.001)
 me, juno = Col("Mira Vale"), Col("Juno Ash")
 check(me.h > juno.h and me.drop == 0 and juno.drop == 0, "in place, each is torn off at its own; receipts do not step down")
-At(5.1)
+At(TOTAL + 0.1)
 check(not Racing() and Col("Mira Vale").total == Gold(50000), "and the run is shown as it is")
 ns.SetTheme("modern")
 Reset()

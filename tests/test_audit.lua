@@ -347,9 +347,15 @@ local function mainButton(label)
     end
 end
 local function anchor(w) return w and w.__points and w.__points[1] or {} end
-local stats, options = mainButton("Statistics"), mainButton("Options")
-check(stats and anchor(stats)[1] == "RIGHT" and anchor(stats)[2] == options and anchor(stats)[3] == "LEFT",
-      "Statistics sits at the bottom, beside Options: what is about all your runs")
+-- The cogwheel that opens the options, where the Options button was.
+local stats, cog = mainButton("Statistics"), nil
+for _, w in ipairs(FRAMES) do
+    if rawget(w, "cog") == true then cog = w end
+end
+check(stats and cog and anchor(stats)[1] == "BOTTOMRIGHT" and anchor(cog)[1] == "BOTTOMRIGHT"
+      and anchor(stats)[2] == anchor(cog)[2] - cog.__w - 4 and anchor(stats)[3] == anchor(cog)[3],
+      "Statistics sits at the bottom, beside the cogwheel of the options: what is about all your runs")
+check(mainButton("Options") == nil, "the cogwheel has taken the Options button's place")
 local expand, bingo, analysis = mainButton("Expand all"), mainButton("Bingo"), mainButton("Analysis")
 check(expand and (anchor(expand)[2] == bingo or anchor(expand)[2] == analysis)
       and anchor(bingo)[2] == analysis,
