@@ -50,7 +50,7 @@ ns.OPTION_DEFAULTS = {
     showIcons = true,    -- item icons
     showBar = true,      -- share bar (Modern theme)
     showTotals = true,   -- total / equal split line
-    showAwards = true,   -- end-of-run awards (Ninja, Luckiest, Jackpot, ...)
+    showAwards = true,   -- end-of-run awards (Jackpot, Hoarder, Ninja, ...)
     showInsights = true, -- run time, dungeon records and comparison with your average
     ceremonySound = true,       -- sounds while the awards are revealed
     ceremonyScreenshot = false, -- take a screenshot once they are all shown
@@ -98,6 +98,14 @@ ns.OPTION_DEFAULTS = {
     askNewRun = true,       -- ask "new run?" when arriving back in the current run's dungeon
     maxHistory = 300,
     familiar = true,        -- notice when someone you have run with joins your group
+    -- The meter (Meter.lua): what its rows show besides the bar, the name
+    -- and the total; and whether it opens by itself as a run starts (or
+    -- you go back in) and shuts as you leave.
+    meterRank = true,
+    meterShare = true,
+    meterAward = true,
+    meterOpen = false,
+    meterClose = false,
     tipPlayers = true,      -- a line about people you have run with, in their tooltip
     tipItems = true,        -- a line about items seen in your runs, in their tooltip
     -- The kinds of item that get that line (the window's categories).
@@ -675,6 +683,7 @@ local function NewSession(name, instanceID, manual)
     ns.fresh = nil -- a run that ended unseen is old news now (see ShowRunEnd)
     UpdateRoster()
     if ns.BingoCheck then ns.BingoCheck() end -- deals the run's bingo card
+    if ns.MeterAuto then ns.MeterAuto("start") end
 end
 
 local function CoinText(copper)
@@ -743,13 +752,15 @@ end
 
 -- Back inside the dungeon of the current run.
 local function Continue(s)
-    if s.leftAt then
+    local back = s.leftAt ~= nil
+    if back then
         s.summarized = nil
         s.enteredAt = time()
     end
     s.leftAt, s.leftDead = nil, nil
     if ns.fresh == s then ns.fresh = nil end -- back inside: its end is still to come
     UpdateRoster()
+    if back and ns.MeterAuto then ns.MeterAuto("start") end -- going back in is the run starting again
 end
 
 -- What the player sees when they leave a run alive: the window, with
@@ -759,6 +770,7 @@ end
 -- the window again, but the notice only the first time.
 local function ShowRunEnd(s)
     ns.fresh = s
+    if ns.MeterAuto then ns.MeterAuto("leave") end
     if db.options.popupLeave then ns.ShowWindow(true, s) else ns.Refresh() end
     if not s.streakShown then
         pcall(ns.StreakNotice, s)
@@ -1241,11 +1253,8 @@ end
 -- by the award's weight, and the best fits are served first: an award
 -- goes to one player in a party and to two or three in a bigger group
 -- (see Holders), so the others move on to their next best. Anyone left
--- without one is a Tourist.
---
--- Ninja and Luckiest weigh more than the rest, so they usually win when
--- someone earns them, but a more striking award can still take their
--- place.
+-- without one is a Tourist. Every award weighs the same: the most
+-- striking fit wins, whichever award it is.
 --
 -- fit(p, x, g) returns the fit, or nil when the player does not qualify.
 --   p  the player's summary (see Summarize)
@@ -1388,7 +1397,7 @@ end
 local AWARDS = {
     -- Bound gear counts at vendor price, so Ninja mostly reflects needing
     -- things that can be sold.
-    { key = "ninja", title = "Ninja", icon = "Ability_Stealth", weight = 1.5,
+    { key = "ninja", title = "Ninja", icon = "Ability_Stealth",
       how = "Won the most value on Need rolls: at least 1g and a tenth of the run's loot.",
       fit = function(p, _, g)
           if p.needValue < g.need or p.needValue < NINJA_MIN then return end
@@ -1397,7 +1406,7 @@ local AWARDS = {
       detail = function(p, _, g)
           return { text = Nth(Standing(g.board.need, p.needValue), "value won on Need rolls"), amount = p.needValue }
       end },
-    { key = "lucky", title = "Luckiest", icon = "INV_Misc_Coin_02", weight = 1.5,
+    { key = "lucky", title = "Luckiest", icon = "INV_Misc_Coin_02",
       how = "Won the most on Greed rolls, clearly more than an even split of the rolled loot.",
       fit = function(p, _, g)
           if p.greedValue <= 0 or p.greedValue < g.greed then return end
@@ -1744,6 +1753,45 @@ function ns.AwardGuide()
     return list
 end
 
+-- An award's title by its key ("Hoarder" for "hoarder"), nil for a key
+-- no award has.
+do
+    local titles
+    function ns.AwardTitle(key)
+        if not titles then
+            titles = {}
+            for _, def in ipairs(ns.AwardGuide()) do titles[def.key] = def.title end
+        end
+        return titles[key]
+    end
+end
+
+-- A player's awards in your runs, the most frequent first (on a tie, the
+-- one they had last, then by title): up to `n` of { key, title, count }.
+-- `who` is their entry in db.people.
+function ns.TopAwards(who, n)
+    local list = {}
+    for key, count in pairs(who and who.awards or {}) do
+        local title = ns.AwardTitle(key)
+        if title and count > 0 then list[#list + 1] = { key = key, title = title, count = count } end
+    end
+    local last = who and who.lastAward
+    table.sort(list, function(a, b)
+        if a.count ~= b.count then return a.count > b.count end
+        if (a.key == last) ~= (b.key == last) then return a.key == last end
+        return a.title < b.title
+    end)
+    for i = #list, (n or #list) + 1, -1 do list[i] = nil end
+    return list
+end
+
+-- The same as text: "Hoarder x4, Jackpot x2". Nil when there are none.
+function ns.AwardsText(who, n)
+    local parts = {}
+    for i, a in ipairs(ns.TopAwards(who, n)) do parts[i] = ("%s x%d"):format(a.title, a.count) end
+    return #parts > 0 and table.concat(parts, ", ") or nil
+end
+
 -- The figures behind the moments and the consolation prizes, from the
 -- roll log, the pickup log and the items. Adds to each player's roll
 -- figures `x`:
@@ -2079,6 +2127,7 @@ function ns.Awards(s, sum)
                 got.n, got.fit, got.market, got.place = got.n + 1, f.fit, p.market, place
                 local award = def.detail(p, extra[p.name], g, f.data)
                 award.key, award.icon, award.how, award.place = def.key, def.icon, def.how, place
+                award.fit = f.fit -- how far from normal it was: the Front page leads with the most
                 award.title = def.title .. (NUMERALS[place] or "")
                 out[p.name] = award
                 if f.slot and g.holders == 1 then slotted[def.key] = true end
@@ -2105,8 +2154,10 @@ end
 --
 -- db.people[name] keeps, per player you have run with: runs together,
 -- their total loot value (`value`) and yours in the same runs (`mine`),
--- and how often they were Luckiest or Ninja. `mine` is nil for a player
--- whose runs with you were all deleted before it was kept.
+-- and how often they had each award (`awards`, by key: every award
+-- alike, numbered or not, Tourist too), the latest in `lastAward`.
+-- `mine` is nil for a player whose runs with you were all deleted before
+-- it was kept.
 --
 -- Both are updated once per run, when it is closed (CommitRun). A run
 -- that is over but not closed yet is compared against them on the fly.
@@ -2147,7 +2198,7 @@ function CommitRun(s)
         if p.name ~= ns.Me(s) then
             local who = db.people[p.name]
             if not who then
-                who = { runs = 0, value = 0, mine = 0, lucky = 0, ninja = 0 }
+                who = { runs = 0, value = 0, mine = 0, awards = {} }
                 db.people[p.name] = who
             elseif who.mine == nil then
                 -- Your side of their earlier runs is unknown: both totals
@@ -2160,9 +2211,11 @@ function CommitRun(s)
             who.class = p.class or who.class
             who.last = s.startedAt
             local a = awards[p.name]
-            -- The Ninja and the Luckiest of the run, not a "Ninja II".
-            if a and a.key == "lucky" and a.place == 1 then who.lucky = who.lucky + 1 end
-            if a and a.key == "ninja" and a.place == 1 then who.ninja = who.ninja + 1 end
+            if a then
+                who.awards = who.awards or {}
+                who.awards[a.key] = (who.awards[a.key] or 0) + 1
+                who.lastAward = a.key
+            end
         end
     end
 
@@ -2333,7 +2386,7 @@ end
 -- and yours are worked out again from the runs still kept, so that both
 -- cover the same runs. Runs deleted earlier cannot be counted; a player
 -- whose runs with you are all gone keeps their figures, with yours
--- unknown. Luckiest and Ninja counts stay as they were.
+-- unknown. Award counts stay as they were.
 local function RebuildRegulars()
     if db.regularsBoth then return end
     db.regularsBoth = true
@@ -2362,11 +2415,47 @@ local function RebuildRegulars()
     for name, t in pairs(tally) do
         local who = db.people[name]
         if not who then
-            who = { lucky = 0, ninja = 0 }
+            who = { awards = {} }
             db.people[name] = who
         end
         who.runs, who.value, who.mine, who.last = t.runs, t.value, t.mine, t.last
         who.class = t.class or who.class
+    end
+end
+
+-- Once, when the version that counts every award alike arrives: each
+-- player's awards are counted again from the runs still kept. Until then
+-- only Ninja and Luckiest were counted, and those counts also cover runs
+-- deleted since: each is kept where it is the higher.
+local function RebuildAwards()
+    if db.awardsCounted then return end
+    db.awardsCounted = true
+    local tally = {}
+    for _, s in ipairs(db.history) do
+        if not s.example and s.players then
+            local ok, awards = pcall(function() return ns.Awards(s, ns.Summarize(s)) end)
+            if ok then
+                local me = ns.Me(s)
+                for name, a in pairs(awards) do
+                    if name ~= me then
+                        local t = tally[name] or { counts = {}, at = -1 }
+                        tally[name] = t
+                        t.counts[a.key] = (t.counts[a.key] or 0) + 1
+                        if (s.startedAt or 0) > t.at then t.at, t.last = s.startedAt or 0, a.key end
+                    end
+                end
+            end
+        end
+    end
+    for name, who in pairs(db.people) do
+        local t = tally[name] or { counts = {} }
+        local counts = t.counts
+        for _, key in ipairs({ "ninja", "lucky" }) do
+            local kept = math.max(counts[key] or 0, tonumber(who[key]) or 0)
+            counts[key] = kept > 0 and kept or nil
+            who[key] = nil
+        end
+        who.awards, who.lastAward = counts, t.last or who.lastAward
     end
 end
 
@@ -2384,6 +2473,7 @@ function handlers.PLAYER_LOGIN()
             :format(ns.unread, ns.unread == 1 and "run" or "runs"))
     end
     RebuildRegulars()
+    RebuildAwards()
     -- People met in a single run, long ago, are forgotten: with random
     -- groups the list would otherwise grow for ever.
     local cutoff = time() - FORGET_AFTER
@@ -2678,6 +2768,8 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
         ns.ToggleImport()
     elseif cmd == "bingo" then
         ns.ToggleBingo()
+    elseif cmd == "meter" then
+        ns.ToggleMeter()
     elseif cmd == "capture" then
         if db.capturing then
             db.capturing = nil
@@ -2724,6 +2816,7 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
         Print("/tlb search <item> - find an item in past runs")
         Print("/tlb awards - what each award means")
         Print("/tlb bingo - your bingo card")
+        Print("/tlb meter - the loot meter")
         Print("/tlb export - the run on show as text (/tlb export all: every run)")
         Print("/tlb share - share the run on show: a link in chat, or a code")
         Print("/tlb import - open a run from a code, and the runs shared with you")

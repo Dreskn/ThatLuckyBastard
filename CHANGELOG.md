@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- **The meter.** A new small window like a damage meter, for loot: a bar per player in the class colour, the most loot first, growing live as the loot comes in, with rows sliding past one another when someone overtakes. Totals and shares on each row, and awards once the run is over. Open it with the new Meter button or `/tlb meter`, or let it open as a run starts and close as you leave (Options › While you play › Meter, where rank, share and award can be left out too). It stays open while you play, can be moved and sized, and is back where you left it at your next login.
+- **The race is run with coins.** Each player's loot falls into their column as gold coins, all at the same pace: they fall, spin, bounce and stack up, with a clink as they land, and a total shows once its last coin is down. A winner far ahead (half as much again as the next, or more) fills their column, and the rest pours over the top into a heap. The coin is our own drawing.
+- **Ninja and Luckiest are awards like the others.** They no longer weigh more when awards are handed out: the most striking fit wins, whichever award it is. Player tooltips and Statistics › Regulars no longer count Ninja and Luckiest alone: they count every award, and show the one each player had most often in your runs ("Hoarder x4"), the breakdown's name tooltip the three most frequent. Your kept runs are counted again once, when the update arrives.
+- **The Front page leads with the run's most outstanding award,** the one furthest from normal, whoever has it. Before, a Ninja always took the headline.
+
 ## 0.5.6
 
 - **Mini mode.** A new box beside the themes, under Options › Window, for a small window: one card per player with their picture, name, award and total, and nothing else. No loot, no footer, and a single button, the cogwheel beside the cross; the window is exactly as big as its cards (about 570 by 150 for five players) in every theme. Past five players, an arrow after the top five counts the others and shows the run as a list in the full window, where Columns leads back.

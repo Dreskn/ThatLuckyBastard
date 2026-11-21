@@ -108,8 +108,11 @@ check(awards[MIRA].key == "heartbreak" and awards[MIRA].text == "Lost a roll wit
 check(awards[BORIN].key == "photo" and awards[BORIN].text == "Won a roll 54 to 53",
       "Photo Finish gives the score: " .. tostring(awards[BORIN].text))
 awards = ns.Awards(s, ns.Summarize(s))
-check(awards[BORIN].key == "ninja" and awards[KETT].key == "lucky",
-      "the awards come first: Ninja and Luckiest still beat Hot Streak and Photo Finish")
+check(awards[BORIN].key == "ninja" and awards[KETT].key == "saint" and Score(s, KETT, "Luckiest")
+      and Score(s, KETT, "Luckiest") < Score(s, KETT, "The Saint"),
+      "every award weighs the same: Borin's Ninja wins on its fit, and Kett's Luckiest gives way to The Saint")
+check(near(awards[BORIN].fit, Score(s, BORIN, "Ninja")) and awards[KETT].fit == Score(s, KETT, "The Saint"),
+      "each award carries its fit, unweighted")
 
 print("-- a long losing run")
 local ANN, BOB, CAT = "Ann One", "Bob Two", "Cat Three"
@@ -283,19 +286,31 @@ check(count["Natural 100"] == 1 and title["R04"] == "Natural 100", "two 100s in 
 -- The best of the group, and the next: the text says where each stands.
 raid, R = Group(8)
 Roll(raid, R[2], "n", { [R[2]] = 80, [R[3]] = 20 }, { vendor = 60000 })
-Roll(raid, R[5], "n", { [R[5]] = 80, [R[3]] = 20 }, { vendor = 40000 })
+-- Three smaller Need wins, none of them a jackpot, the last uncontested.
+Roll(raid, R[5], "n", { [R[5]] = 80, [R[3]] = 20 }, { vendor = 9000 })
+Roll(raid, R[5], "n", { [R[5]] = 70, [R[3]] = 30 }, { vendor = 9000 })
+Roll(raid, R[5], "n", { [R[5]] = 60, [R[3]] = "p" }, { vendor = 9000 })
 local _, _, ninjas = Titles(raid)
 check(ninjas[R[2]].title == "Ninja" and ninjas[R[2]].text == "Most value won on Need rolls"
       and ninjas[R[5]].title == "Ninja II" and ninjas[R[5]].text == "2nd most value won on Need rolls",
       ("Ninja and Ninja II in a group of eight (%s: %s / %s: %s)"):format(ninjas[R[2]].title, ninjas[R[2]].text,
           ninjas[R[5]].title, ninjas[R[5]].text))
--- Only the Ninja of the run counts towards a player's Ninja tally.
+-- Every award counts towards a player's tally, numbered or not.
 ThatLuckyBastardDB.people = {}
 ThatLuckyBastardDB.active = raid
+local expect = ns.Awards(raid, ns.Summarize(raid))
 SlashCmdList.THATLUCKYBASTARD("stop")
 local people = ThatLuckyBastardDB.people
-check(people[R[2]] and people[R[2]].ninja == 1 and people[R[5]] and people[R[5]].ninja == 0,
-      "the tally counts the Ninja, not Ninja II")
+local counted = true
+for name, a in pairs(expect) do
+    local who = people[name]
+    if name ~= ns.Me(raid) and not (who and who.awards and who.awards[a.key] == 1 and who.lastAward == a.key) then
+        counted = false
+    end
+end
+check(counted and people[R[2]].awards.ninja == 1 and people[R[5]].awards.ninja == 1,
+      "the tally counts every award alike: the Ninja and the Ninja II are both a Ninja")
+check(people[R[2]].ninja == nil and people[R[2]].lucky == nil, "with no counts of their own for Ninja and Luckiest")
 
 print("-- contested rolls only, for Hot Streak and the dice")
 local alone = NewRun({ MIRA, BORIN, SELA, KETT })
@@ -460,5 +475,107 @@ TEXTLOG = {}
 ns.ShowBrowse("awards")
 check(drew("Moments") and drew("Consolation") and drew("Heartbreak") and drew("Tank Tax") and drew("Last Call"),
       "Statistics > Awards lists them, with Moments and Consolation apart")
+
+print("-- the front page")
+-- What the Front page of `run` says: its headline, and its stories' heads
+-- with the paragraph under each.
+local function Paper(run)
+    TEXTLOG = {}
+    ns.OpenRunWindow("paper", run)
+    -- The headline comes right under the tagline; the stories after the lead.
+    local seen, head, at = {}, nil, nil
+    for i, text in ipairs(TEXTLOG) do
+        if text:find("All the loot that's fit to print", 1, true) then at = i end
+        if at and i == at + 1 then head = text end
+        if at and i > at + 2 then seen[#seen + 1] = text end
+    end
+    ThatLuckyBastardPaperFrame:Hide()
+    return head, seen
+end
+-- The award that should lead: the best fit, the better placed on a tie.
+local function Star(run)
+    local sum = ns.Summarize(run)
+    local awards = ns.Awards(run, sum)
+    local star, best
+    local ranked = {}
+    for _, p in ipairs(sum.players) do ranked[p.rank] = p end
+    for _, p in ipairs(ranked) do
+        local a = awards[p.name]
+        if a and a.fit and (not best or a.fit > best.fit) then star, best = p, a end
+    end
+    return star, best, awards
+end
+local HEADS = {
+    ninja = { "NEED BUTTON WORN OUT", "AUTHORITIES BAFFLED", "\"I NEEDED IT\"" },
+    lucky = { "DICE UNDER INVESTIGATION", "LUCK OR SKILL?", "FORTUNE PICKS A FAVOURITE" },
+    jackpot = { "A STAR IS LOOTED", "JACKPOT", "ONE DROP TO RULE THEM ALL" },
+    fairshare = { "PERFECTLY, SUSPICIOUSLY FAIR", "EXACTLY WHAT THEY DESERVED" },
+    heartbreak = { "SO CLOSE, YET SO FAR", "HEARTBREAK AT THE LOOT TABLE" },
+}
+local function OneOf(list, text)
+    for _, x in ipairs(list or {}) do
+        if x == text then return true end
+    end
+    return false
+end
+-- A Ninja on two wins under a jackpot, a Jackpot, and a roll of 100 that
+-- beat a 99 and a 98: the most striking is not the Ninja.
+local run, R = Group(5)
+Roll(run, R[1], "n", { [R[1]] = 60, [R[2]] = 40 }, { vendor = 9000 })
+Roll(run, R[1], "n", { [R[1]] = 70, [R[2]] = 30 }, { vendor = 9000 })
+Roll(run, R[2], "g", { [R[2]] = 90, [R[4]] = 10 }, { vendor = 12000 })
+Roll(run, R[3], "g", { [R[3]] = 100, [R[4]] = 99, [R[5]] = 98 }, { vendor = 3000 })
+local star, best, awards = Star(run)
+local head, texts = Paper(run)
+check(awards[R[1]].key == "ninja" and best.key ~= "ninja",
+      ("the run has a Ninja (%s, %.2f), and a more striking award: %s's %s (%.2f)"):format(
+          R[1], awards[R[1]].fit, star.name, best.title, best.fit))
+local name, rest = (head or ""):match("^(.-): (.*)$")
+check(name == star.name:upper() and OneOf(HEADS[best.key], rest),
+      "the headline goes to it, with one of its story's headings: " .. tostring(head))
+local other = 0
+for _, text in ipairs(texts) do
+    if OneOf(HEADS[best.key], text) and text ~= rest then other = other + 1 end
+end
+check(other == 1 and not head:find("NINJA", 1, true), "its story keeps the other heading; the Ninja makes no headline")
+-- Where the Ninja is the most striking, it leads like any other.
+local tall = Group(5)
+Roll(tall, "R02", "n", { R02 = 80, R03 = 20 }, { vendor = 90000 })
+star, best = Star(tall)
+head = Paper(tall)
+name, rest = (head or ""):match("^(.-): (.*)$")
+check(best.key ~= nil and name == star.name:upper() and OneOf(HEADS[best.key] or { rest }, rest),
+      ("the most striking award leads whatever it is: %s (%s)"):format(tostring(head), best.title))
+-- Two awards as striking as each other: the better placed player leads.
+local even, E = Group(5)
+Roll(even, E[1], "n", { [E[1]] = 60, [E[2]] = 40 }, { vendor = 12000 })
+Roll(even, E[3], "g", { [E[3]] = 100, [E[4]] = 99, [E[5]] = 98 }, { vendor = 3000 })
+local evenAwards = ns.Awards(even, ns.Summarize(even))
+head = Paper(even)
+check(evenAwards[E[3]].fit == evenAwards[E[4]].fit and ns.Summarize(even).players[1] ~= nil
+      and (head or ""):find(E[3] .. ": ", 1, true) == 1,
+      ("a tie (%s %.2f, %s %.2f): the better placed leads: %s"):format(evenAwards[E[3]].title, evenAwards[E[3]].fit,
+          evenAwards[E[4]].title, evenAwards[E[4]].fit, tostring(head)))
+-- Stories run in order of loot.
+local order = {}
+for _, p in ipairs(ns.Summarize(run).players) do order[p.rank] = p.name end
+local _, seen = Paper(run)
+local last, inOrder = 0, true
+for rank, who in ipairs(order) do
+    for i, text in ipairs(seen) do
+        if text:find(who .. " ", 1, true) == 1 or text:find(who .. ":", 1, true) == 1 then
+            if i < last then inOrder = false end
+            last = i
+            break
+        end
+    end
+end
+check(inOrder, "the stories follow, the most loot first")
+-- With no awards, the richest player makes the headline as before.
+ThatLuckyBastardDB.options.showAwards = false
+head = Paper(run)
+check(head and head:find("THE RICHEST", 1, true) or head and head:find("TOPS THE LOOT TABLE", 1, true),
+      "with awards switched off, the headline is the richest player: " .. tostring(head))
+ThatLuckyBastardDB.options.showAwards = true
 
 print(FAILED and (FAILED .. " check(s) FAILED") or "all checks passed (awards)")

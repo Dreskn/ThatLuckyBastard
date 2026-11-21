@@ -357,9 +357,10 @@ check(stats and cog and anchor(stats)[1] == "BOTTOMRIGHT" and anchor(cog)[1] == 
       "Statistics sits at the bottom, beside the cogwheel of the options: what is about all your runs")
 check(mainButton("Options") == nil, "the cogwheel has taken the Options button's place")
 local expand, bingo, analysis = mainButton("Expand all"), mainButton("Bingo"), mainButton("Analysis")
-check(expand and (anchor(expand)[2] == bingo or anchor(expand)[2] == analysis)
-      and anchor(bingo)[2] == analysis,
-      "the top row is about the run on show: ... Analysis, Bingo, Expand all")
+local meter = mainButton("Meter")
+check(expand and (anchor(expand)[2] == bingo or anchor(expand)[2] == meter)
+      and anchor(bingo)[2] == meter and anchor(meter)[2] == analysis,
+      "the top row is about the run on show: ... Analysis, Meter, Bingo, Expand all")
 
 print("==== the Analysis window: timeline, rolls and numbers of the run on show ====")
 -- Text drawn somewhere in a font string (drew wants the whole text).

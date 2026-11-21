@@ -4,7 +4,8 @@ local _, ns = ...
 -- surfaced where you meet them. All of it is shown to you alone.
 --   * Familiar faces: a notice when someone you have run with joins your
 --     group.
---   * One line in a player's tooltip: runs together, Ninja and Luckiest.
+--   * One line in a player's tooltip: runs together, loot, and the award
+--     they had most often.
 --   * One line in an item's tooltip: in how many of your runs it was
 --     seen, and who got it last. The options say which kinds of item
 --     get it.
@@ -15,14 +16,14 @@ local issecret = issecretvalue or function() return false end
 local FACE_ICON = "Interface\\Icons\\INV_Misc_GroupNeedMore"
 local MAX_NOTICES = 4 -- familiar faces announced at once (a raid can hold many)
 
--- "5 runs together   avg 3g 20s   Ninja x2"
+-- "5 runs together   them 3g 20s   you 2g 10s   Hoarder x2"
 local function PersonLine(who)
     local parts = { who.runs == 1 and "1 run together" or (who.runs .. " runs together") }
     -- Their loot in those runs, and yours (unknown for runs deleted before it was kept).
     parts[#parts + 1] = "them " .. ns.Money(who.value)
     if who.mine then parts[#parts + 1] = "you " .. ns.Money(who.mine) end
-    if (who.ninja or 0) > 0 then parts[#parts + 1] = "Ninja x" .. who.ninja end
-    if (who.lucky or 0) > 0 then parts[#parts + 1] = "Luckiest x" .. who.lucky end
+    local top = ns.AwardsText(who, 1)
+    if top then parts[#parts + 1] = top end
     return table.concat(parts, "   ")
 end
 

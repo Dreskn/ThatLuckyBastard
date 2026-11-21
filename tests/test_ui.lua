@@ -80,6 +80,7 @@ step("item tooltip line", function()
     assert(#TIP == 0, "unknown item must add nothing")
 end)
 step("player tooltip line", function()
+    -- (Kett's counts, as a run closed with him in it leaves them.)
     TIP = {}
     function GameTooltip:GetUnit() return "Kett Longstride", "party3" end
     TOOLTIP_HOOKS[Enum.TooltipDataType.Unit](GameTooltip, {})

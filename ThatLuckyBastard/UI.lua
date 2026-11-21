@@ -775,8 +775,8 @@ local function PersonTooltip(owner, p, award)
         GameTooltip:AddLine(("Runs together: %d"):format(who.runs), 1, 1, 1)
         GameTooltip:AddLine("Their loot: " .. Money(who.value), 1, 1, 1)
         if who.mine then GameTooltip:AddLine("Yours: " .. Money(who.mine), 1, 1, 1) end
-        if who.lucky > 0 then GameTooltip:AddLine(("Luckiest x%d"):format(who.lucky), 1, 1, 1) end
-        if who.ninja > 0 then GameTooltip:AddLine(("Ninja x%d"):format(who.ninja), 1, 1, 1) end
+        local awards = ns.AwardsText(who, 3) -- the three they had most often
+        if awards then GameTooltip:AddLine("Awards: " .. awards, 1, 1, 1, true) end
     else
         GameTooltip:AddLine("No earlier runs together.", 0.7, 0.7, 0.7)
     end
@@ -1841,20 +1841,20 @@ end
 -- The race: how a run is revealed when it is left (each time it is),
 -- with one column per player in podium order. The columns start side by
 -- side in name order, showing who is in them and nothing else, each as
--- tall as its head and the room for a bar. A bar grows under each player,
--- all at the same speed, and stops when it stands for that player's
--- total: the total is shown at that moment, with the player's place. So
--- the smallest stops first and takes the last place, and the one still
--- growing at the end has won. Then the columns walk to their places on
--- the podium, taking their own height, and the rest (awards, shares,
--- loot, the footer, the bench) fades in. A click on the columns skips to
--- the end. About five seconds in all.
+-- tall as its head and the room for its coins. Each player's loot falls
+-- into their column as coins, all at the same pace (Coins.lua), and when
+-- a player's last coin is down, their total is shown with their place.
+-- So the smallest stack is done first and takes the last place, and the
+-- one still growing at the end has won; a winner far ahead overflows.
+-- Then the columns walk to their places on the podium, taking their own
+-- height, and the rest (awards, shares, loot, the footer, the bench)
+-- fades in. A click on the columns skips to the end. About five seconds.
 ----------------------------------------------------------------------
 do
-    -- Seconds: a beat before the count, the count up to the biggest total,
-    -- a beat on the result, the walk to the podium, the rest fading in.
-    local HOLD, COUNT, PAUSE, WALK, FADE = 0.3, 3.4, 0.3, 0.6, 0.4
-    local BAR_ROOM = 150 -- a racing column is this much taller than its head, for its bar
+    -- Seconds: a beat before the coins, a beat on the result once they are
+    -- down (Coins.lua says when), the walk to the podium, the rest fading in.
+    local HOLD, PAUSE, WALK, FADE = 0.3, 0.3, 0.6, 0.4
+    local ROOM = 150 -- a racing column is this much taller than its head, for its coins
     local token = 0
     -- When the race began: with its first frame on screen, nil until then.
     -- The window is often opened under a loading screen, where time
@@ -1862,7 +1862,6 @@ do
     local startedAt
     local lay            -- what the last draw laid out (see race.Lay)
     local detail         -- the alpha the details were last given
-    local stopped = {}   -- [column] = true once its count has ended
     local fanfare = false
 
     local driver = CreateFrame("Frame", nil, f)
@@ -1900,42 +1899,18 @@ do
         race.Bench(alpha)
     end
 
-    -- A column's bar, in the player's class colour (in ink on a receipt).
-    -- It stands right under the column's head, where it is in sight
-    -- however long the column will be.
-    local function Bar(c, p)
-        local bar = c.raceBar
-        if not bar then
-            bar = c:CreateTexture(nil, "ARTWORK")
-            c.raceBar = bar
-        end
-        bar:ClearAllPoints()
-        bar:SetPoint("BOTTOM", c, "TOP", 0, -(lay.head + BAR_ROOM - 6))
-        if lay.paper then
-            bar:SetColorTexture(INK[1], INK[2], INK[3], 1)
-        else
-            local r, g, b = ClassRGB(p.class)
-            bar:SetColorTexture(r, g, b, 0.85)
-        end
-        return bar
-    end
-
     -- Puts the columns where the race has got to.
     local function Apply()
         local t = startedAt and (GetTime() - startedAt) or 0
-        local count = math.max(0, math.min(1, (t - HOLD) / COUNT))
-        local walk = math.max(0, math.min(1, (t - HOLD - COUNT - PAUSE) / WALK))
+        local coins = t - HOLD -- how far into the coins
+        local down = HOLD + lay.plan.endAt -- when the last coin is
+        local walk = math.max(0, math.min(1, (t - down - PAUSE) / WALK))
         walk = walk * walk * (3 - 2 * walk) -- sets off and arrives gently
-        local fade = math.max(0, math.min(1, (t - HOLD - COUNT - PAUSE - WALK) / FADE))
+        local fade = math.max(0, math.min(1, (t - down - PAUSE - WALK) / FADE))
         for i, p in ipairs(lay.players) do
             local c = cols[i]
-            local shown = math.min(p.market, lay.top * count)
-            local done = count > 0 and shown >= p.market
-            if done and not stopped[i] then
-                stopped[i] = true
-                if lay.sound and p.rank ~= 1 then PlayKit("IG_MAINMENU_OPTION_CHECKBOX_ON", 856) end
-            end
-            -- Its total and its place, once its bar has stopped.
+            local done = coins >= lay.plan.doneAt[i]
+            -- Its total and its place, once its last coin is down.
             c.market:SetAlpha(done and 1 or 0)
             c.rank:SetAlpha(done and 1 or 0)
             c.medal:SetAlpha(done and 1 or 0)
@@ -1943,7 +1918,7 @@ do
             local drop = c.offset * walk
             c:ClearAllPoints()
             c:SetPoint("TOPLEFT", slot * lay.pitch, -drop)
-            -- As tall as the race needs while the bars grow, taking its
+            -- As tall as the race needs while the coins fall, taking its
             -- own height on the way to its place.
             local height
             if lay.paper then
@@ -1954,14 +1929,10 @@ do
                 c.bg:SetColorTexture(1, 1, 1, lay.tint + (p.rank == 1 and 0.04 * fade or 0))
             end
             c:SetHeight(height)
-            -- The bar: as much of its room as the total is of the biggest
-            -- one. It goes as the columns walk.
-            local bar = Bar(c, p)
-            bar:SetSize(lay.pitch * 0.4, math.max(1, (BAR_ROOM - 12) * shown / lay.top))
-            bar:SetAlpha(1 - walk)
-            bar:SetShown(shown > 0 and walk < 1)
         end
-        if count >= 1 and not fanfare then
+        -- The coins go as the columns walk.
+        ns.Coins.Apply(coins, 1 - walk, lay.sound)
+        if t >= down and not fanfare then
             fanfare = true
             if lay.sound then PlayKit("IG_QUEST_LIST_COMPLETE", 878) end
         end
@@ -1981,11 +1952,12 @@ do
             if x ~= y then return x < y end
             return players[a].name < players[b].name
         end)
-        local from, top = {}, 0
+        local from, frames = {}, {}
         for slot, i in ipairs(order) do from[i] = slot - 1 end
-        for _, p in ipairs(players) do top = math.max(top, p.market) end
-        lay = { players = players, pitch = pitch, tall = tall, paper = paper, tint = tint, from = from, top = top,
-                head = head, high = head + BAR_ROOM, sound = ns.db.options.ceremonySound }
+        for i in ipairs(players) do frames[i] = cols[i] end
+        lay = { players = players, pitch = pitch, tall = tall, paper = paper, tint = tint, from = from,
+                head = head, high = head + ROOM, sound = ns.db.options.ceremonySound,
+                plan = ns.Coins.Plan(frames, players, head, ROOM, paper) }
         detail = nil -- the draw may have made new rows
         Apply()
     end
@@ -1994,7 +1966,6 @@ do
         token = token + 1
         startedAt, fanfare = nil, false
         if scroll.SetVerticalScroll then scroll:SetVerticalScroll(0) end -- the heads of the columns in sight
-        wipe(stopped)
         race.on = true
         curtain:Show()
         driver:Show()
@@ -2011,8 +1982,8 @@ do
             c.market:SetAlpha(1)
             c.rank:SetAlpha(1)
             c.medal:SetAlpha(1)
-            if c.raceBar then c.raceBar:Hide() end
         end
+        ns.Coins.Hide()
     end
 
     -- Calls the race off: another run comes on show, or the list, or the
@@ -2036,8 +2007,9 @@ do
 
     driver:SetScript("OnUpdate", function()
         if not race.on then return end
+        if not lay then return end
         startedAt = startedAt or GetTime()
-        if GetTime() - startedAt >= HOLD + COUNT + PAUSE + WALK + FADE then Finish() else Apply() end
+        if GetTime() - startedAt >= HOLD + lay.plan.endAt + PAUSE + WALK + FADE then Finish() else Apply() end
     end)
     driver:SetScript("OnHide", function() race.Cancel() end)
     curtain:SetScript("OnClick", Finish)
@@ -2624,11 +2596,12 @@ versionLabel:SetText(ns.VERSION ~= "" and ("v" .. ns.VERSION) or "")
 --   Front page, Analysis
 --                a window of its own each (Analysis: its timeline, rolls
 --                and numbers)
+--   Meter        the loot meter (Meter.lua), for the run in progress
 --   Bingo        your bingo card (not there while bingo is switched off)
 --   Expand all   opens every player's loot (only in the list view)
 -- and on its own on the right, Share: the run on show as a link in chat
 -- or as a code (Share.lua). Each button closes its window again on a
--- second click. Five of them and Share fit the narrowest window.
+-- second click. Six of them and Share fit the narrowest window.
 local TOP_W, TOP_GAP = 80, 4
 local topRow = {}
 local function TopButton(label, onClick)
@@ -2643,6 +2616,7 @@ local needBtn = TopButton("Need only", function()
 end)
 TopButton("Front page", function() ns.ToggleRunWindow("paper", ns.ViewedRun()) end)
 local analysisBtn = TopButton("Analysis", function() ns.ToggleRunWindow("analysis", ns.ViewedRun()) end)
+f.meterBtn = TopButton("Meter", function() ns.ToggleMeter() end)
 local bingoBtn = TopButton("Bingo", function() ns.ToggleBingo() end)
 local shareBtn = MakeButton("Share", TOP_W, function() ns.ToggleShare(ns.ViewedRun()) end)
 shareBtn.loud = true -- a red key in the Receipt theme
@@ -2885,7 +2859,7 @@ function Render()
     headers.diff:SetShown(not useColumns and showShare)
     expandAll:SetShown(not useColumns)
     expandAll:ClearAllPoints()
-    expandAll:SetPoint("LEFT", bingoBtn:IsShown() and bingoBtn or analysisBtn, "RIGHT", TOP_GAP, 0)
+    expandAll:SetPoint("LEFT", bingoBtn:IsShown() and bingoBtn or f.meterBtn, "RIGHT", TOP_GAP, 0)
     -- Receipt theme: receipts come out of a printer slot; the list is
     -- printed on one long sheet.
     local paper = theme.paper and true or false
@@ -3045,6 +3019,7 @@ end
 local REFRESH_DELAY = 0.1
 
 function ns.Refresh()
+    if ns.MeterRefresh then ns.MeterRefresh() end -- the meter keeps up, whether this window is open or not
     if pending or not f:IsShown() then return end
     pending = true
     C_Timer.After(REFRESH_DELAY, function()
@@ -3114,6 +3089,7 @@ ns.MoneyPlain = function(copper) return MoneyText(copper, false) end
 ns.Signed, ns.FirstName = Signed, FirstName
 ns.PlayKit = PlayKit
 ns.CATS = CATS
+ns.PAPER, ns.INK, ns.INK_GREY = PAPER, INK, INK_GREY
 ns.Money = Money
 ns.Duration = Duration
 ns.ClassColored = ClassColored

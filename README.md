@@ -13,8 +13,9 @@ It records what every player in your group loots, puts a gold value on it, and s
 - **The breakdown:** each player's total, their share of the run and how far they are from an equal split, with every item they looted.
 - **Awards:** one per player when the run ends, out of about fifty: Jackpot, Ninja, Luckiest, Heartbreak, Empty Pockets... In raids an award can go to two or three players. Hover one to see its rule.
 - **Need rolls:** one button shows only what was won on Need. Hover an item to see everyone's roll on it.
-- **The race:** as you leave, a bar grows for every player and stops at their total. The last one still growing has won.
+- **The race:** as you leave, every player's loot falls into their column as coins. The last stack still growing has won, and a winner far ahead overflows.
 - **Front page, analysis:** a mock newspaper, and the run's timeline, rolls and numbers, each in its own window.
+- **The meter:** a small window like a damage meter, with a bar per player that grows live as the loot comes in.
 - **Statistics:** your dungeons, records, luck, the people you run with and what dropped where, with item search and an export for spreadsheets.
 - **While you play:** notices for valuable loot and familiar faces, one line in player and item tooltips, and a private loot bingo card to bet a line on.
 - **Sharing:** post a run as a link in chat or as a short summary anyone can read, or copy it as a code to paste anywhere. Players with the addon open links and codes.

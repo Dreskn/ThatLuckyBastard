@@ -448,22 +448,27 @@ local function Paper(s)
     local awards = ns.RunAwards(s, sum)
 
     local seed = (s.startedAt or 1) % 2147483646 + 1
-    local function pick(list)
+    local function choose(n)
         seed = (seed * 48271) % 2147483647
-        return list[seed % #list + 1]
+        return seed % n + 1
     end
+    local function pick(list) return list[choose(#list)] end
 
     local place = s.name or "the dungeon"
     local n = #sum.players
     local ranked = {}
-    local top, ninja, jackpot
+    local top
     for _, p in ipairs(sum.players) do
         ranked[p.rank] = p
-        local a = awards[p.name]
         if p.rank == 1 then top = p end
-        -- The headline is about the first of them, not a "Ninja II".
-        if a and a.key == "ninja" and a.place == 1 then ninja = ninja or p end
-        if a and a.key == "jackpot" and a.place == 1 then jackpot = jackpot or p end
+    end
+    -- The headline goes to the most outstanding award of the run, whatever
+    -- it is: the one furthest from normal (its fit), the better placed
+    -- player's on a tie.
+    local star, starFit
+    for _, p in ipairs(ranked) do
+        local a = awards[p.name]
+        if a and a.fit and STORIES[a.key] and (not starFit or a.fit > starFit) then star, starFit = p, a.fit end
     end
 
     local doc = { stories = {} }
@@ -471,18 +476,13 @@ local function Paper(s)
     doc.tagline = date("%A %d %B %Y", s.startedAt)
         .. "    -    All the loot that's fit to print    -    Price: your dignity"
 
-    if ninja then
-        doc.headline = pick({
-            "%s NEEDS EVERYTHING, DENIES WRONGDOING",
-            "NINJA SUSPECTED: %s QUESTIONED OVER NEED ROLLS",
-            "\"I NEEDED IT,\" INSISTS %s",
-        }):format(ns.DisplayName(ninja.name):upper())
-    elseif jackpot then
-        doc.headline = pick({
-            "%s STRIKES IT RICH IN %s",
-            "FORTUNE SMILES ON %s IN %s",
-            "%s HITS THE JACKPOT IN %s",
-        }):format(ns.DisplayName(jackpot.name):upper(), place:upper())
+    -- The headline is one of its story's headings, with the name; its
+    -- story keeps another.
+    local starHead
+    if star then
+        local heads = STORIES[awards[star.name].key].heads
+        starHead = choose(#heads)
+        doc.headline = ("%s: %s"):format(ns.DisplayName(star.name):upper(), heads[starHead])
     elseif top and top.market > 0 then
         doc.headline = pick({
             "%s WALKS OUT OF %s THE RICHEST",
@@ -511,20 +511,13 @@ local function Paper(s)
     local function story(p, award)
         local def = award and STORIES[award.key]
         if def then
-            doc.stories[#doc.stories + 1] = {
-                head = pick(def.heads),
-                body = def.body(ns.DisplayName(p.name), award),
-            }
+            local head
+            if p == star then head = def.heads[starHead % #def.heads + 1] else head = pick(def.heads) end
+            doc.stories[#doc.stories + 1] = { head = head, body = def.body(ns.DisplayName(p.name), award) }
         end
     end
-    -- The scandals first, then everyone else, best-placed first.
-    local scandal = { ninja = 1, lucky = 2 }
-    for pass = 1, 3 do
-        for _, p in ipairs(ranked) do
-            local a = awards[p.name]
-            if a and (scandal[a.key] or 3) == pass then story(p, a) end
-        end
-    end
+    -- Everyone's story, the best placed first.
+    for _, p in ipairs(ranked) do story(p, awards[p.name]) end
     return doc
 end
 

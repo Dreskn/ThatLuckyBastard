@@ -239,7 +239,7 @@ PAGES.regulars = {
     blurb = "People you have run with. Difference: your loot minus theirs.",
     cols = {
         { "Player", 0 }, { "Runs", 55, "RIGHT" }, { "Theirs", 100, "RIGHT" }, { "Yours", 100, "RIGHT" },
-        { "Difference", 105, "RIGHT" }, { "Luckiest", 70, "RIGHT" }, { "Ninja", 55, "RIGHT" },
+        { "Difference", 105, "RIGHT" }, { "Most often", 125, "RIGHT" },
         { "Last run", 120, "RIGHT" },
     },
     defaultSort = 2,
@@ -249,6 +249,7 @@ PAGES.regulars = {
             -- `mine` is unknown for players whose runs with you were deleted
             -- before it was kept: those sort last.
             local mine = who.mine
+            local top = ns.TopAwards(who, 1)[1] -- the award they had most often
             rows[#rows + 1] = {
                 cells = {
                     ns.ClassColored(ns.DisplayName(name), who.class),
@@ -256,12 +257,11 @@ PAGES.regulars = {
                     ns.Money(who.value),
                     mine and ns.Money(mine) or "-",
                     mine and Lead(mine - who.value) or "-",
-                    who.lucky > 0 and tostring(who.lucky) or "-",
-                    who.ninja > 0 and tostring(who.ninja) or "-",
+                    top and ("%s x%d"):format(top.title, top.count) or "-",
                     DateText(who.last),
                 },
                 keys = { name, who.runs, who.value, mine or -1, mine and (mine - who.value) or -1e12,
-                         who.lucky, who.ninja, who.last or 0 },
+                         top and top.count or 0, who.last or 0 },
             }
         end
         if #rows == 0 then
@@ -411,7 +411,7 @@ PAGES.awards = {
     rows = function()
         local rows = {
             { note = "One award per player. One player per award in a party, 2 up to ten players, 3 beyond "
-                .. "(II, III). Ninja and Luckiest weigh more." },
+                .. "(II, III)." },
         }
         local group = false
         for _, award in ipairs(ns.AwardGuide()) do

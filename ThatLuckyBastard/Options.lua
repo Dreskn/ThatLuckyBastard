@@ -419,7 +419,7 @@ do
     Toggles(p, { { "The breakdown", "popupLeave" } })
 
     Section(p, "Awards")
-    Toggles(p, { { "Hand out awards (Ninja, Jackpot and more)", "showAwards" } })
+    Toggles(p, { { "Hand out awards", "showAwards" } })
     Hint(p, "/tlb awards lists them all.")
 
     -- As a run is left, its columns race for their places: that takes
@@ -433,7 +433,7 @@ do
         { "Sounds", "ceremonySound", Reveals },
         { "Screenshot at the end", "ceremonyScreenshot", Reveals },
     })
-    Hint(p, "Race: a bar grows for each player and stops at their total. The last one growing wins. In podium order.")
+    Hint(p, "Race: each player's loot falls as coins. The last stack still growing wins. In podium order.")
 
     Section(p, "Also")
     Toggles(p, {
@@ -461,6 +461,20 @@ do
         { "Off", function() return not Opt().ticker end, function() Opt().ticker = false end },
     }, 5, true, 70)
     Toggles(p, { { "Someone I've run with joins my group", "familiar" } })
+
+    -- The meter's rows, and whether it opens and shuts by itself.
+    Section(p, "Meter")
+    RowLabel(p, "Show")
+    Group(p, {
+        { "Rank", function() return Opt().meterRank end, function(on) Opt().meterRank = on end },
+        { "Share", function() return Opt().meterShare end, function(on) Opt().meterShare = on end },
+        { "Award", function() return Opt().meterAward end, function(on) Opt().meterAward = on end,
+          function() return Opt().showAwards end },
+    }, 3, false, 100, 110)
+    Toggles(p, {
+        { "Open when a run starts", "meterOpen" },
+        { "Close when I leave", "meterClose" },
+    })
 
     Section(p, "Tooltips")
     Toggles(p, {

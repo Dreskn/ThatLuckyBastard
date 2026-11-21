@@ -83,7 +83,7 @@ for _, label in ipairs({
     "Auction price, vendor when there is none", "Vendor price only", "Historical auction prices",
     "Current auction prices", "Vendor totals too", "Epic BoE", "Quest items",
     "Hidden ones still count in totals", "The breakdown", "Race",
-    "Hand out awards (Ninja, Jackpot and more)", "Sounds", "Screenshot at the end",
+    "Hand out awards", "Sounds", "Screenshot at the end",
     "Streak recap after back-to-back runs", "A line in my chat window (only I see it)",
     "1g", "5g", "25g", "100g", "Off", "Someone I've run with joins my group", "Players: our runs together",
     "Items: seen in my runs", "Loot bingo", "Track raids too", "Ask if it's a new run", "Always a new run",
@@ -105,12 +105,12 @@ check(o.popupLeave == false and not greyed("Race") and not greyed("Sounds"),
 click("The breakdown")
 click("Race")
 check(o.race == false and o.popupLeave and not greyed("Sounds"), "without the race, the awards are revealed one by one")
-click("Hand out awards (Ninja, Jackpot and more)")
+click("Hand out awards")
 check(not o.showAwards and greyed("Sounds") and greyed("Screenshot at the end"),
       "and without awards either, nothing is: the sound and the screenshot are greyed out")
 click("Race")
 check(o.race and not greyed("Sounds"), "the race alone is a reveal")
-click("Hand out awards (Ninja, Jackpot and more)")
+click("Hand out awards")
 
 print("-- what the podium window's switch becomes")
 local function Migrated(window, podium)

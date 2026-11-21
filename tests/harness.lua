@@ -89,8 +89,14 @@ function known.GetSize(self) return self.__w or 700, self.__h or 400 end
 function known.GetStringHeight() return 12 end
 function known.GetStringWidth(self) return #(self.__text or "") * 6 end
 function known.GetFrameLevel() return 1 end
--- The plain colour a texture was last filled with: { r, g, b, a }.
-function known.SetColorTexture(self, r, g, b, a) self.__color = { r, g, b, a } end
+-- The plain colour a texture was last filled with: { r, g, b, a }; it
+-- takes the place of a picture, as in the game. And the tint a picture
+-- is given.
+function known.SetColorTexture(self, r, g, b, a) self.__color, self.__texture = { r, g, b, a }, nil end
+function known.SetVertexColor(self, r, g, b, a) self.__tint = { r, g, b, a } end
+-- How far a scroll frame is scrolled.
+function known.SetVerticalScroll(self, v) self.__scroll = v end
+function known.GetVerticalScroll(self) return self.__scroll or 0 end
 -- How see-through a widget was last made.
 function known.SetAlpha(self, alpha) self.__alpha = alpha end
 function known.GetAlpha(self) return self.__alpha or 1 end
@@ -123,6 +129,7 @@ PICTURES = {}
 function known.SetUnit(self, unit) PICTURES[#PICTURES + 1] = "model:" .. tostring(unit) end
 function known.SetTexture(self, path)
     if path == "Interface\\TargetingFrame\\UI-Classes-Circles" then PICTURES[#PICTURES + 1] = "class" end
+    self.__texture, self.__color = path, nil
 end
 -- Which window is in front: its strata, then the latest to be raised.
 RAISES = 0
