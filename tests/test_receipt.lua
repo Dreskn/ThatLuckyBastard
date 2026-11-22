@@ -115,9 +115,9 @@ db.options.useColumns = true
 print("-- options")
 ns.ToggleOptions()
 check(control("Receipt") and control("Receipt").get(), "the Options offer it, ticked")
-check(not control("Item icons"):IsEnabled(), "item icons are greyed out: a receipt prints none")
+check(not control("Icons"):IsEnabled(), "item icons are greyed out: a receipt prints none")
 control("Modern").__scripts.OnClick(control("Modern"))
-check(db.theme == "modern" and control("Item icons"):IsEnabled(), "back to Modern from the Options")
+check(db.theme == "modern" and control("Icons"):IsEnabled(), "back to Modern from the Options")
 ns.ToggleOptions()
 
 print("-- back to Modern")

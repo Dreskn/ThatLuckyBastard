@@ -242,7 +242,7 @@ Stop()
 
 print("-- what a row shows")
 -- An option of the panel, by its label; the `nth` with that label (the
--- meter's Award is the second: the bench's comes first).
+-- meter's Award and Share are the second: the breakdown's come first).
 local function control(label, nth)
     local seen = 0
     for _, w in ipairs(FRAMES) do
@@ -261,9 +261,9 @@ end
 local function ticked(label, nth) return control(label, nth).get() and true or false end
 local function greyed(label, nth) return not control(label, nth):IsEnabled() end
 ns.ToggleOptions()
-check(ticked("Rank") and ticked("Share") and ticked("Award", 2) and not ticked("Open when a run starts")
-      and not ticked("Close when I leave"),
-      "Options > While you play > Meter: Rank, Share and Award ticked; opening and shutting left to you")
+check(ticked("Rank") and ticked("Share", 2) and ticked("Award", 2) and not ticked("Open on entering")
+      and not ticked("Close on leaving"),
+      "Options > Meter: Rank, Share and Award ticked; opening and shutting left to you")
 ns.ShowRun(run)
 main:Hide()
 Settle()
@@ -273,21 +273,21 @@ check(Mine().rank:IsShown() and Mine().share:IsShown() and Mine().label.__points
 click("Rank")
 check(o.meterRank == false and not Mine().rank:IsShown() and Mine().label.__points[1][2] == 6,
       "without the rank, the name moves up to the edge")
-click("Share")
+click("Share", 2)
 check(o.meterShare == false and not Mine().share:IsShown() and Mine().value.__points[1][2] == -4,
       "without the share, the total moves up to the other")
 click("Award", 2)
 check(o.meterAward == false and not Plain(Mine().label.__text):find(awards["Mira Vale"].title, 1, true)
       and Plain(Mine().label.__text):find("Mira Vale", 1, true), "without the award, the name stands alone")
 click("Rank")
-click("Share")
+click("Share", 2)
 click("Award", 2)
 check(Mine().rank:IsShown() and Mine().share:IsShown() and Mine().label.__points[1][2] == 22
       and Mine().value.__points[1][2] == Mine().share and Plain(Mine().label.__text):find(awards["Mira Vale"].title, 1, true),
       "ticked again, all three are back")
-click("Hand out awards")
+click("Awards")
 check(greyed("Award", 2) and not greyed("Rank"), "with no awards handed out, Award is greyed out")
-click("Hand out awards")
+click("Awards")
 
 print("-- opening and shutting by itself")
 meter:Hide()
@@ -296,17 +296,17 @@ Enter(9704, "Plain Keep")
 check(not meter:IsShown(), "unticked, a run starting leaves the meter shut")
 Picks("me", two)
 Stop()
-click("Open when a run starts")
+click("Open on entering")
 local auto = Enter(9705, "Auto Keep")
-check(o.meterOpen and meter:IsShown(), "with Open when a run starts ticked, it opens as a run starts")
+check(o.meterOpen and meter:IsShown(), "with Open on entering ticked, it opens as a run starts")
 Picks("me", two)
 Leave()
 check(meter:IsShown(), "and stays open as you leave")
-click("Close when I leave")
+click("Close on leaving")
 NOW = NOW + 30
 Enter(9705, "Auto Keep")
 Leave()
-check(o.meterClose and not meter:IsShown(), "with Close when I leave ticked, it shuts as you leave")
+check(o.meterClose and not meter:IsShown(), "with Close on leaving ticked, it shuts as you leave")
 NOW = NOW + 30
 Enter(9705, "Auto Keep")
 check(db.active == auto and meter:IsShown(), "going back in, the run goes on, and the meter opens again")
@@ -315,16 +315,16 @@ Fire("PLAYER_ENTERING_WORLD", false, false) -- a loading screen inside the dunge
 RunTimers()
 check(db.active == auto and not meter:IsShown(), "shut by hand inside, it stays shut through a loading screen")
 meter:Show()
-click("Open when a run starts")
+click("Open on entering")
 meter:Hide()
 Leave()
 NOW = NOW + 30
 Enter(9705, "Auto Keep")
-check(db.active == auto and not meter:IsShown(), "with only Close when I leave ticked, it does not open by itself")
+check(db.active == auto and not meter:IsShown(), "with only Close on leaving ticked, it does not open by itself")
 meter:Show()
 Leave()
 check(not meter:IsShown(), "but shuts as you leave all the same")
-click("Close when I leave")
+click("Close on leaving")
 Stop()
 ns.ToggleOptions()
 meter:Show()

@@ -6,10 +6,23 @@
 
 - Ignore an item: it stays listed but counts for nothing (right-click it).
 - Split an item's value between players, or give it to someone else (right-click it).
+- Replay button for the end-of-run reveal (Options › End of run).
+- Defaults can reset the page on show only.
+- Custom color can use the game's color picker.
 
 ### Changes
 
 - Right-clicking an item opens a menu instead of switching its price.
+- Options rearranged into nine pages, with short names.
+- Every option has a tooltip; a greyed-out one says why.
+- Mini is a layout beside Columns and List.
+- The valuable loot amount and the runs to keep are typed in.
+- The meter opens beside its options page.
+
+### Fixes
+
+- Item order and the bench are greyed out in mini mode, where they do nothing.
+- The options no longer overstate how much room a run takes.
 
 ## 0.6.1
 

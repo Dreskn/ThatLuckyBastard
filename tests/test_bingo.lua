@@ -52,9 +52,13 @@ end
 -- The card's window: its markers by line (rows 1 to 4, columns 5 to 8,
 -- diagonals 9 and 10), its sixteen squares, and the texts it has drawn.
 local marks, cells = {}, {}
+local function OnCard(w) -- not a control of the options, say
+    while w and w ~= ThatLuckyBastardBingoFrame do w = rawget(w, "__parent") end
+    return w ~= nil
+end
 for _, w in ipairs(FRAMES) do
     if rawget(w, "mark") then marks[w.mark] = w end
-    if rawget(w, "tick") and rawget(w, "bg") and rawget(w, "text") then cells[#cells + 1] = w end
+    if rawget(w, "tick") and rawget(w, "bg") and rawget(w, "text") and OnCard(w) then cells[#cells + 1] = w end
 end
 local function Drew(text)
     for _, t in ipairs(TEXTLOG) do

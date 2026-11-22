@@ -14,11 +14,13 @@ Fire("PLAYER_ENTERING_WORLD", true, false)
 local db = ThatLuckyBastardDB
 local o = db.options
 
--- An option of the panel, by its label.
+-- An option of the panel, by its label (a swatch's is its name).
 local function control(label)
     for _, w in ipairs(FRAMES) do
         local t = rawget(w, "text")
-        if rawget(w, "get") and type(t) == "table" and t.__text == label then return w end
+        if rawget(w, "get") and (rawget(w, "label") == label or (type(t) == "table" and t.__text == label)) then
+            return w
+        end
     end
     error("no option labelled " .. label)
 end
@@ -115,6 +117,34 @@ check(o.accentCustom[1] == 10 / 255 and Accent(unpack(TEAL)) and sliders[1]:GetA
 Slide(1, 255)
 click("Custom")
 check(Accent(1, 0, 128 / 255), "Custom brings them back")
+
+print("-- the game's colour picker")
+local picked
+ColorPickerFrame = {
+    SetupColorPickerAndShow = function(self, info) picked = info end,
+    GetColorRGB = function() return 0.2, 0.4, 0.6 end,
+}
+click("Custom")
+check(picked and picked.r == 1 and picked.g == 0 and picked.b == 128 / 255 and not picked.hasOpacity,
+      "Custom also opens the game's colour picker, where the game has one, on the colour as it is")
+picked.swatchFunc()
+check(Accent(0.2, 0.4, 0.6) and o.accentCustom[2] == 0.4, "a colour picked there is taken as the custom colour")
+picked.cancelFunc()
+check(Accent(1, 0, 128 / 255), "cancelled, the colour is what it was")
+local opened
+ColorPickerFrame = {
+    SetColorRGB = function(self, r, g, b) self.rgb = { r, g, b } end,
+    GetColorRGB = function() return 0.5, 0.5, 0.5 end,
+}
+ShowUIPanel = function(f) opened = f end
+click("Custom")
+check(opened == ColorPickerFrame and ColorPickerFrame.rgb[1] == 1 and ColorPickerFrame.func ~= nil,
+      "an older picker is opened the older way")
+ColorPickerFrame.func()
+check(Accent(0.5, 0.5, 0.5), "and works the same")
+ColorPickerFrame.cancelFunc()
+ColorPickerFrame, ShowUIPanel = nil, nil
+check(Accent(1, 0, 128 / 255), "without one, the sliders do it alone")
 
 print("-- the Modern theme's alone")
 click("Classic")

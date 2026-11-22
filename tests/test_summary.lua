@@ -135,12 +135,12 @@ check(#CHAT_SENT == 0, "a run ending posts nothing, even with Summary chosen")
 
 print("-- options")
 ns.ToggleOptions()
--- The box where the number of players is typed: the options' only edit box.
+-- The box where the number of players is typed.
 local count
 for _, w in ipairs(FRAMES) do
     local up = w
     while up and up ~= ThatLuckyBastardOptionsFrame do up = rawget(up, "__parent") end
-    if up and w.__kind == "EditBox" then count = w end
+    if up and w.__kind == "EditBox" and rawget(w, "key") == "summaryLines" then count = w end
 end
 check(count and count:GetText() == "5", "Options > Share: a box with the number of players, 5")
 count:SetText("8")

@@ -266,11 +266,16 @@ local function drew(text)
     end
     return false
 end
--- Clicks the main window's button with this label.
+-- Clicks the main window's button with this label (not an option of the
+-- same name).
+local function InOptions(w)
+    while w and w ~= ThatLuckyBastardOptionsFrame do w = rawget(w, "__parent") end
+    return w ~= nil
+end
 local function click(label, button)
     for _, w in ipairs(FRAMES) do
         local t = rawget(w, "text")
-        if type(t) == "table" and t.__text == label and w.__scripts.OnClick then
+        if type(t) == "table" and t.__text == label and w.__scripts.OnClick and not InOptions(w) then
             w.__scripts.OnClick(w, button or "LeftButton")
             return true
         end
