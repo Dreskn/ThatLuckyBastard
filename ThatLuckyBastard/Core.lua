@@ -1208,19 +1208,30 @@ end
 ----------------------------------------------------------------------
 
 -- The value used for totals, shares and sorting. `e.noAH` says this item
--- is valued at its vendor price in its run: call MarkPrice first.
+-- is valued at its vendor price in its run: call MarkPrice first. An
+-- ignored item is worth nothing; `e.part`, on the stand-ins of a split
+-- item (see Summarize), is the share of it one player holds.
 local function EntryMarket(e)
-    if db.options.valueMode == "vendor" or e.noAH then return e.vendor * e.count end
-    return (e.now or e.ah or e.vendor) * e.count
+    if e.ignored then return 0 end
+    local unit = (db.options.valueMode == "vendor" or e.noAH) and e.vendor or (e.now or e.ah or e.vendor)
+    return unit * e.count * (e.part or 1)
 end
 ns.EntryMarket = EntryMarket
 
 -- The same at the prices recorded when it was looted, whatever the price
 -- setting says.
 function ns.EntryRecorded(e)
-    if db.options.valueMode == "vendor" or e.noAH then return e.vendor * e.count end
-    return (e.ah or e.vendor) * e.count
+    if e.ignored then return 0 end
+    local unit = (db.options.valueMode == "vendor" or e.noAH) and e.vendor or (e.ah or e.vendor)
+    return unit * e.count * (e.part or 1)
 end
+
+-- The same at vendor prices.
+local function EntryVendor(e)
+    if e.ignored then return 0 end
+    return e.vendor * e.count * (e.part or 1)
+end
+ns.EntryVendor = EntryVendor
 
 -- Switches an item between its auction and vendor price for one run. It
 -- applies to every copy of the item in that run, whoever looted it.
@@ -1234,6 +1245,54 @@ function ns.ToggleAuctionPrice(s, e)
     return true
 end
 
+-- The entry a summary's stand-in stands for (see Summarize), or `e`.
+function ns.RealEntry(e)
+    local mt = getmetatable(e)
+    return mt and type(mt.__index) == "table" and mt.__index or e
+end
+
+-- Who looted entry `e` (a real one) in run `s`.
+function ns.EntryOwner(s, e)
+    for name, p in pairs(s.players) do
+        for _, x in pairs(p.items) do
+            if x == e then return name end
+        end
+    end
+end
+
+-- Ignore: the item stays on show, worth nothing. It is for one player's
+-- copies of an item (an entry), where a price is for every copy in the run.
+function ns.ToggleIgnore(e)
+    e.ignored = (not e.ignored) or nil
+end
+
+-- Split: the item's value shared equally by `names`, players of the run,
+-- its looter among them or not (not: given to the others). Nil, or the
+-- looter alone, undoes it. Kept in name order.
+function ns.SetSplit(s, e, looter, names)
+    local list, seen = {}, {}
+    for _, name in ipairs(names or {}) do
+        if s.players[name] and not seen[name] then
+            seen[name] = true
+            list[#list + 1] = name
+        end
+    end
+    table.sort(list)
+    if #list == 0 or (#list == 1 and list[1] == looter) then list = nil end
+    e.split = list
+end
+
+-- Who a split entry's value goes to: those of its split who are players
+-- of the run. Nil when it is not split.
+local function SplitNames(s, e)
+    if not e.split then return end
+    local list = {}
+    for _, name in ipairs(e.split) do
+        if s.players[name] then list[#list + 1] = name end
+    end
+    return list[1] and list or nil
+end
+
 local function ItemName(e)
     return e.link:match("%[(.-)%]") or ""
 end
@@ -1242,9 +1301,18 @@ ns.ItemName = ItemName
 -- needOnly: count only the copies of each item that were won on a Need
 -- roll. Entries are then stand-ins that carry the reduced count and read
 -- everything else from the real entry.
+--
+-- A split item (see ns.SetSplit) is listed under each player who shares
+-- it, as a stand-in with `part` (their share), `ways` (how many share it)
+-- and, under anyone but its looter, `from` (the looter). Under its looter
+-- it stays listed when given away (`away`: worth nothing to them). Copies
+-- picked up, roll wins and the best quality stay with the looter, who
+-- picked it up and won it; its value, Need and Greed value included, goes
+-- with the shares.
 function ns.Summarize(s, needOnly)
     local o = db.options
     local out = { players = {}, count = 0, vendor = 0, market = 0, money = 0, needOnly = needOnly }
+    local byName = {}
     for name, p in pairs(s.players) do
         local ps = { name = name, class = p.class, role = p.role, count = 0, vendor = 0, market = 0, cats = {},
                      -- the coins counted in vendor and market (also in cats.coins
@@ -1255,58 +1323,92 @@ function ns.Summarize(s, needOnly)
                      -- also used by the bingo card: rolls won, and the best item quality
                      needWins = 0, greedWins = 0, bestQuality = 0,
                      -- every shown item in one group, for the ungrouped layout
-                     all = { items = {} } }
-        for _, real in pairs(p.items) do
-            if not real.resolved then FillItem(real) end
-            MarkPrice(s, real)
-            if real.count > 0 and o.cats[real.cat] ~= false then
-                local unit = EntryMarket(real) / real.count
-                ps.needValue = ps.needValue + unit * (real.need or 0)
-                ps.greedValue = ps.greedValue + unit * (real.greed or 0)
-                if unit > ps.bestValue then ps.bestValue, ps.bestLink = unit, real.link end
+                     all = { items = {} },
+                     -- every item counted in the totals, hidden ones too when they count
+                     held = {} }
+        byName[name] = ps
+        out.players[#out.players + 1] = ps
+    end
+
+    -- One player's hold on an entry: `e` is what is listed (the entry or a
+    -- stand-in), `part` their share of it, `own` true for its looter.
+    local function Hold(ps, real, e, part, own)
+        if real.count > 0 and o.cats[real.cat] ~= false then
+            local unit = EntryMarket(real) / real.count * part
+            ps.needValue = ps.needValue + unit * (real.need or 0)
+            ps.greedValue = ps.greedValue + unit * (real.greed or 0)
+            if unit > ps.bestValue then ps.bestValue, ps.bestLink = unit, real.link end
+            if own then
                 ps.needWins = ps.needWins + (real.need or 0)
                 ps.greedWins = ps.greedWins + (real.greed or 0)
                 ps.bestQuality = math.max(ps.bestQuality, Quality(real))
             end
+        end
+        local count = own and e.count or 0 -- copies picked up
+        local v, m = EntryVendor(e), EntryMarket(e)
+        local shown = e.count > 0 and o.cats[e.cat] ~= false
+        if shown then
+            local c = ps.cats[e.cat]
+            if not c then
+                c = { items = {}, count = 0, vendor = 0, market = 0 }
+                ps.cats[e.cat] = c
+            end
+            c.items[#c.items + 1] = e
+            c.count, c.vendor, c.market = c.count + count, c.vendor + v, c.market + m
+            ps.all.items[#ps.all.items + 1] = e
+        end
+        if shown or o.countHidden then
+            ps.count, ps.vendor, ps.market = ps.count + count, ps.vendor + v, ps.market + m
+            if e.count > 0 then ps.held[#ps.held + 1] = e end
+        end
+    end
+
+    for name, p in pairs(s.players) do
+        for _, real in pairs(p.items) do
+            if not real.resolved then FillItem(real) end
+            MarkPrice(s, real)
+            local names = SplitNames(s, real)
+            local ways = names and #names or 1
+            local mine = not names
+            for _, other in ipairs(names or {}) do
+                if other == name then mine = true end
+            end
+            local part = mine and 1 / ways or 0
+            local count = needOnly and (real.need or 0) or nil
             local e = real
-            if needOnly then
-                e = setmetatable({ count = real.need or 0 }, { __index = real })
+            if needOnly or names then
+                e = setmetatable({ count = count, part = names and part or nil, ways = names and ways or nil,
+                                   away = not mine or nil }, { __index = real })
             end
-            local v, m = e.vendor * e.count, EntryMarket(e)
-            local shown = e.count > 0 and o.cats[e.cat] ~= false
-            if shown then
-                local c = ps.cats[e.cat]
-                if not c then
-                    c = { items = {}, count = 0, vendor = 0, market = 0 }
-                    ps.cats[e.cat] = c
+            Hold(byName[name], real, e, part, true)
+            for _, other in ipairs(names or {}) do
+                if other ~= name then
+                    local share = setmetatable({ count = count, part = 1 / ways, ways = ways, from = name },
+                                               { __index = real })
+                    Hold(byName[other], real, share, 1 / ways, false)
                 end
-                c.items[#c.items + 1] = e
-                c.count, c.vendor, c.market = c.count + e.count, c.vendor + v, c.market + m
-                ps.all.items[#ps.all.items + 1] = e
-            end
-            if shown or o.countHidden then
-                ps.count, ps.vendor, ps.market = ps.count + e.count, ps.vendor + v, ps.market + m
             end
         end
-        do
-            local function ItemOrder(a, b)
-                -- Quest items go last however the rest is ordered.
-                local qa, qb = a.cat == "quest", b.cat == "quest"
-                if qa ~= qb then return qb end
-                if o.sortItems == "name" then
-                    local na, nb = ItemName(a), ItemName(b)
-                    if na ~= nb then return na < nb end
-                end
-                local ma, mb = EntryMarket(a), EntryMarket(b)
-                if ma ~= mb then return ma > mb end
-                return a.link < b.link
-            end
-            for _, c in pairs(ps.cats) do table.sort(c.items, ItemOrder) end
-            table.sort(ps.all.items, ItemOrder)
+    end
+
+    local function ItemOrder(a, b)
+        -- Quest items go last however the rest is ordered.
+        local qa, qb = a.cat == "quest", b.cat == "quest"
+        if qa ~= qb then return qb end
+        if o.sortItems == "name" then
+            local na, nb = ItemName(a), ItemName(b)
+            if na ~= nb then return na < nb end
         end
+        local ma, mb = EntryMarket(a), EntryMarket(b)
+        if ma ~= mb then return ma > mb end
+        return a.link < b.link
+    end
+    for _, ps in ipairs(out.players) do
+        for _, c in pairs(ps.cats) do table.sort(c.items, ItemOrder) end
+        table.sort(ps.all.items, ItemOrder)
         -- Coins are worth what they say, at auction or vendor alike. None
         -- are won on a roll, so Need only leaves them out.
-        local money = not needOnly and p.money or 0
+        local money = not needOnly and s.players[ps.name].money or 0
         if money > 0 then
             local shown = o.cats.coins ~= false
             if shown then ps.cats.coins = { items = {}, count = 0, vendor = money, market = money } end
@@ -1314,7 +1416,6 @@ function ns.Summarize(s, needOnly)
                 ps.money, ps.vendor, ps.market = money, ps.vendor + money, ps.market + money
             end
         end
-        out.players[#out.players + 1] = ps
         out.count, out.vendor, out.market = out.count + ps.count, out.vendor + ps.vendor, out.market + ps.market
         out.money = out.money + ps.money
     end
@@ -2039,11 +2140,12 @@ local function Moments(s, sum, extra, g)
     end
 
     -- Items: the cheapest, the cheapest won on Need, and the green ones.
+    -- Their own pickups only, not a share of someone else's.
     for _, p in ipairs(sum.players) do
         local x = extra[p.name]
         for _, e in ipairs(p.all.items) do
-            local unit = EntryMarket(e) / e.count
-            if Quality(e) >= UNCOMMON then x.magpie = x.magpie + e.count end
+            local unit = e.from and 0 or EntryMarket(e) / e.count
+            if Quality(e) >= UNCOMMON and not e.from then x.magpie = x.magpie + e.count end
             if unit > 0 then
                 if not x.cheapest or unit < x.cheapest then x.cheapest, x.cheapestLink = unit, e.link end
                 if (e.need or 0) > 0 and unit < OVERKILL_MAX and (not x.overkill or unit < x.overkill) then

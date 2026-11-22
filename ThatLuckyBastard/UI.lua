@@ -232,10 +232,9 @@ end
 local function PriceNote(e, mark, dominant)
     local note
     if mark == "ah" then
-        note = (e.now and "Auction price today: " or "Auction price: ") .. Money(e.now or e.ah)
-            .. " each\nRight-click for the vendor price."
+        note = (e.now and "Auction price today: " or "Auction price: ") .. Money(e.now or e.ah) .. " each."
     elseif mark == "off" then
-        note = "Auction price (" .. Money(e.ah) .. " each) not used.\nRight-click to use it."
+        note = "Auction price (" .. Money(e.ah) .. " each) not used."
     elseif mark == "noah" then
         note = "No auction price known: vendor price used."
     end
@@ -748,10 +747,10 @@ local function RowOnClick(self, button)
     local line = self.line
     if not line then return end
     if button == "RightButton" then
-        -- Switch this item between its auction and vendor price.
-        if line.e and currentRun and ns.ToggleAuctionPrice(currentRun, line.e) then
+        -- The item's menu: its price, ignore it, split it (ItemMenu.lua).
+        if line.e and currentRun and ns.ShowItemMenu then
             GameTooltip:Hide()
-            ns.Rerender() -- the run windows and statistics show its value too
+            ns.ShowItemMenu(currentRun, line.e)
         end
         return
     end
@@ -826,6 +825,7 @@ local function RowOnEnter(self)
         if line.e and currentRun and ns.AddRollLines then
             ns.AddRollLines(currentRun, ns.ItemKey(line.e))
         end
+        if line.e and currentRun then GameTooltip:AddLine("Right-click: price, ignore, split", 0.6, 0.6, 0.6) end
         GameTooltip:Show()
     end
 end
@@ -1434,17 +1434,44 @@ end
 -- A column-view item row. `count` and `market` are passed separately
 -- because aligned mode merges several entries of the same item.
 -- `total` is the run's total value.
+-- An ignored item, or one given to the others (`e.away`), is listed but
+-- worth nothing here; a share of a split item says which share it is.
 local function ItemLine(e, count, market, total)
+    local names = {}
+    for i, name in ipairs(e.split or {}) do names[i] = DisplayName(name) end
+    local split = table.concat(names, ", ")
+    local ways = e.ways or 1
+    -- The roll was the looter's, not a sharer's.
+    local roll = not e.from and RollNote(e) or nil
+    if e.ignored or e.away then
+        return {
+            link = e.link, e = e,
+            label = ItemLabel(e, count),
+            value = Grey(e.ignored and "ignored" or "given"),
+            dim = true,
+            note = e.ignored and "Ignored: not counted." or ("Given to " .. split .. "."),
+            roll = roll,
+        }
+    end
     local mark = PriceMark(e)
     local dominant = IsDominant(mark, market, total)
+    local note = PriceNote(e, mark, dominant)
+    local part
+    if ways > 1 then
+        part = Grey(" 1/" .. ways)
+        note = ("Split %d ways: %s."):format(ways, split) .. (note and ("\n" .. note) or "")
+    elseif e.from then
+        note = "Given by " .. DisplayName(e.from) .. "." .. (note and ("\n" .. note) or "")
+    end
     return {
         link = e.link, e = e,
-        label = ItemLabel(e, count),
+        label = ItemLabel(e, count) .. (part or ""),
+        part = part, -- the share, after the item
         value = Money(market),
         mark = mark,
         warn = dominant,
-        note = PriceNote(e, mark, dominant),
-        roll = RollNote(e),
+        note = note,
+        roll = roll,
     }
 end
 
@@ -2335,6 +2362,9 @@ local function RenderColumns(sum, awards, insights)
             r.label:SetPoint("RIGHT", r.value, "LEFT", -4, 0)
             r.label:SetText(line.label or "")
             r.value:SetText(line.value or "")
+            -- An item worth nothing here (ignored, given away) is faded.
+            r.label:SetAlpha(line.dim and 0.5 or 1)
+            r.icon:SetAlpha(line.dim and 0.5 or 1)
             SetMark(r.mark, line.mark)
             SetRowBg(r.bg, line)
             r:EnableMouse(line.link ~= nil)
@@ -2458,8 +2488,9 @@ local function BuildLines(sum, awards, insights)
                         -- The column view's item line, with the list's own columns.
                         local line = ItemLine(e, e.count, ns.EntryMarket(e), sum.market)
                         line.indent, line.icon = cat and 36 or 24, true
-                        line.label, line.count = inkMode and InkLink(e) or e.link, "x" .. e.count
-                        line.vendor, line.market = Money(e.vendor * e.count), line.value
+                        line.label = (inkMode and InkLink(e) or e.link) .. (line.part or "")
+                        line.count = "x" .. e.count
+                        line.vendor, line.market = line.dim and "" or Money(ns.EntryVendor(e)), line.value
                         add(line)
                     end
                 end
@@ -3051,6 +3082,8 @@ function RenderList(lines, showVendor, showShare, top)
         r.market:SetText(line.market or "")
         r.diff:SetText(showShare and line.diff or "")
         r.share:SetText(showShare and line.share or "")
+        r.label:SetAlpha(line.dim and 0.5 or 1)
+        r.icon:SetAlpha(line.dim and 0.5 or 1)
         SetMark(r.mark, line.mark)
         SetRowBg(r.bg, line)
         if theme.flat and line.frac and line.frac > 0 then

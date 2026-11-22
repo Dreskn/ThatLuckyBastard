@@ -305,7 +305,10 @@ local function searchValue()
 end
 check(searchValue() == ns.Money(5000), "the item search shows the green at its auction price")
 if beltRow then beltRow.__scripts.OnClick(beltRow, "RightButton") end
-check(beltRow ~= nil and searchValue() == ns.Money(900), "a right-click in the main window: the search shows its vendor price at once")
+check(ThatLuckyBastardItemMenu:IsShown(), "a right-click in the main window opens the item's menu")
+click("Vendor price")
+check(beltRow ~= nil and searchValue() == ns.Money(900), "its vendor price chosen there: the search shows it at once")
+ThatLuckyBastardItemMenu:Hide()
 ns.ToggleAuctionPrice(alone, greenBelt)
 
 print("==== statistics: a run opened from them comes to the front ====")

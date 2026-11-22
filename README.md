@@ -28,7 +28,7 @@ It records what every player in your group loots, puts a gold value on it, and s
 
 - Vendor prices come from the game. Auction prices come from [Auctionator](https://www.curseforge.com/wow/addons/auctionator) or TradeSkillMaster, if you have one of them.
 - Bind on Pickup, quest and grey items count at vendor price.
-- A blue dot marks an auction price. Right-click an item to switch between its auction and vendor price.
+- A blue dot marks an auction price. Right-click an item to switch its price, ignore it, or split it between players.
 
 ## Install and use
 

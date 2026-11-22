@@ -17,6 +17,7 @@ Browse.lua
 Show.lua
 RunPages.lua
 Export.lua
+ItemMenu.lua
 Code.lua
 Share.lua
 Social.lua

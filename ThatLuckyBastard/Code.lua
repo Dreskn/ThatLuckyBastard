@@ -202,8 +202,13 @@ function ns.EncodeRun(s, written)
                 if written then written[#written + 1] = e end
                 if e.id then entryIds[e.id] = true end
                 local kind = ((CAT_INDEX[e.cat] or CAT_INDEX.other) - 1) * 8 + math.min(e.quality or 1, 7)
+                -- Since 0.7.0: ignored, and who shares its value (older
+                -- versions read past both).
+                local split = {}
+                for i, who in ipairs(e.split or {}) do split[i] = N(Name(who)) end
                 fields[#fields + 1] = Join({ N(e.id), N(id), N(e.count), N(e.vendor), N(kind), N(e.ah),
-                                             N(Tail(itemString)), N(e.need), N(e.greed) }, ".")
+                                             N(Tail(itemString)), N(e.need), N(e.greed), e.ignored and "1" or "",
+                                             table.concat(split, "'") }, ".")
             end
         end
         players[#players + 1] = table.concat(fields, ",")
@@ -345,10 +350,23 @@ local function Build(sec, itemNames, read)
             local nth = (copies[itemString] or 0) + 1
             copies[itemString] = nth
             local key = nth == 1 and itemString or (itemString .. "#" .. nth)
+            assert((f[10] or "") == "" or f[10] == "1", "ignored")
+            local split
+            if (f[11] or "") ~= "" then
+                split = {}
+                local seen = {}
+                for text in (f[11] .. "'"):gmatch("(.-)'") do
+                    local who = names[Num(text, 1, #names)]
+                    assert(who and not seen[who], "split")
+                    seen[who] = true
+                    split[#split + 1] = who
+                end
+            end
             p.items[key] = {
                 id = entryId, count = Num(f[3], 0, 1e6) or 1, vendor = Num(f[4], 0, 1e10) or 0,
                 cat = CATS[math.floor(kind / 8) + 1], quality = quality, ah = Num(f[6], 0, 1e11),
                 need = Num(f[8], 0, 1e6), greed = Num(f[9], 0, 1e6),
+                ignored = f[10] == "1" or nil, split = split,
                 -- Valued as the owner saw it: never priced again here.
                 resolved = true,
                 link = Link(itemString, quality, id),
@@ -641,7 +659,7 @@ local function Lossless(s, back, written, read)
                 local filed = ns.EntryKey(v):gsub(":+$", "")
                 local expected = v:gsub("|Hitem:[^|]*|h", function() return "|H" .. filed .. "|h" end, 1)
                 if d.link ~= expected then return false, "link" end
-            elseif not ITEM_PASSING[k] and d[k] ~= v then
+            elseif not ITEM_PASSING[k] and not Same(d[k], v) then
                 return false, "item." .. k
             end
         end
@@ -654,7 +672,8 @@ end
 
 -- What a code holds of an item, and as what.
 local ITEM_CODED = { id = "number", count = "number", vendor = "number", ah = "number", need = "number",
-                     greed = "number", quality = "number", cat = "text", link = "text", resolved = "flag" }
+                     greed = "number", quality = "number", cat = "text", link = "text", resolved = "flag",
+                     ignored = "flag", split = "names" }
 local function Whole(v) return type(v) == "number" and v >= 0 and v % 1 == 0 end
 
 -- Are the players and items of `s` exactly what a code holds: no value it
@@ -678,7 +697,18 @@ local function Plain(s, written)
         for k, v in pairs(e) do
             if not ITEM_PASSING[k] then
                 local kind = ITEM_CODED[k]
-                if not kind or (kind == "number" and not Whole(v)) then return false end
+                if not kind or (kind == "number" and not Whole(v)) or (kind == "flag" and v ~= true) then
+                    return false
+                end
+                if kind == "names" then -- a list of different names, and nothing else
+                    if type(v) ~= "table" or not v[1] then return false end
+                    local seen, n = {}, 0
+                    for _, who in pairs(v) do
+                        if type(who) ~= "string" or who == "" or seen[who] then return false end
+                        seen[who], n = true, n + 1
+                    end
+                    if n ~= #v then return false end
+                end
             end
         end
         if tonumber(e.link:match("^|cnIQ(%d):|Hitem:[^|]*|h%[.*%]|h|r$")) ~= e.quality then return false end

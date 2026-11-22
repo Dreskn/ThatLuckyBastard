@@ -383,7 +383,9 @@ PAGES.search = {
                                 s.name or "Run",
                                 ns.ClassColored(ns.DisplayName(name), p.class),
                                 (e.count > 1 and (e.count .. "x ") or "") .. e.link,
-                                ns.Money(value),
+                                -- As looted: an ignored item, or one shared out, says so.
+                                e.ignored and "|cff8a8a8aignored|r"
+                                    or (ns.Money(value) .. (e.split and "|cff8a8a8a split|r" or "")),
                             },
                             keys = { s.startedAt or 0, s.name or "Run", name, ns.ItemName(e), value },
                         }

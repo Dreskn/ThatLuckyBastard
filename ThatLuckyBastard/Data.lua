@@ -256,7 +256,7 @@ function ns.Reprice(s)
     local biggest = 0
     for _, p in pairs(s.players) do
         for _, e in pairs(p.items) do
-            if Counted(e) then
+            if Counted(e) and not e.ignored then
                 ns.MarkPrice(s, e)
                 local was = ns.EntryRecorded(e)
                 local unit = e.vendor
@@ -546,15 +546,14 @@ end
 function ns.ExportRun(s)
     local lines = { Csv("Date", "Dungeon", "Player", "Class", "Role", "Item", "Item ID", "Count",
                         "Unit value (gold)", "Total (gold)", "Vendor total (gold)", "Category",
-                        "Won on Need", "Won on Greed") }
+                        "Won on Need", "Won on Greed", "Note") }
     -- Every item that counts towards the totals, so that the lines add up
-    -- to them: that includes hidden categories when those are counted.
+    -- to them: that includes hidden categories when those are counted, and
+    -- each player's share of a split item.
     local sum = ns.Summarize(s)
     for _, p in ipairs(sum.players) do
         local items = {}
-        for _, e in pairs(s.players[p.name].items) do
-            if Counted(e) then items[#items + 1] = e end
-        end
+        for _, e in ipairs(p.held) do items[#items + 1] = e end
         table.sort(items, function(a, b)
             local va, vb = ns.EntryMarket(a), ns.EntryMarket(b)
             if va ~= vb then return va > vb end
@@ -562,9 +561,11 @@ function ns.ExportRun(s)
         end)
         for _, e in ipairs(items) do
             local total = ns.EntryMarket(e)
+            local note = (e.ignored and "Ignored") or (e.away and "Given away")
+                or ((e.ways or 1) > 1 and ("Split %d ways"):format(e.ways)) or (e.from and ("Given by " .. e.from))
             lines[#lines + 1] = Csv(RunDate(s), s.name, p.name, p.class, p.role, ns.ItemName(e), ns.ItemKey(e),
-                                    e.count, Gold(total / e.count), Gold(total), Gold(e.vendor * e.count),
-                                    e.cat, e.need or 0, e.greed or 0)
+                                    e.count, Gold(total / e.count), Gold(total), Gold(ns.EntryVendor(e)),
+                                    e.cat, e.from and 0 or e.need or 0, e.from and 0 or e.greed or 0, note)
         end
         if p.money > 0 then
             lines[#lines + 1] = Csv(RunDate(s), s.name, p.name, p.class, p.role, "Coins", "", "", "",

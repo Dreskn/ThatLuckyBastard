@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased
+
+### New
+
+- Ignore an item: it stays listed but counts for nothing (right-click it).
+- Split an item's value between players, or give it to someone else (right-click it).
+
+### Changes
+
+- Right-clicking an item opens a menu instead of switching its price.
+
 ## 0.6.1
 
 ### New
