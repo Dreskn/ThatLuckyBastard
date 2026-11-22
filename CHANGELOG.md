@@ -1,12 +1,18 @@
 # Changelog
 
-## Unreleased
+## 0.5.7
 
-- **The meter.** A new small window like a damage meter, for loot: a bar per player in the class colour, the most loot first, growing live as the loot comes in, with rows sliding past one another when someone overtakes. Totals and shares on each row, and awards once the run is over. Open it with the new Meter button or `/tlb meter`, or let it open as a run starts and close as you leave (Options › While you play › Meter, where rank, share and award can be left out too). It stays open while you play, can be moved and sized, and is back where you left it at your next login. Its slim title bar names the dungeon the way players do: RFC, ZF, KDS.
-- **The race is run with coins.** Each player's loot falls into their column as gold coins, all at the same pace: they fall, spin, bounce and stack up, with a clink as they land, and a total shows once its last coin is down. A winner far ahead (half as much again as the next, or more) fills their column, and the rest pours over the top into a heap. The coin is our own drawing.
-- **Ninja and Luckiest are awards like the others.** They no longer weigh more when awards are handed out: the most striking fit wins, whichever award it is. Player tooltips and Statistics › Regulars no longer count Ninja and Luckiest alone: they count every award, and show the one each player had most often in your runs ("Hoarder x4"), the breakdown's name tooltip the three most frequent. Your kept runs are counted again once, when the update arrives.
-- **The Front page leads with the run's most outstanding award,** the one furthest from normal, whoever has it. Before, a Ninja always took the headline.
-- **Mini mode's title names the dungeon the way players do,** like the meter's: ZF, Mara, KDS.
+### New
+
+- Loot meter: a live bar per player, like a damage meter. Open it with the Meter button or `/tlb meter`, or have it open with each run (Options › While you play).
+- The meter and mini mode show dungeons by their short names (RFC, ZF, BRD).
+
+### Changes
+
+- The end-of-run race now drops gold coins into each column.
+- Ninja and Luckiest no longer outrank other awards.
+- Player tooltips and Regulars count every award, not only Ninja and Luckiest.
+- The Front page headline goes to the run's most notable award.
 
 ## 0.5.6
 
