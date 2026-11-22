@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### New
+
+- Coins looted from mobs now count, as a Coins line under each player (Options › Loot).
+
 ## 0.6.0
 
 ### New

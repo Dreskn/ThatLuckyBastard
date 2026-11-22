@@ -566,6 +566,10 @@ function ns.ExportRun(s)
                                     e.count, Gold(total / e.count), Gold(total), Gold(e.vendor * e.count),
                                     e.cat, e.need or 0, e.greed or 0)
         end
+        if p.money > 0 then
+            lines[#lines + 1] = Csv(RunDate(s), s.name, p.name, p.class, p.role, "Coins", "", "", "",
+                                    Gold(p.money), Gold(p.money), "coins", 0, 0)
+        end
     end
     return table.concat(lines, "\n")
 end

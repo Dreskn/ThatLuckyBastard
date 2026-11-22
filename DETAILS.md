@@ -5,7 +5,7 @@ Everything the addon does, page by page, with its commands, options and limits. 
 ## The breakdown window
 
 - **Per player:** total value, vendor value, share of the run, and how far above or below an equal split they are.
-- **Per item:** every item with its count and value, grouped by category: epic, blue and green BoE, Bind on Pickup, quest items, profession materials, other, junk.
+- **Per item:** every item with its count and value, grouped by category: epic, blue and green BoE, Bind on Pickup, quest items, profession materials, other, coins, junk. Coins are one sum per player, with no items under it.
 - **Two layouts:** one column per player (with portraits), or an expandable list. A group of more than five gets columns for its top five by loot, and the others on a *bench* under them: small cards side by side, each with a picture, the name, the award and the loot value one under the other (the options say which). One row of them is shown; it ends with an arrow marked **List**, with the number of players the row had no room for under it, which shows that run as a list without touching the option. At the top of the list its mirror, an arrow marked **Columns**, brings the columns back.
 - **Mini mode:** an option beside the themes, for any of them. The window becomes a small one: under its title bar, one card per player with their picture, name, award and total (as far as the options show them), the biggest total first unless another order is chosen. There are no columns, no loot, no footer, and no buttons but the cogwheel beside the cross, which opens the options (in the full window it is at the foot, where the Options button was); the window is exactly as big as its cards: about 570 by 150 for five players, narrower for fewer, with only the dungeon's short name in its title bar (ZF, Mara, KDS, as in the meter). A run of more than five players shows its top five, and the row then ends with an arrow that counts the others and shows the run as a list in the full window, where the Columns arrow leads back. There is no race in mini mode.
 - **Need rolls:** a button at the top switches the window to show only what each player won on Need rolls. Hovering an item shows whether it was won on Need or Greed, and everyone's roll on it.
@@ -82,6 +82,7 @@ Runs shared with you keep the prices their owner recorded. The totals and awards
 - **Bind on Pickup and quest items** count at vendor price, since they cannot be sold to other players.
 - **Junk** (grey items) counts at vendor price by default, since a stray auction listing for a grey means little. Right-click one to use its auction price instead.
 - All loot counts the same, whether it came from a boss, a roll or a profession.
+- **Coins** count at face value (since 0.6.1). The game splits a corpse's coins evenly among the group members near it and tells each only their own share, so every group member close enough to be seen is given that same share. Coins you loot alone are yours alone. Coins are not shown on the timeline or in loot by source, and Need only leaves them out.
 - A **blue dot** next to a value means it is an auction price. An **orange dot** means the item could be auctioned but no price is known, so its vendor price was used. Hover the item for details.
 - Prices are recorded when the item is looted and do not change afterwards.
 
@@ -139,7 +140,8 @@ Options that do nothing as things stand are greyed out, such as the share bar in
 ## Limitations
 
 - **Range.** The game only reports another player's loot when you are reasonably close to them. Loot picked up far away from you is missed.
-- **Not counted:** coin (it is split evenly by the game), quest rewards, trades and crafted items.
+- **Not counted:** quest rewards, trades and crafted items.
+- **Coins before 0.6.1** were not recorded: older runs count without them, in a dungeon's averages and records too.
 - **Trades after the run are invisible.** If someone hands an item on, That Lucky Bastard still counts it for the player who looted it.
 - **New figures start now.** The timeline, the roll sheet, roll luck and loot by source rely on details recorded from version 0.2.0 on. Runs recorded before have none of them.
 - **Boss loot is a rule of thumb:** whatever was picked up within 90 seconds of a boss kill, profession materials aside.

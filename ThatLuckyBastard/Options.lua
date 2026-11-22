@@ -484,13 +484,15 @@ do
     -- Under the items' switch, the kinds of item that get the line.
     local function ItemLine() return Opt().tipItems end
     local kinds = {}
-    for i, cat in ipairs(ns.CATS) do
-        kinds[i] = {
-            cat.name or cat.label,
-            function() return Opt().tipCats[cat.key] ~= false end,
-            function(on) Opt().tipCats[cat.key] = on end,
-            ItemLine,
-        }
+    for _, cat in ipairs(ns.CATS) do
+        if not cat.coins then -- not an item
+            kinds[#kinds + 1] = {
+                cat.name or cat.label,
+                function() return Opt().tipCats[cat.key] ~= false end,
+                function(on) Opt().tipCats[cat.key] = on end,
+                ItemLine,
+            }
+        end
     end
     Group(p, kinds, 2, false, 180, 22)
 

@@ -188,7 +188,7 @@ function ns.EncodeRun(s, written)
         local p = s.players[name]
         local st = s.rollStats and s.rollStats[name] or {}
         local fields = { Join({ N(Name(name)), S(p.class), p.role and p.role:sub(1, 1) or "",
-                                N(st.sum), N(st.n), N(st.high), N(st.low), N(st.passes) }, ".") }
+                                N(st.sum), N(st.n), N(st.high), N(st.low), N(st.passes), N(p.money) }, ".") }
         local entries = {}
         for _, e in pairs(p.items) do entries[#entries + 1] = e end
         table.sort(entries, function(a, b)
@@ -321,7 +321,9 @@ local function Build(sec, itemNames, read)
         local name = names[nameIndex]
         local class = ReadS(h[2], 20)
         assert(name and not s.players[name] and class:match("^%u*$"), "player")
-        local p = { class = class ~= "" and class or nil, role = ROLES[h[3] or ""], items = {} }
+        -- Coins (copper) came with 0.6.1: older versions read past them.
+        local p = { class = class ~= "" and class or nil, role = ROLES[h[3] or ""], items = {},
+                    money = Num(h[9], 0, 1e11) }
         if (h[5] or "") ~= "" then
             s.rollStats = s.rollStats or {}
             s.rollStats[name] = { sum = Num(h[4], 0, 1e7) or 0, n = Num(h[5], 0, 1e5), high = Num(h[6], 0, 100),
@@ -552,6 +554,8 @@ local CODED = { name = true, instanceID = true, startedAt = true, endedAt = true
 -- Of the moment only: never saved, so not compared.
 local ITEM_PASSING = { lastAt = true, noAH = true, now = true }
 local PLAYER_PASSING = { joined = true }
+-- What a code holds of a player (money: their coins, in copper).
+local PLAYER_CODED = { class = true, role = true, items = true, money = true }
 local NAME_END = "|" -- cannot be part of a name inside a link
 
 -- [run] = the record it was read from, or was last packed as: a run whose
@@ -615,9 +619,9 @@ local function Lossless(s, back, written, read)
     for name, p in pairs(s.players) do
         players = players + 1
         local q = back.players[name]
-        if not q or p.class ~= q.class or p.role ~= q.role then return false, "player" end
+        if not q or p.class ~= q.class or p.role ~= q.role or p.money ~= q.money then return false, "player" end
         for k in pairs(p) do
-            if k ~= "class" and k ~= "role" and k ~= "items" and not PLAYER_PASSING[k] then return false, "player." .. k end
+            if not PLAYER_CODED[k] and not PLAYER_PASSING[k] then return false, "player." .. k end
         end
         local have, got = 0, 0
         for _ in pairs(p.items) do have = have + 1 end
@@ -663,8 +667,9 @@ local function Plain(s, written)
     local items = 0
     for _, p in pairs(s.players) do
         for k in pairs(p) do
-            if k ~= "class" and k ~= "role" and k ~= "items" and not PLAYER_PASSING[k] then return false end
+            if not PLAYER_CODED[k] and not PLAYER_PASSING[k] then return false end
         end
+        if p.money ~= nil and not Whole(p.money) then return false end
         for _ in pairs(p.items) do items = items + 1 end
     end
     if items ~= #written then return false end

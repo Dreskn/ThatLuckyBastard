@@ -74,7 +74,7 @@ ns.OPTION_DEFAULTS = {
     -- Categories that are switched off are hidden, and left out of every
     -- total unless countHidden is on.
     cats = { epic = true, rare = true, uncommon = true, bop = true, quest = true, prof = true, other = true,
-             junk = true },
+             junk = true, coins = true },
     countHidden = false,
     valueMode = "market",   -- "market" (auction, vendor fallback) or "vendor"
     -- Auction prices as recorded when the loot dropped ("then"), or as
@@ -276,6 +276,41 @@ AddSpec("LOOT_ITEM_BONUS_ROLL", false)
 
 -- "<instance> has been reset." (seen by the player who resets)
 local resetPattern = BuildPattern(INSTANCE_RESET_SUCCESS)
+
+-- Coins: "You loot 1 Gold, 5 Silver" when you take them alone, "Your share
+-- of the loot is 25 Copper." when the game splits them among the group.
+-- Guild variants first: they add a part the plain ones would swallow.
+local moneySpecs = {}
+for _, spec in ipairs({ { "LOOT_MONEY_SPLIT_GUILD", true }, { "LOOT_MONEY_SPLIT", true },
+                        { "YOU_LOOT_MONEY_GUILD", false }, { "YOU_LOOT_MONEY", false } }) do
+    local pat = BuildPattern(_G[spec[1]])
+    if pat then moneySpecs[#moneySpecs + 1] = { pat = pat, split = spec[2] } end
+end
+
+-- The amounts in such a text, from the client's own words for them ("%d
+-- Gold"), or from coin icons where a client draws those.
+local coinUnits = {}
+for _, unit in ipairs({ { GOLD_AMOUNT or "%d Gold", 10000, "Gold" }, { SILVER_AMOUNT or "%d Silver", 100, "Silver" },
+                        { COPPER_AMOUNT or "%d Copper", 1, "Copper" } }) do
+    local pat = unit[1]:gsub("[%(%)%.%+%-%*%?%[%]%^%$]", "%%%0"):gsub("%%[ds]", "(%%d+)")
+    coinUnits[#coinUnits + 1] = { pat = pat, icon = "(%d+)%s*|T[^|]-" .. unit[3] .. "Icon", copper = unit[2] }
+end
+
+-- Copper looted, and whether it was a share of a split; nil for any other text.
+local function ParseMoney(text)
+    for _, spec in ipairs(moneySpecs) do
+        local amount = text:match(spec.pat)
+        if amount then
+            local copper, found = 0, false
+            for _, unit in ipairs(coinUnits) do
+                local n = amount:match(unit.pat) or amount:match(unit.icon)
+                if n then copper, found = copper + tonumber(n) * unit.copper, true end
+            end
+            if found and copper > 0 then return copper, spec.split end
+            return
+        end
+    end
+end
 
 -- Identifies an item regardless of who looted it (its item ID).
 local function LinkKey(link)
@@ -626,7 +661,7 @@ end
 
 local function HasLoot(s)
     for _, p in pairs(s.players) do
-        if next(p.items) then return true end
+        if next(p.items) or (p.money or 0) > 0 then return true end
     end
     return false
 end
@@ -677,8 +712,8 @@ local function DropLateJoiners(s)
     local logged = {}
     for _, name in ipairs(s.names or {}) do logged[name] = true end -- in the pickup or roll log
     for name, p in pairs(s.players) do
-        if name ~= ns.Me(s) and p.joined and p.joined >= from and not next(p.items) and not logged[name]
-                and not (s.rollStats and s.rollStats[name]) then
+        if name ~= ns.Me(s) and p.joined and p.joined >= from and not next(p.items) and not p.money
+                and not logged[name] and not (s.rollStats and s.rollStats[name]) then
             s.players[name] = nil
         end
     end
@@ -1012,6 +1047,28 @@ local function RecordLoot(name, rawLink, count)
     if ns.BingoCheck then ns.BingoCheck() end
 end
 
+-- Coins, kept per player as p.money (copper). The game splits a corpse's
+-- coins evenly among the group members near it and tells each of them
+-- only their own share, so a share is given to everyone in the group
+-- close enough to be seen. Coins looted alone are yours alone.
+local function RecordMoney(copper, split)
+    local s = db.active
+    if not Tracking(s) or not PLAYER_NAME then return end
+    local function Give(name)
+        local p = AddPlayer(s, name)
+        p.money = (p.money or 0) + copper
+    end
+    Give(PLAYER_NAME)
+    if split then
+        for name, unit in pairs((GroupNow())) do
+            if not UnitIsVisible or UnitIsVisible(unit) then Give(name) end
+        end
+    end
+    s.lastSeen = time()
+    ns.Refresh()
+    if ns.BingoCheck then ns.BingoCheck() end
+end
+
 -- A roll in progress: who chose what and who rolled what. `rk` tells
 -- rolls apart: the roll's own id where the client sends one (two copies
 -- of the same item are then two rolls), the item otherwise.
@@ -1187,9 +1244,12 @@ ns.ItemName = ItemName
 -- everything else from the real entry.
 function ns.Summarize(s, needOnly)
     local o = db.options
-    local out = { players = {}, count = 0, vendor = 0, market = 0, needOnly = needOnly }
+    local out = { players = {}, count = 0, vendor = 0, market = 0, money = 0, needOnly = needOnly }
     for name, p in pairs(s.players) do
         local ps = { name = name, class = p.class, role = p.role, count = 0, vendor = 0, market = 0, cats = {},
+                     -- the coins counted in vendor and market (also in cats.coins
+                     -- when that category is shown, as a group with no items)
+                     money = 0,
                      -- for the awards: value won on Need / Greed rolls, and the best single item
                      needValue = 0, greedValue = 0, bestValue = 0,
                      -- also used by the bingo card: rolls won, and the best item quality
@@ -1244,8 +1304,19 @@ function ns.Summarize(s, needOnly)
             for _, c in pairs(ps.cats) do table.sort(c.items, ItemOrder) end
             table.sort(ps.all.items, ItemOrder)
         end
+        -- Coins are worth what they say, at auction or vendor alike. None
+        -- are won on a roll, so Need only leaves them out.
+        local money = not needOnly and p.money or 0
+        if money > 0 then
+            local shown = o.cats.coins ~= false
+            if shown then ps.cats.coins = { items = {}, count = 0, vendor = money, market = money } end
+            if shown or o.countHidden then
+                ps.money, ps.vendor, ps.market = money, ps.vendor + money, ps.market + money
+            end
+        end
         out.players[#out.players + 1] = ps
         out.count, out.vendor, out.market = out.count + ps.count, out.vendor + ps.vendor, out.market + ps.market
+        out.money = out.money + ps.money
     end
     -- Rank by value first (1 = most loot); "value" and "podium" keep this order.
     table.sort(out.players, function(a, b)
@@ -1539,11 +1610,15 @@ local AWARDS = {
       how = "Got nothing worth auctioning, in a run where others did (4 items or more).",
       fit = function(p, _, g)
           if db.options.valueMode == "vendor" or not ns.HasPriceSource() then return end
-          if p.count < VENDOR_MIN_ITEMS or p.market <= 0 or p.vendor < p.market * VENDOR_SHARE then return end
+          -- Items only: coins are worth the same either way.
+          local vendor, market = p.vendor - p.money, p.market - p.money
+          if p.count < VENDOR_MIN_ITEMS or market <= 0 or vendor < market * VENDOR_SHARE then return end
           -- The more of the run's value is above vendor price, the more it stands out.
-          return Fit(1 - g.vendor / g.total, 0.2, 0.6)
+          return Fit(1 - (g.vendor - g.money) / (g.total - g.money), 0.2, 0.6)
       end,
-      detail = function(p) return { text = "Nothing worth putting up for auction", amount = p.market } end },
+      detail = function(p)
+          return { text = "Nothing worth putting up for auction", amount = p.market - p.money }
+      end },
     { key = "errand", title = "Errand Runner", icon = "INV_Misc_Note_01",
       how = "Picked up 3 or more quest items, 1.5 times the group's average or more.",
       fit = function(p, _, g)
@@ -2026,7 +2101,8 @@ local function AwardFits(s, sum)
     local n = #sum.players
     if n < 2 or sum.count == 0 or sum.market <= 0 then return end
 
-    local g = { n = n, total = sum.market, equal = sum.market / n, vendor = sum.vendor, items = sum.count,
+    local g = { n = n, total = sum.market, equal = sum.market / n, vendor = sum.vendor, money = sum.money or 0,
+                items = sum.count,
                 holders = Holders(n), junk = 0, quest = 0, greedAll = 0, prof = 0, roles = {}, classes = {} }
     -- Every player's figure for the awards that go to the best of the
     -- group at something. Sorted below, best first.
@@ -2535,6 +2611,17 @@ function handlers.CHAT_MSG_LOOT(text)
     else
         HandleRoll(text)
     end
+end
+
+function handlers.CHAT_MSG_MONEY(text)
+    if type(text) ~= "string" then return end
+    if issecret(text) then
+        Capture("MONEY", "<hidden from addons>")
+        return
+    end
+    Capture("MONEY", text)
+    local copper, split = ParseMoney(text)
+    if copper then RecordMoney(copper, split) end
 end
 
 -- The instance was reset while we were outside it: the run is over, so

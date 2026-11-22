@@ -337,6 +337,13 @@ LOOT_ROLL_PASSED_AUTO_FEMALE = H .. "%s automatically passed on: %s because she 
 LOOT_ROLL_PASSED_SELF_AUTO = H .. "You automatically passed on: %s because you cannot loot that item."
 LOOT_ROLL_WON = H .. "%s won: %s"
 LOOT_ROLL_YOU_WON = H .. "You won: %s"
+-- Coins.
+YOU_LOOT_MONEY = "You loot %s"
+YOU_LOOT_MONEY_GUILD = "You loot %s (%s deposited to guild bank)"
+LOOT_MONEY_SPLIT = "Your share of the loot is %s."
+LOOT_MONEY_SPLIT_GUILD = "Your share of the loot is %s. (%s deposited to guild bank)"
+LOOT_MONEY = "%s loots %s."
+GOLD_AMOUNT, SILVER_AMOUNT, COPPER_AMOUNT = "%d Gold", "%d Silver", "%d Copper"
 
 ----------------------------------------------------------------------
 -- Loading and driving the addon
@@ -392,3 +399,4 @@ function Reload()
 end
 
 function Loot(text) Fire("CHAT_MSG_LOOT", text) end
+function Coins(text) Fire("CHAT_MSG_MONEY", text) end

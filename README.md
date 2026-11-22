@@ -48,7 +48,7 @@ The minimap button does the same: left-click for the window, right-click for the
 ## Good to know
 
 - The game only reports another player's loot when you are close to them. Loot picked up far away is missed.
-- Coin, quest rewards, trades and crafted items are not counted.
+- Quest rewards, trades and crafted items are not counted.
 - Auction prices are taken as they are, so one unrealistic listing can distort a run.
 - Built for WoW Forever (interface 16001). The addon's text is in English only.
 

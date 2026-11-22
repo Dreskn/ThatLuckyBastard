@@ -87,11 +87,17 @@ local CATS = {
       name = "Bind on Pickup" }, -- name: what the options call it, when not by its label
     { key = "prof",     label = "Profession materials",          short = "Professions", color = { 1.00, 0.82, 0.00 } },
     { key = "other",    label = "Other",                         short = "Other",       color = { 0.85, 0.85, 0.85 } },
+    -- Not items: one sum per player, with nothing under it.
+    { key = "coins",    label = "Coins",                         short = "Coins",       color = { 0.90, 0.72, 0.36 },
+      coins = true },
     { key = "junk",     label = "Junk",                          short = "Junk",        color = { 0.62, 0.62, 0.62 } },
     -- Always last: quest items are worth nothing to anyone else.
     { key = "quest",    label = "Quest items (vendor value)",    short = "Quest",       color = { 1.00, 1.00, 0.45 },
       name = "Quest items" },
 }
+for _, cat in ipairs(CATS) do
+    if cat.coins then CATS.coins = cat end
+end
 local cols = {}
 
 -- Podium mode: gold, silver, bronze, then grey.
@@ -1530,15 +1536,41 @@ local function BuildColumnLines(sum, o)
         end
     end
 
+    -- Coins are one sum with no items under it: a heading of their own
+    -- when the loot is grouped, else a line before the items.
+    local anyCoins = false
+    for _, p in ipairs(sum.players) do
+        if p.cats.coins then anyCoins = true end
+    end
+    local function Coins(grouped)
+        if not anyCoins then return end
+        local cat = CATS.coins
+        for i, p in ipairs(sum.players) do
+            local cs = p.cats.coins
+            if grouped then
+                if cs or o.alignItems then add(i, Header(cat, cs)) end
+            elseif cs then
+                add(i, { label = CatColored(cat.short, cat), value = Money(cs.market) })
+            elseif o.alignItems then
+                add(i, { label = "|cff505050-|r" })
+            end
+        end
+    end
+
     -- `false` stands for "no categories": one group holding everything.
     for _, cat in ipairs(o.groupByCategory and CATS or { false }) do
-        if o.alignItems then Aligned(cat) else Plain(cat) end
+        if cat and cat.coins then
+            Coins(true)
+        else
+            if not cat then Coins(false) end
+            if o.alignItems then Aligned(cat) else Plain(cat) end
+        end
     end
 
     -- With aligned items an empty-handed player has a column of dashes,
     -- which says it already; unless nobody has anything.
     for i, p in ipairs(sum.players) do
-        if p.count == 0 and (not o.alignItems or sum.count == 0) then
+        if p.count == 0 and p.money == 0 and (not o.alignItems or (sum.count == 0 and sum.money == 0)) then
             add(i, { label = NoLootLabel(sum) })
         end
     end
@@ -2401,17 +2433,23 @@ local function BuildLines(sum, awards, insights)
             frac = sum.market > 0 and p.market / sum.market or 0,
         })
         if open then
-            if p.count == 0 then
+            if p.count == 0 and p.money == 0 then
                 add({ indent = 24, wide = true, label = NoLootLabel(sum) })
             end
             for _, cat in ipairs(o.groupByCategory and CATS or { false }) do
                 local group = GroupOf(p, cat)
+                -- Coins have no items: with no categories, a line of their own first.
+                local coins = not cat and p.cats.coins
+                if coins then
+                    add({ indent = 24, label = CatColored(CATS.coins.label, CATS.coins),
+                          vendor = Money(coins.vendor), market = Money(coins.market) })
+                end
                 if group then
                     if cat then
                         add({
                             indent = 24, bg = 0.05, cat = cat,
                             label = CatColored(cat.label, cat),
-                            count = Grey(tostring(group.count)), vendor = MoneyGrey(group.vendor),
+                            count = cat.coins and "" or Grey(tostring(group.count)), vendor = MoneyGrey(group.vendor),
                             market = MoneyGrey(group.market),
                             share = Grey(Pct(group.market, p.market)),
                         })
