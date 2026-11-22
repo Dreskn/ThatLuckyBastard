@@ -355,6 +355,19 @@ ns.ShowWindow(true, s)
 check(main:IsShown() and not curtain:IsShown() and #Cards() == 5 and Size() == small,
       "a run left with mini on is shown on its cards, with no race")
 
+print("-- the dungeon's short name")
+local zf = Run(209, "Zul'Farrak", { "Borin Oak", "Sela Marrow" })
+ns.ShowRun(zf)
+Draw()
+local zfTitle = Title("ZF")
+check(zfTitle:match("|t%s*(.-)$") == "ZF", "the title names the dungeon the way players do (" .. zfTitle .. ")")
+o.mini = false
+Draw()
+check(Title("Zul'Farrak"):find("That Lucky Bastard", 1, true) ~= nil, "the full window keeps its full name")
+o.mini = true
+ns.ShowRun(s)
+Draw()
+
 print("-- switched off")
 o.mini = false
 Draw()

@@ -89,6 +89,7 @@ local function Drew(text)
     return false
 end
 local PITCH = 22
+local TOP = 22 + 2 -- the slim title bar and the line under it
 
 print("-- opening it")
 local escapes = false
@@ -100,7 +101,7 @@ TEXTLOG = {}
 SlashCmdList.THATLUCKYBASTARD("meter")
 check(meter:IsShown() and #Rows() == 0 and Drew("No run yet.") and Title():find("Meter", 1, true),
       "/tlb meter opens it; with no run at all, it says so")
-check(meter:GetWidth() == 270 and meter:GetHeight() == 46 + 4 + 5 * PITCH - 2 + 12,
+check(meter:GetWidth() == 270 and meter:GetHeight() == TOP + 4 + 5 * PITCH - 2 + 12,
       ("as tall as five rows to begin with (%dx%d)"):format(meter:GetWidth(), meter:GetHeight()))
 SlashCmdList.THATLUCKYBASTARD("meter")
 check(not meter:IsShown(), "and a second time shuts it")
@@ -209,7 +210,7 @@ local tint
 tex, color, tint = Look("Borin Oak")
 check(tex == "Interface\\TargetingFrame\\UI-StatusBar" and tint[1] == 0.78 and tint[2] == 0.61,
       "Classic: the game's own bar, in the class colour")
-check(meter:GetHeight() == 46 + 4 + 5 * PITCH - 2 + 12, "the window keeps its size")
+check(meter:GetHeight() == TOP + 4 + 5 * PITCH - 2 + 12, "the window keeps its size")
 ns.SetTheme("receipt")
 local bg
 tex, color, tint, bg = Look("Borin Oak")
@@ -232,10 +233,10 @@ check(scroll.__scroll == 4 * PITCH, "down to the last, and no further")
 for _ = 1, 10 do scroll.__scripts.OnMouseWheel(scroll, 1) end
 check(scroll.__scroll == 0, "and back up to the first")
 scroll.__scripts.OnMouseWheel(scroll, -2)
-meter:SetHeight(46 + 4 + 9 * PITCH - 2 + 12)
+meter:SetHeight(TOP + 4 + 9 * PITCH - 2 + 12)
 ns.Rerender()
 check(scroll.__scroll == 0, "made taller for nine, there is nothing to scroll")
-meter:SetHeight(46 + 4 + 5 * PITCH - 2 + 12)
+meter:SetHeight(TOP + 4 + 5 * PITCH - 2 + 12)
 Leave()
 Stop()
 
@@ -327,6 +328,63 @@ click("Close when I leave")
 Stop()
 ns.ToggleOptions()
 meter:Show()
+
+print("-- the title bar")
+local mtitle = rawget(meter, "meterTitle")
+local function Crosses(win)
+    local list = {}
+    for _, w in ipairs(FRAMES) do
+        local p = rawget(w, "__parent")
+        if w.__kind == "Button" and p and rawget(p, "__parent") == win and rawget(w, "__w") then
+            list[#list + 1] = w.__w .. "x" .. w.__h
+        end
+    end
+    table.sort(list)
+    return table.concat(list, " ")
+end
+ns.Rerender()
+local tp = mtitle.__points[1]
+check(mtitle.__font == "GameFontHighlight" and tp[1] == "LEFT" and tp[3] == "TOPLEFT" and tp[4] == 8 and tp[5] == -11
+      and mtitle.__justify == "LEFT"
+      and scroll.__points[1][2] == 4 and scroll.__points[1][3] == -TOP - 4,
+      "Modern: a slim title bar, 22 high, a smaller title in the middle of it, the rows close under it")
+check(Crosses(meter) == "12x12 18x18 20x16" and Crosses(main):find("24x24", 1, true) and Crosses(main):find("24x22", 1, true)
+      and not Crosses(main):find("18x18", 1, true),
+      "a smaller cross than the other windows' (" .. Crosses(meter) .. ")")
+local plain, _, plainTitle, plainSkins = ns.MakeWindow("ThatLuckyBastardPlainTest", 300, 200, "HIGH", false)
+local _, plainTop = ns.ApplyWindowTheme(plainSkins, plainTitle)
+check(plainTop == -46 and plainTitle.__font == "GameFontHighlightLarge" and plainTitle.__points[1][1] == "TOPLEFT"
+      and Crosses(plain) == "24x22 24x24", "the other windows keep their full bar")
+ns.SetTheme("receipt")
+tp = mtitle.__points[1]
+check(mtitle.__font == "ThatLuckyBastardReceiptTitleSmall" and tp[1] == "LEFT" and tp[5] == -11 and scroll.__points[1][3] == -TOP - 4,
+      "Receipt: the same slim bar, the title in the till's type, smaller")
+ns.SetTheme("classic")
+check(mtitle.__font == "GameFontNormal" and mtitle.__points[1][1] == "TOP" and scroll.__points[1][3] == -34
+      and mtitle.__justify == "CENTER",
+      "Classic: the game's own title bar, as it was")
+ns.SetTheme("modern")
+
+print("-- the dungeon's short name")
+WORLD.party = { { "Borin Oak", "WARRIOR", "TANK" } }
+local curly = string.char(226, 128, 153)
+for _, n in ipairs({
+    { 349, "Maraudon", "Mara" },
+    { 36, "Die Todesminen", "DM" },                      -- by its ID, in another language
+    { 9711, "The Stockade", "Stocks" },                  -- by its name, "The" aside
+    { 9712, "Krol" .. curly .. "dok Stronghold", "KDS" }, -- a curly apostrophe
+    { 9713, "Krol'Dok Stronghold", "KDS" },              -- a straight one, and another case
+    { 9714, "Excavation Site: Wetlands", "ESW" },
+    { 9715, "Shaper's Terrace", "Terrace" },
+    { 429, "Dire Maul", "Dire Maul" },                   -- DM is the Deadmines
+    { 9716, "Meter Keep", "Meter Keep" },                -- not one of them
+}) do
+    TEXTLOG = {}
+    Enter(n[1], n[2])
+    check(Title() == n[3] .. "  live", ("%s: %s (%s)"):format(n[2], n[3], Title()))
+end
+Leave()
+Stop()
 
 print("-- kept from one session to the next")
 meter:ClearAllPoints()

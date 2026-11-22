@@ -14,9 +14,12 @@ local _, ns = ...
 -- one session to the next (db.meter). Rows that do not fit are a turn of
 -- the mouse wheel away. The options say whether a row shows the rank, the
 -- share and the award, and whether the meter opens by itself as a run
--- starts and shuts as you leave (see ns.MeterAuto).
+-- starts and shuts as you leave (see ns.MeterAuto). Its title bar is
+-- slimmer than the other windows', and names the dungeon the way players
+-- do: RFC, SFK, ZF.
 
 local WIDTH = 270
+local BAR_H = 22      -- the title bar, in the Modern and Receipt themes
 local ROW_H, ROW_GAP = 20, 2
 local PITCH = ROW_H + ROW_GAP
 local PAD = 4         -- around the rows
@@ -26,9 +29,10 @@ local SPEED = 8       -- how quickly bars and rows close in on where they are go
 local CHECK = 1       -- seconds between two looks at which run to show
 local BAR = "Interface\\TargetingFrame\\UI-StatusBar" -- the game's own bar, for the Classic theme
 
-local frame, ui, title, skins = ns.MakeWindow("ThatLuckyBastardMeterFrame", WIDTH, 100, "MEDIUM", false)
+local frame, ui, title, skins = ns.MakeWindow("ThatLuckyBastardMeterFrame", WIDTH, 100, "MEDIUM", false, nil, BAR_H)
 frame:SetPoint("RIGHT", UIParent, "RIGHT", -60, -120)
 frame:SetResizable(true)
+frame.meterTitle = title
 
 -- The rows sit on a frame inside a scroll frame, which shows the part of
 -- them that fits.
@@ -41,7 +45,7 @@ local emptyText = ui:CreateFontString(nil, "OVERLAY", "GameFontDisable")
 
 local rowsByName, spare = {}, {} -- the rows on show, by player; and the ones put aside
 local shownRun, shownLive        -- the run the rows are for, and whether it was going on
-local top = -46                  -- where the rows start under the title bar (the theme's)
+local top = -(BAR_H + 2)         -- where the rows start under the title bar (the theme's)
 local offset = 0                 -- rows scrolled past
 local moving = false             -- bars or rows still on their way
 local Draw
@@ -192,7 +196,7 @@ local function Scroll()
 end
 
 function Draw()
-    local _, t = ns.ApplyWindowTheme(skins, title)
+    local flat, t = ns.ApplyWindowTheme(skins, title)
     top = t
     local theme = ns.ThemeName()
     scroll:ClearAllPoints()
@@ -200,8 +204,9 @@ function Draw()
     scroll:SetPoint("BOTTOMRIGHT", -PAD, BOTTOM)
     if frame.SetResizeBounds then frame:SetResizeBounds(180, Height(1), 600, 900) end
     local width = frame:GetWidth() - 2 * PAD
-    title:SetWidth(math.max(20, frame:GetWidth() - 54)) -- cut short before the cross
+    title:SetWidth(math.max(20, frame:GetWidth() - (flat and 36 or 54))) -- cut short before the cross
     title:SetWordWrap(false)
+    title:SetJustifyH(flat and "LEFT" or "CENTER") -- at the start of the slim bar; in the middle of Classic's
 
     local s = MeterRun()
     if s ~= shownRun then
@@ -214,7 +219,7 @@ function Draw()
     emptyText:SetPoint("TOP", 0, top - 16)
     emptyText:SetShown(s == nil)
     if not s then
-        title:SetText(("|T%s:16:16:0:0|t Meter"):format(ns.LOGO))
+        title:SetText(("|T%s:14:14:0:0|t Meter"):format(ns.LOGO))
         emptyText:SetText("No run yet.")
         return
     end
@@ -226,7 +231,7 @@ function Draw()
         local a = ns.ThemeAccent()
         tag = ("  |cff%02x%02x%02xlive|r"):format(a[1] * 255 + 0.5, a[2] * 255 + 0.5, a[3] * 255 + 0.5)
     end
-    title:SetText(("|T%s:16:16:0:0|t %s%s"):format(ns.LOGO, s.name or "Run", tag))
+    title:SetText(("|T%s:14:14:0:0|t %s%s"):format(ns.LOGO, ns.ShortName(s), tag))
 
     -- Everyone, the most loot first, whatever order the main window has.
     local list = {}

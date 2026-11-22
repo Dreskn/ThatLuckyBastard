@@ -195,6 +195,40 @@ function ns.DateText(t)
     return t and date("%Y-%m-%d %H:%M", t) or "-"
 end
 
+-- A run's dungeon by the short name players give it (Warcraft Tavern's
+-- list of WoW Forever's dungeons), for the windows short on room: the
+-- meter and the mini window. Found by the instance's ID, whatever the
+-- language of the game, else by the English name; a dungeon not listed
+-- keeps its name. Dire Maul keeps it too: DM is the Deadmines, and the
+-- game does not say which wing it is.
+local SHORT_BY_ID = {
+    [389] = "RFC", [43] = "WC", [36] = "DM", [33] = "SFK", [48] = "BFD", [34] = "Stocks",
+    [90] = "Gnomer", [47] = "RFK", [189] = "SM", [129] = "RFD", [70] = "Uld", [209] = "ZF",
+    [349] = "Mara", [109] = "ST", [230] = "BRD", [229] = "BRS", [329] = "Strat", [289] = "Scholo",
+    [249] = "Ony", [2970] = "DC", [2994] = "Alcaz", [3039] = "KDS",
+}
+local SHORT_BY_NAME = {
+    ragefirechasm = "RFC", wailingcaverns = "WC", deadmines = "DM", shadowfangkeep = "SFK",
+    blackfathomdeeps = "BFD", stockade = "Stocks", gnomeregan = "Gnomer", razorfenkraul = "RFK",
+    scarletmonastery = "SM", razorfendowns = "RFD", uldaman = "Uld", zulfarrak = "ZF",
+    maraudon = "Mara", sunkentemple = "ST", templeofatalhakkar = "ST", blackrockdepths = "BRD",
+    blackrockspire = "BRS", lowerblackrockspire = "LBRS", upperblackrockspire = "UBRS",
+    stratholme = "Strat", scholomance = "Scholo", onyxiaslair = "Ony",
+    -- New in Forever.
+    hallofthanes = "HoT", ruinsoflordaeron = "RoL", excavationsitewetlands = "ESW",
+    cityofdalaran = "CoD", drownedcity = "DC", kroldokstronghold = "KDS", alcazprison = "Alcaz",
+    alcazislandprison = "Alcaz", blackmawhold = "BMH", shapersterrace = "Terrace",
+}
+function ns.ShortName(s)
+    local short = s.instanceID and SHORT_BY_ID[s.instanceID]
+    if not short and s.name then
+        -- Case, spaces, "The" and apostrophes (straight or curly) aside.
+        local key = s.name:lower():gsub("\226\128\153", ""):gsub("^the ", ""):gsub("[%s%p]", "")
+        short = SHORT_BY_NAME[key]
+    end
+    return short or s.name or "Run"
+end
+
 -- Who "you" are in a run: the character that recorded it. The saved data
 -- is shared by every character of the account, so that is not always the
 -- one logged in. (Runs from before this was stored: the one logged in.)

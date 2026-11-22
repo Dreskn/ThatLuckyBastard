@@ -105,6 +105,7 @@ function known.GetScale(self) return self.__scale or 1 end
 -- The font a text was last given (a font object or its name), and whether
 -- a picture is drawn in grey.
 function known.SetFontObject(self, font) self.__font = font end
+function known.SetJustifyH(self, justify) self.__justify = justify end
 function known.GetFontObject(self) return self.__font end
 function known.SetDesaturated(self, on) self.__desaturated = on and true or false end
 function known.IsDesaturated(self) return self.__desaturated == true end

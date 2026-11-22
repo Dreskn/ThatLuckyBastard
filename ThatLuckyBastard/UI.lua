@@ -48,6 +48,7 @@ ReceiptFont("ThatLuckyBastardReceiptTotal", "CourierPrime-Bold.ttf", 19, INK)
 ReceiptFont("ThatLuckyBastardReceiptKey", "CourierPrime-Bold.ttf", 11, { 0.165, 0.149, 0.133 })
 ReceiptFont("ThatLuckyBastardReceiptKeyLight", "CourierPrime-Bold.ttf", 11, { 1.000, 0.957, 0.925 })
 ReceiptFont("ThatLuckyBastardReceiptTitle", "CourierPrime-Bold.ttf", 15, { 0.929, 0.902, 0.839 })
+ReceiptFont("ThatLuckyBastardReceiptTitleSmall", "CourierPrime-Bold.ttf", 12, { 0.929, 0.902, 0.839 })
 ReceiptFont("ThatLuckyBastardReceiptCounter", "CourierPrime-Regular.ttf", 12, { 0.812, 0.776, 0.702 })
 
 local THEMES = {
@@ -431,8 +432,12 @@ end
 
 local TITLE_BAR_H = 36 -- the Modern skin's header
 
-local function BuildSkins(frame, onClose)
+-- `barH`: how tall the title bar of the Modern and Receipt skins is, if
+-- not TITLE_BAR_H. A slimmer bar has a smaller cross.
+local function BuildSkins(frame, onClose, barH)
     local skins = {}
+    barH = barH or TITLE_BAR_H
+    local slim = barH < TITLE_BAR_H
 
     -- Classic: the old grey metal panel.
     do
@@ -452,10 +457,10 @@ local function BuildSkins(frame, onClose)
         local bar = s:CreateTexture(nil, "BORDER")
         bar:SetPoint("TOPLEFT")
         bar:SetPoint("TOPRIGHT")
-        bar:SetHeight(TITLE_BAR_H)
+        bar:SetHeight(barH)
         local line = s:CreateTexture(nil, "ARTWORK")
-        line:SetPoint("TOPLEFT", 0, -TITLE_BAR_H)
-        line:SetPoint("TOPRIGHT", 0, -TITLE_BAR_H)
+        line:SetPoint("TOPLEFT", 0, -barH)
+        line:SetPoint("TOPRIGHT", 0, -barH)
         line:SetHeight(2)
         s.accentLine = line
         -- The header carries the accent colour, strongest on the left
@@ -482,12 +487,13 @@ local function BuildSkins(frame, onClose)
         Edge("TOPRIGHT", "BOTTOMRIGHT", 1, nil)
 
         local close = CreateFrame("Button", nil, s)
-        close:SetSize(24, 24)
-        close:SetPoint("TOPRIGHT", -6, -6)
+        local size = slim and 18 or 24
+        close:SetSize(size, size)
+        close:SetPoint("TOPRIGHT", slim and -3 or -6, slim and -(barH - size) / 2 or -6)
         local hl = close:CreateTexture(nil, "HIGHLIGHT")
         hl:SetAllPoints()
         hl:SetColorTexture(0.9, 0.25, 0.25, 0.55)
-        local x = close:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
+        local x = close:CreateFontString(nil, "OVERLAY", slim and "GameFontHighlightSmall" or "GameFontHighlight")
         x:SetPoint("CENTER")
         x:SetText("X")
         close:SetScript("OnClick", onClose)
@@ -503,8 +509,8 @@ local function BuildSkins(frame, onClose)
         bg:SetAllPoints()
         bg:SetColorTexture(COUNTER[1], COUNTER[2], COUNTER[3], 0.98)
         local line = s:CreateTexture(nil, "ARTWORK")
-        line:SetPoint("TOPLEFT", 0, -TITLE_BAR_H)
-        line:SetPoint("TOPRIGHT", 0, -TITLE_BAR_H)
+        line:SetPoint("TOPLEFT", 0, -barH)
+        line:SetPoint("TOPRIGHT", 0, -barH)
         line:SetHeight(1)
         line:SetColorTexture(1, 1, 1, 0.10)
         local function Edge(p1, p2, w, h)
@@ -520,8 +526,8 @@ local function BuildSkins(frame, onClose)
         Edge("TOPRIGHT", "BOTTOMRIGHT", 1, nil)
 
         local close = CreateFrame("Button", nil, s)
-        close:SetSize(24, 22)
-        close:SetPoint("TOPRIGHT", -7, -7)
+        close:SetSize(slim and 20 or 24, slim and 16 or 22)
+        close:SetPoint("TOPRIGHT", slim and -4 or -7, slim and -(barH - 16) / 2 or -7)
         local face = close:CreateTexture(nil, "BACKGROUND")
         face:SetAllPoints()
         face:SetColorTexture(KEY[1], KEY[2], KEY[3], 1)
@@ -554,8 +560,12 @@ end
 --
 -- Every window follows the Size option (see ns.ApplyScale), unless it has
 -- `fixedSize`: the options window, whose slider would move under the mouse.
+--
+-- `barH`: a title bar slimmer than the others (the meter's), in the Modern
+-- and Receipt themes; Classic's is the game's own.
 local scaledWindows, appliedScale = {}, nil
-function ns.MakeWindow(name, width, height, strata, closeOnEscape, fixedSize)
+local slimBars = {} -- the windows with one, by their skins: { h = its height, on = the frame its title is on }
+function ns.MakeWindow(name, width, height, strata, closeOnEscape, fixedSize, barH)
     local w = CreateFrame("Frame", name, UIParent)
     if not fixedSize then
         scaledWindows[#scaledWindows + 1] = w
@@ -572,10 +582,11 @@ function ns.MakeWindow(name, width, height, strata, closeOnEscape, fixedSize)
     w:SetScript("OnDragStop", w.StopMovingOrSizing)
     w:Hide()
     if closeOnEscape then tinsert(UISpecialFrames, name) end
-    local windowSkins = BuildSkins(w, function() w:Hide() end)
+    local windowSkins = BuildSkins(w, function() w:Hide() end, barH)
     local content = CreateFrame("Frame", nil, w)
     content:SetAllPoints()
     content:SetFrameLevel(w:GetFrameLevel() + 10)
+    if barH then slimBars[windowSkins] = { h = barH, on = content } end
     return w, content, content:CreateFontString(nil, "OVERLAY", "GameFontNormal"), windowSkins
 end
 
@@ -597,6 +608,13 @@ function ns.ApplyWindowTheme(windowSkins, title)
     local flat = THEMES[name].flat == true
     for key, skin in pairs(windowSkins) do skin:SetShown(key == name) end
     title:ClearAllPoints()
+    local slim = slimBars[windowSkins]
+    if slim and flat then
+        -- A slim bar: a smaller title, in the middle of its height.
+        title:SetFontObject(name == "receipt" and "ThatLuckyBastardReceiptTitleSmall" or "GameFontHighlight")
+        title:SetPoint("LEFT", slim.on, "TOPLEFT", 8, -slim.h / 2)
+        return flat, -(slim.h + 2)
+    end
     if name == "receipt" then
         title:SetFontObject("ThatLuckyBastardReceiptTitle")
         title:SetPoint("TOPLEFT", 14, -11)
@@ -2881,7 +2899,7 @@ function Render()
         content:SetWidth(wide)
         local high = RenderBench(sum.players, awards, 0, paper, true) - 10
         content:SetHeight(high)
-        title:SetText(("|T%s:16:16:0:0|t %s"):format(ns.LOGO, s.name or "Run"))
+        title:SetText(("|T%s:16:16:0:0|t %s"):format(ns.LOGO, ns.ShortName(s)))
         title:SetWidth(math.max(20, wide - 54)) -- cut short before the cogwheel and the cross
         -- The window is as big as its cards, there and then: its own size
         -- is set aside for when they are no longer on show (the list, or
