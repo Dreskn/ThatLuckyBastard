@@ -115,7 +115,6 @@ local headers = {}
 local pending = false
 local theme, currentTheme
 local currentRun      -- the run being displayed
-local needOnly = false -- show only what was won on Need rolls
 local Render
 
 -- Colour codes used all over the window.
@@ -1477,7 +1476,7 @@ end
 
 -- What a column or an opened player row says when there is nothing in it.
 local function NoLootLabel(sum)
-    return (inkMode and INK_GREY_CODE or GREY) .. (sum.needOnly and "No Need wins" or "No loot seen") .. "|r"
+    return (inkMode and INK_GREY_CODE or GREY) .. "No loot seen|r"
 end
 
 -- A player's items for one category, or all of them when `cat` is false
@@ -2678,11 +2677,9 @@ versionLabel:SetText(ns.VERSION ~= "" and ("v" .. ns.VERSION) or "")
 
 -- Top row, all about the run on show: buttons of one size side by side
 -- (the first is placed by ApplyTheme):
---   Need only    switches between all loot and Need-roll wins only (to
---                see who needed what)
 --   Front page, Analysis
 --                a window of its own each (Analysis: its timeline, rolls
---                and numbers)
+--                and numbers; who needed what is under its Rolls)
 --   Meter        the loot meter (Meter.lua), for the run in progress
 --   Expand all   opens every player's loot (only in the list view)
 -- and on its own on the right, Share: the run on show as a link in chat
@@ -2696,11 +2693,7 @@ local function TopButton(label, onClick)
     topRow[#topRow + 1] = b
     return b
 end
-local needBtn = TopButton("Need only", function()
-    needOnly = not needOnly
-    Render()
-end)
-TopButton("Front page", function() ns.ToggleRunWindow("paper", ns.ViewedRun()) end)
+local pageBtn = TopButton("Front page", function() ns.ToggleRunWindow("paper", ns.ViewedRun()) end)
 local analysisBtn = TopButton("Analysis", function() ns.ToggleRunWindow("analysis", ns.ViewedRun()) end)
 f.meterBtn = TopButton("Meter", function() ns.ToggleMeter() end)
 local shareBtn = MakeButton("Share", TOP_W, function() ns.ToggleShare(ns.ViewedRun()) end)
@@ -2792,8 +2785,8 @@ local function ApplyTheme()
 
     for _, c in ipairs(cols) do c.glowClass = nil end -- the glow is drawn afresh
 
-    needBtn:ClearAllPoints()
-    needBtn:SetPoint("TOPLEFT", 12, theme.toolbarY)
+    pageBtn:ClearAllPoints()
+    pageBtn:SetPoint("TOPLEFT", 12, theme.toolbarY)
     shareBtn:ClearAllPoints()
     shareBtn:SetPoint("TOPRIGHT", RIGHT_EDGE, theme.toolbarY)
 
@@ -2865,7 +2858,6 @@ function Render()
         ceremonyPending = true
     end
 
-    needBtn:SetSelected(needOnly) -- lit while on; a second click shows all loot again
     older:SetOn(viewIndex < #runs)
     newer:SetOn(viewIndex > 1)
     local stored = s ~= nil and not s.example
@@ -2884,22 +2876,19 @@ function Render()
         elseif ns.InProgress(s) then
             tag = "  in progress"
         end
-        title:SetText(ns.Title((s.name or "Run") .. (needOnly and "  -  Need rolls only" or "")))
+        title:SetText(ns.Title(s.name or "Run"))
         runLabel:SetText(("%s  |cff909090(%d/%d)%s|r%s"):format(
             ns.DateText(s.startedAt), viewIndex, #runs, tag,
             s.pinned and "  |cffffd100pinned|r" or ""))
-        sum = ns.Summarize(s, needOnly)
+        sum = ns.Summarize(s)
     end
 
-    -- Awards and insights are worked out from the whole run, whatever the
-    -- view shows. Awards only once the run is over (or for past and
-    -- example runs).
-    local full = s and (needOnly and ns.Summarize(s) or sum)
-    local awards = s and ns.RunAwards(s, full) or {}
+    -- Awards only once the run is over (or for past and example runs).
+    local awards = s and ns.RunAwards(s, sum) or {}
     shownAwards = awards
-    local insights = s and o.showInsights and ns.RunInsights(s, full) or nil
+    local insights = s and o.showInsights and ns.RunInsights(s, sum) or nil
     if insights then
-        insights.fair = ns.Fairness(full)
+        insights.fair = ns.Fairness(sum)
         insights.streak = o.streak and ns.Streak(s) or nil
     end
 

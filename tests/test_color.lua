@@ -94,7 +94,7 @@ check(o.accent == "class" and Accent(0, 0.44, 0.87) and ticked("Class") and not 
       "Class: the player's class colour, a shaman's blue here (" .. Shade() .. ")")
 check(ns.Title("x"):find("|cff0070deLucky", 1, true) ~= nil, "titles follow")
 check(Lines(0, 0.44, 0.87), "so does the line under every title bar, open or not")
-check(Is(Cog(), 0, 0.44, 0.87) and Is(Mark("Need only"), 0, 0.44, 0.87), "the cogwheel's wash and the mark under a button of the window")
+check(Is(Cog(), 0, 0.44, 0.87) and Is(Mark("Front page"), 0, 0.44, 0.87), "the cogwheel's wash and the mark under a button of the window")
 check(Is(Mark("Dungeons"), 0, 0.44, 0.87), "and under a tab of the statistics, which are not open")
 check(ns.BRAND:find("|cff40c7b8Lucky", 1, true) ~= nil and ns.TEAL_HEX == "|cff40c7b8",
       "in chat and on links the addon keeps its own teal")

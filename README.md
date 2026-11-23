@@ -12,7 +12,7 @@ It records what every player in your group loots, puts a gold value on it, and s
 
 - **The breakdown:** each player's total, their share of the run and how far they are from an equal split, with every item they looted.
 - **Awards:** one per player when the run ends, out of about fifty: Jackpot, Ninja, Luckiest, Heartbreak, Empty Pockets... In raids an award can go to two or three players. Hover one to see its rule.
-- **Need rolls:** one button shows only what was won on Need. Hover an item to see everyone's roll on it.
+- **Need rolls:** Analysis › Rolls shows every roll, or only what was won on Need. Hover an item to see everyone's roll on it.
 - **The race:** as you leave, every player's loot falls into their column as coins. The last stack still growing has won, and a winner far ahead overflows.
 - **Front page, analysis:** a mock newspaper, and the run's timeline, rolls and numbers, each in its own window.
 - **The meter:** a small window like a damage meter, with a bar per player that grows live as the loot comes in.

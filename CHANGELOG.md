@@ -9,6 +9,7 @@
 - Flat options gear in the Modern and Receipt themes.
 - A padlock in the meter's corner locks its place and size.
 - Loot bingo removed.
+- Need only moved to Analysis › Rolls, as an All | Need switch.
 
 ## 0.7.0
 

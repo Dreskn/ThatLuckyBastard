@@ -3,7 +3,8 @@ local _, ns = ...
 -- The Analysis window (see ns.MakeRunWindow in Show.lua): three tabs about
 -- the run on show in the main window, which it follows from run to run.
 --   timeline  a chart of every player's running total through the run
---   rolls     every roll that was won: who rolled what
+--   rolls     every roll that was won: who rolled what; a switch keeps
+--             only what was won on Need, and who needed how much
 --   numbers   fairness, where the loot came from, roll luck, the streak
 --             the run belongs to, today's prices and the award scores
 -- The figures come from Data.lua.
@@ -292,10 +293,31 @@ local ROLL_COLS = { { "Time", 4, 46 }, { "Item", 54, 200 }, { "Won by", 262, 190
 
 local rollsPage = Page("rolls")
 
+-- All rolls, or only those won on Need: who needed what. The choice stays
+-- from run to run, and while the game is on.
+local SWITCH_W = 56
+local NEED_NAMES = 5 -- the players the Need line names; the others are counted
+local rollsShow = "all"
+local rollsRun -- the run the rows belong to
+local DrawRolls
+local switch = {}
+for i, opt in ipairs({ { "all", "All", "Every roll that was won." }, { "need", "Need", "Only what was won on Need." } }) do
+    local b = ns.MakeButton(opt[2], SWITCH_W, function()
+        rollsShow = opt[1]
+        if rollsRun then DrawRolls(rollsRun) end
+    end, rollsPage)
+    b.isTab, b.value = true, opt[1]
+    switch[i] = b
+end
+switch[2]:SetPoint("TOPRIGHT", -2, 0)
+switch[1]:SetPoint("RIGHT", switch[2], "LEFT", -4, 0)
+
 local rollsSummary = rollsPage:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 rollsSummary:SetPoint("TOPLEFT", 4, -4)
-rollsSummary:SetPoint("TOPRIGHT", -4, -4)
+rollsSummary:SetPoint("TOPRIGHT", -(2 * SWITCH_W + 16), -4)
 rollsSummary:SetJustifyH("LEFT")
+rollsSummary:SetWordWrap(true) -- the Need line may take two
+if rollsSummary.SetMaxLines then rollsSummary:SetMaxLines(2) end
 
 local rollsScroll = CreateFrame("ScrollFrame", nil, rollsPage, "UIPanelScrollFrameTemplate")
 rollsScroll:SetPoint("TOPLEFT", 0, -46)
@@ -311,7 +333,6 @@ for _, col in ipairs(ROLL_COLS) do
 end
 
 local rollRows = {}
-local rollsRun -- the run the rows belong to
 
 local function RollRowOnEnter(self)
     local roll = self.roll
@@ -357,20 +378,55 @@ local function GetRollRow(i)
     return r
 end
 
-local function DrawRolls(s)
+-- Who won what on Need, the most value first, as the breakdown counts it
+-- (splits included): "Need wins: Bryn 2 (14g), Cole 1 (2g)".
+local function NeedLine(s)
+    local parts, more = {}, 0
+    for _, p in ipairs(ns.Summarize(s, true).players) do
+        if p.count > 0 or p.market > 0 then
+            if #parts < NEED_NAMES then
+                local who = ns.ClassColored(ns.FirstName(p.name), p.class)
+                local money = ns.MoneyPlain(p.market)
+                parts[#parts + 1] = p.count > 0 and ("%s %d (%s)"):format(who, p.count, money)
+                    or ("%s (%s)"):format(who, money) -- a share of an item someone else won
+            else
+                more = more + 1
+            end
+        end
+    end
+    if #parts == 0 then return "|cff909090No Need wins in this run.|r" end
+    return "Need wins: " .. table.concat(parts, ", ") .. (more > 0 and (" and %d more"):format(more) or "") .. "."
+end
+
+function DrawRolls(s)
     rollsRun = s
-    local rolls = ns.RunRolls(s)
+    local all = ns.RunRolls(s)
     local need = 0
-    for _, roll in ipairs(rolls) do
+    for _, roll in ipairs(all) do
         if roll.method == "need" then need = need + 1 end
     end
-    if #rolls == 0 then
+    local flat = ns.db.theme ~= "classic" -- Modern and Receipt are both flat
+    for _, b in ipairs(switch) do
+        b:SetShown(#all > 0)
+        b:SetFlat(flat)
+        b:SetSelected(b.value == rollsShow)
+    end
+    local rolls = all
+    if rollsShow == "need" then
+        rolls = {}
+        for _, roll in ipairs(all) do
+            if roll.method == "need" then rolls[#rolls + 1] = roll end
+        end
+    end
+    if #all == 0 then
         rollsSummary:SetText("|cff909090" .. ((s.log or s.example or s == ns.db.active)
             and "Nothing has been rolled for in this run."
             or "No roll sheet: this run was recorded before rolls were kept in full.") .. "|r")
+    elseif rollsShow == "need" then
+        rollsSummary:SetText(NeedLine(s))
     else
         rollsSummary:SetText(("%d rolls: %d Need, %d Greed.   |cff909090Hover a line for every roll.|r")
-            :format(#rolls, need, #rolls - need))
+            :format(#all, need, #all - need))
     end
 
     for i, roll in ipairs(rolls) do

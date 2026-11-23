@@ -97,13 +97,13 @@ check(stamped, "awards are rubber stamps: a border in ink, no icon")
 check(ns.Money(123456):find("|cffffd700", 1, true) ~= nil, "money in tooltips keeps its colours")
 
 print("-- till keys")
-local need, share = button("Need only"), button("Share")
-check(need.key and need.flat.text.__text == "NEED ONLY" and need.flat.edge:IsShown(),
+local need, share = button("Front page"), button("Share")
+check(need.key and need.flat.text.__text == "FRONT PAGE" and need.flat.edge:IsShown(),
       "buttons are keys, labelled in capitals")
 check(share.flat.text.__font == "ThatLuckyBastardReceiptKeyLight", "Share is a red key")
-need.tpl.__scripts.OnClick(need.tpl)
+need:SetSelected(true)
 check(need.selected and not need.flat.edge:IsShown(), "a key that is on is held down")
-need.tpl.__scripts.OnClick(need.tpl)
+need:SetSelected(false)
 
 print("-- the list on paper")
 db.options.useColumns = false
@@ -132,6 +132,6 @@ for _, c in ipairs(cols) do
     if t and t.thanks:IsShown() then notails = false end
 end
 check(gold and colour and notails, "totals in gold again, pictures in colour, no receipt ends")
-check(not need.key and need.flat.text.__text == "Need only", "buttons are flat buttons again")
+check(not need.key and need.flat.text.__text == "Front page", "buttons are flat buttons again")
 
 print(FAILED and (FAILED .. " check(s) FAILED") or "all checks passed (receipt theme)")
