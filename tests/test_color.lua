@@ -147,6 +147,22 @@ ColorPickerFrame, ShowUIPanel = nil, nil
 check(Accent(1, 0, 128 / 255), "without one, the sliders do it alone")
 
 print("-- the Modern theme's alone")
+-- The cogwheel's look: its picture, its tint, and whether it sits on a key.
+local function CogIs(folder, picture, tint, onKey)
+    if onKey == nil then -- no folder: the game's own
+        folder, picture, tint, onKey = "Interface", folder, picture, tint
+    end
+    for _, w in ipairs(FRAMES) do
+        if rawget(w, "cog") == true then
+            local icon, t = w.icon, w.icon.__tint or { 1, 1, 1 }
+            local path = tostring(icon.__texture)
+            return path:find(folder, 1, true) ~= nil and path:sub(-#picture) == picture and Is(t, unpack(tint))
+                and w.face:IsShown() == onKey and w.edge:IsShown() == onKey
+        end
+    end
+    return false
+end
+check(CogIs("ThatLuckyBastard", "gear.tga", { 1, 1, 1 }, false), "in Modern the cogwheel is our own flat gear, white")
 click("Classic")
 check(db.theme == "classic" and Accent(unpack(TEAL)) and o.accent == "custom", "in Classic the accent is the teal again; the choice is kept")
 local greys = 0
@@ -154,10 +170,13 @@ for _, label in ipairs({ "TLB", "Class", "Custom" }) do
     if greyed(label) then greys = greys + 1 end
 end
 check(greys == 3 and sliders[2]:GetAlpha() == 0.4, "and the whole Color section is greyed out")
+check(CogIs("INV_Misc_Gear_01", { 1, 1, 1 }, false), "Classic keeps the game's gear icon")
 click("Receipt")
 check(Accent(unpack(TEAL)) and greyed("Class"), "in Receipt too")
+check(CogIs("ThatLuckyBastard", "gear.tga", { 0.165, 0.153, 0.141 }, true), "Receipt's is the flat gear in ink, on a till key")
 click("Modern")
 check(Accent(1, 0, 128 / 255) and not greyed("Class") and sliders[2]:GetAlpha() == 1, "back in Modern, it is the colour chosen again")
+check(CogIs("ThatLuckyBastard", "gear.tga", { 1, 1, 1 }, false) and Is(Cog(), 1, 0, 128 / 255), "and the gear is white again, off its key, washed in the accent")
 ns.ToggleOptions() -- with the options shut, nothing else applies it
 SlashCmdList.THATLUCKYBASTARD("theme classic")
 check(Accent(unpack(TEAL)) and not ThatLuckyBastardOptionsFrame:IsShown(), "/tlb theme changes it likewise, the options shut")

@@ -2730,17 +2730,48 @@ f.footRow = { older, newer, pinBtn, deleteBtn, runLabel, versionLabel, statsBtn,
 -- The cogwheel that opens the options: at the foot of the full window,
 -- right of Statistics; in the mini window, which has no foot, in the
 -- title bar beside the cross (and so the way out of mini mode). Render
--- places it. It is the bare icon in every theme, with a wash under the
--- mouse.
+-- places and draws it: the game's gear icon in Classic, our own flat gear
+-- elsewhere (white in Modern, ink on a till key in Receipt), with a wash
+-- under the mouse.
 do
     local cog = CreateFrame("Button", nil, ui)
     cog.cog = true
+    cog.face = cog:CreateTexture(nil, "BACKGROUND")
+    cog.face:SetAllPoints()
+    cog.edge = cog:CreateTexture(nil, "BORDER")
+    cog.edge:SetPoint("BOTTOMLEFT")
+    cog.edge:SetPoint("BOTTOMRIGHT")
+    cog.edge:SetHeight(3)
     cog.hl = cog:CreateTexture(nil, "HIGHLIGHT")
     cog.hl:SetAllPoints()
     cog.icon = cog:CreateTexture(nil, "ARTWORK")
-    cog.icon:SetPoint("CENTER")
-    cog.icon:SetTexture("Interface\\Icons\\INV_Misc_Gear_01")
-    cog.icon:SetTexCoord(0.08, 0.92, 0.08, 0.92)
+    -- Its look in `theme`, at the size Render gave it. Under the mouse: a
+    -- wash of the accent in Modern, of white elsewhere.
+    function cog:Style(theme)
+        local side, icon = self:GetHeight(), self.icon
+        local flat, paper = theme.flat and true or false, theme.paper and true or false
+        icon:ClearAllPoints()
+        icon:SetTexture(flat and MEDIA .. "gear.tga" or "Interface\\Icons\\INV_Misc_Gear_01")
+        if flat then icon:SetTexCoord(0, 1, 0, 1) else icon:SetTexCoord(0.08, 0.92, 0.08, 0.92) end
+        local inset = paper and 8 or flat and 6 or 4
+        icon:SetSize(side - inset, side - inset)
+        icon:SetPoint("CENTER", 0, paper and 1 or 0) -- on a key, above its lower edge
+        self.face:SetShown(paper)
+        self.edge:SetShown(paper)
+        if paper then -- a till key, like the cross beside it in mini mode
+            icon:SetVertexColor(INK[1], INK[2], INK[3], 1)
+            self.face:SetColorTexture(KEY[1], KEY[2], KEY[3], 1)
+            self.edge:SetColorTexture(KEY_EDGE[1], KEY_EDGE[2], KEY_EDGE[3], 1)
+            self.hl:SetColorTexture(1, 1, 1, 0.22)
+        else
+            icon:SetVertexColor(1, 1, 1, 1)
+            if flat then
+                self.hl:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 0.35)
+            else
+                self.hl:SetColorTexture(1, 1, 1, 0.25)
+            end
+        end
+    end
     cog:SetScript("OnClick", function() ns.ToggleOptions() end)
     cog:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_BOTTOMRIGHT")
@@ -2760,13 +2791,6 @@ local function ApplyTheme()
     theme = THEMES[currentTheme]
     ns.ApplyWindowTheme(skins, title)
 
-    -- Under the mouse the cogwheel has a wash of the accent in Modern,
-    -- of white elsewhere.
-    if theme.flat and not theme.paper then
-        f.cog.hl:SetColorTexture(ACCENT[1], ACCENT[2], ACCENT[3], 0.35)
-    else
-        f.cog.hl:SetColorTexture(1, 1, 1, 0.25)
-    end
     for _, c in ipairs(cols) do c.glowClass = nil end -- the glow is drawn afresh
 
     needBtn:ClearAllPoints()
@@ -2936,7 +2960,7 @@ function Render()
         cog:SetSize(18, 18)
         cog:SetPoint("TOPRIGHT", -26, -2)
     end
-    cog.icon:SetSize(cog:GetHeight() - 4, cog:GetHeight() - 4)
+    cog:Style(theme)
     -- The list view honours the same "show" options as the columns.
     local showVendor = o.showVendor and o.valueMode ~= "vendor"
     local showShare = o.showShare

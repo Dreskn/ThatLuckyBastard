@@ -169,9 +169,9 @@ local cog = Cog()
 local FOOT = "BOTTOMRIGHT -24 10, 22x22"
 check(cog ~= nil and cog:IsShown() and Place(cog) == FOOT,
       "with a cogwheel at its foot, right of Statistics (" .. (cog and Place(cog) or "none") .. ")")
-check(cog.icon.__w == 18 and Labelled("Options") == 0, "in place of the Options button, which is gone")
-check(rawget(cog, "bg") == nil and rawget(cog, "edge") == nil and not cog.icon:IsDesaturated(),
-      "the bare icon, with nothing behind it")
+check(cog.icon.__w == 16 and Labelled("Options") == 0, "in place of the Options button, which is gone")
+check(not cog.face:IsShown() and not cog.edge:IsShown() and not cog.icon:IsDesaturated(),
+      "the bare gear, with nothing behind it")
 cog.__scripts.OnClick(cog, "LeftButton")
 check(ThatLuckyBastardOptionsFrame:IsShown(), "which opens the options")
 cog.__scripts.OnEnter(cog)

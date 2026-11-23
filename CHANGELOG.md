@@ -6,6 +6,7 @@
 
 - Coins come first in the breakdown.
 - Color choices are now TLB, Class or Custom.
+- Flat options gear in the Modern and Receipt themes.
 
 ## 0.7.0
 
