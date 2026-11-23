@@ -5,6 +5,7 @@
 ### Changes
 
 - Coins come first in the breakdown.
+- Color choices are now TLB, Class or Custom.
 
 ## 0.7.0
 

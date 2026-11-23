@@ -1,6 +1,6 @@
 -- The accent colour of the Modern theme: teal unless the options choose
--- another (a preset, the player's class colour, or three values of their
--- own), and the Color section of the options that chooses it.
+-- another (the player's class colour, or three values of their own), and
+-- the Color section of the options that chooses it.
 local ns = NS
 local function check(ok, what)
     print((ok and "  ok    " or "  FAIL  ") .. what)
@@ -77,27 +77,27 @@ check(o.accent == "teal" and Accent(unpack(TEAL)) and ns.Title("x"):find("|cff40
       "the accent is the addon's teal, and so is the middle word of every title")
 local all, windows = Lines(unpack(TEAL))
 check(all, ("the line under each of the %d Modern title bars is teal"):format(windows))
-check(ticked("Teal") and not ticked("Custom") and not greyed("Teal"), "in the options, Teal is the colour chosen")
-for _, label in ipairs({ "Teal", "Class", "Amber", "Light", "Dark", "Custom" }) do control(label) end
+check(ticked("TLB") and not ticked("Custom") and not greyed("TLB"), "in the options, TLB is the colour chosen")
+for _, label in ipairs({ "TLB", "Class", "Custom" }) do control(label) end
+local gone = 0
+for _, label in ipairs({ "Teal", "Amber", "Light", "Dark" }) do
+    if not pcall(control, label) then gone = gone + 1 end
+end
+check(gone == 4, "Amber, Light and Dark are gone, and Teal is called TLB")
 check(#sliders == 3 and sliders[1].label.__text == "R" and sliders[2].label.__text == "G" and sliders[3].label.__text == "B",
-      "five colours to pick from, and Custom with its three values: R, G and B")
+      "TLB, Class, and Custom with its three values: R, G and B")
 check(sliders[1]:GetAlpha() == 0.4 and sliders[3]:GetAlpha() == 0.4, "which are greyed out while Custom is not the choice")
 
-print("-- a colour picked")
-click("Amber")
-check(o.accent == "amber" and Accent(1, 0.82, 0) and ticked("Amber") and not ticked("Teal"), "Amber: " .. Shade())
-check(ns.Title("x"):find("|cffffd100Lucky", 1, true) ~= nil, "titles follow")
-check(Lines(1, 0.82, 0), "so does the line under every title bar, open or not")
-check(Is(Cog(), 1, 0.82, 0) and Is(Mark("Need only"), 1, 0.82, 0), "the cogwheel's wash and the mark under a button of the window")
-check(Is(Mark("Dungeons"), 1, 0.82, 0), "and under a tab of the statistics, which are not open")
+print("-- the class colour")
+click("Class")
+check(o.accent == "class" and Accent(0, 0.44, 0.87) and ticked("Class") and not ticked("TLB"),
+      "Class: the player's class colour, a shaman's blue here (" .. Shade() .. ")")
+check(ns.Title("x"):find("|cff0070deLucky", 1, true) ~= nil, "titles follow")
+check(Lines(0, 0.44, 0.87), "so does the line under every title bar, open or not")
+check(Is(Cog(), 0, 0.44, 0.87) and Is(Mark("Need only"), 0, 0.44, 0.87), "the cogwheel's wash and the mark under a button of the window")
+check(Is(Mark("Dungeons"), 0, 0.44, 0.87), "and under a tab of the statistics, which are not open")
 check(ns.BRAND:find("|cff40c7b8Lucky", 1, true) ~= nil and ns.TEAL_HEX == "|cff40c7b8",
       "in chat and on links the addon keeps its own teal")
-click("Light")
-check(Accent(0.90, 0.93, 0.98), "Light: " .. Shade())
-click("Dark")
-check(Accent(0.42, 0.47, 0.56), "Dark: " .. Shade())
-click("Class")
-check(o.accent == "class" and Accent(0, 0.44, 0.87) and Lines(0, 0.44, 0.87), "Class: the player's class colour, a shaman's blue here (" .. Shade() .. ")")
 
 print("-- a colour of one's own")
 click("Custom")
@@ -110,7 +110,7 @@ Slide(3, 127.6)
 check(Accent(1, 0, 128 / 255) and o.accentCustom[3] == 128 / 255, "green down and blue half way, to the nearest of 256 steps: " .. Shade())
 check(ns.Title("x"):find("|cffff0080Lucky", 1, true) ~= nil and Lines(1, 0, 128 / 255) and Is(Cog(), 1, 0, 128 / 255),
       "and everything follows as the sliders move")
-click("Teal")
+click("TLB")
 Slide(1, 10)
 check(o.accentCustom[1] == 10 / 255 and Accent(unpack(TEAL)) and sliders[1]:GetAlpha() == 0.4,
       "with another colour chosen, the values are kept for later and change nothing")
@@ -150,14 +150,14 @@ print("-- the Modern theme's alone")
 click("Classic")
 check(db.theme == "classic" and Accent(unpack(TEAL)) and o.accent == "custom", "in Classic the accent is the teal again; the choice is kept")
 local greys = 0
-for _, label in ipairs({ "Teal", "Class", "Amber", "Light", "Dark", "Custom" }) do
+for _, label in ipairs({ "TLB", "Class", "Custom" }) do
     if greyed(label) then greys = greys + 1 end
 end
-check(greys == 6 and sliders[2]:GetAlpha() == 0.4, "and the whole Color section is greyed out")
+check(greys == 3 and sliders[2]:GetAlpha() == 0.4, "and the whole Color section is greyed out")
 click("Receipt")
-check(Accent(unpack(TEAL)) and greyed("Amber"), "in Receipt too")
+check(Accent(unpack(TEAL)) and greyed("Class"), "in Receipt too")
 click("Modern")
-check(Accent(1, 0, 128 / 255) and not greyed("Amber") and sliders[2]:GetAlpha() == 1, "back in Modern, it is the colour chosen again")
+check(Accent(1, 0, 128 / 255) and not greyed("Class") and sliders[2]:GetAlpha() == 1, "back in Modern, it is the colour chosen again")
 ns.ToggleOptions() -- with the options shut, nothing else applies it
 SlashCmdList.THATLUCKYBASTARD("theme classic")
 check(Accent(unpack(TEAL)) and not ThatLuckyBastardOptionsFrame:IsShown(), "/tlb theme changes it likewise, the options shut")
@@ -169,9 +169,14 @@ print("-- kept, and put back")
 local saved = Reload()
 db, o = saved, saved.options
 check(o.accent == "custom" and Accent(1, 0, 128 / 255), "the colour is there again after logging out and back in")
-o.accent = "amber"
+for _, old in ipairs({ "amber", "light", "dark" }) do
+    o.accent = old
+    Fire("ADDON_LOADED", "ThatLuckyBastard")
+    check(o.accent == "teal" and Accent(unpack(TEAL)), old .. ", saved before 0.7.1, is the teal again as the addon loads")
+end
+o.accent = "custom"
 Fire("ADDON_LOADED", "ThatLuckyBastard")
-check(Accent(1, 0.82, 0), "it is applied as the addon loads")
+check(o.accent == "custom" and Accent(1, 0, 128 / 255), "a colour still on offer is kept, and applied as the addon loads")
 -- The class is not known that early: its colour comes at login.
 o.accent = "class"
 local realUnitClass = UnitClass

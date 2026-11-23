@@ -122,7 +122,7 @@ check(#twice == 0 and #unplaced == 0 and home.theme == "Look",
       "every option is on one page, and one only (twice: " .. table.concat(twice, " ") .. "; nowhere: "
       .. table.concat(unplaced, " ") .. ")")
 for _, label in ipairs({
-    "Modern", "Classic", "Receipt", "Teal", "Class", "Amber", "Light", "Dark", "Custom", "12g 34s 56c", "12g 34s", "12g",
+    "Modern", "Classic", "Receipt", "TLB", "Class", "Custom", "12g 34s 56c", "12g 34s", "12g",
     "Minimap button", "Columns", "List", "Mini", "2D", "3D", "None", "Game", "Full", "First", "Podium", "Loot", "Role",
     "Name", "Me first", "Share", "Share bar", "Vendor total", "Value", "Icons", "Group by category", "Line up", "Picture",
     "Award", "Gold", "Run total", "Run stats", "Rank", "Open on entering", "Close on leaving", "Auction", "Vendor",
@@ -135,7 +135,7 @@ for _, label in ipairs({
 end
 check(box("tickerMin") and box("summaryLines") and box("maxHistory"), "every option is there under its new name, and three boxes")
 check(ticked("Open breakdown") and ticked("Race") and ticked("Valuable loot") and ticked("12g 34s") and ticked("Ask")
-      and ticked("2D") and ticked("Podium") and ticked("Columns") and ticked("Teal") and ticked("Modern")
+      and ticked("2D") and ticked("Podium") and ticked("Columns") and ticked("TLB") and ticked("Modern")
       and box("maxHistory"):GetText() == "300" and box("tickerMin"):GetText() == "5",
       "the defaults are chosen")
 

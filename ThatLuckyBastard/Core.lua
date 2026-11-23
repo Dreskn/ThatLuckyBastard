@@ -61,8 +61,8 @@ ns.OPTION_DEFAULTS = {
     alignItems = false,  -- put the same item on the same line in every column
     useColumns = true,   -- one column per player; past five, for the top five, the others on a bench
     -- The Modern theme's accent colour: "teal", "class" (the player's class
-    -- colour), "amber", "light", "dark", or "custom" (accentCustom: red,
-    -- green and blue, each from 0 to 1).
+    -- colour), or "custom" (accentCustom: red, green and blue, each from 0
+    -- to 1).
     accent = "teal",
     accentCustom = { 0.25, 0.78, 0.72 },
     mini = false,        -- a small window: a card per player (picture, name, award, total) and no buttons
@@ -132,9 +132,6 @@ ns.OPTION_DEFAULTS = {
 -- own are worked out in ns.ApplyAccent.
 ns.ACCENTS = {
     teal = { 0.25, 0.78, 0.72 },
-    amber = { 1.00, 0.82, 0.00 },
-    light = { 0.90, 0.93, 0.98 },
-    dark = { 0.42, 0.47, 0.56 },
 }
 
 -- Whoever draws something in the accent colour once, and not at every
@@ -2590,6 +2587,9 @@ function handlers.ADDON_LOADED(name)
     -- Silver off with copper on was a fourth way to write amounts, which
     -- the options no longer offer: it reads as 12g.
     if not db.options.showSilver then db.options.showCopper = false end
+    -- Amber, Light and Dark are gone (0.7.1): the teal again.
+    local accent = db.options.accent
+    if accent ~= "class" and accent ~= "custom" then db.options.accent = "teal" end
     ns.db = db
     ns.ApplyAccent()
 end

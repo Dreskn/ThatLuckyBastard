@@ -393,19 +393,6 @@ local function MoneySet(v)
     Opt().showSilver, Opt().showCopper = v ~= "g", v == "gsc"
 end
 
--- The colour a swatch shows: one on offer, the player's class colour, or
--- their own.
-local issecret = issecretvalue or function() return false end
-local function SwatchColor(value)
-    if value == "custom" then return Opt().accentCustom end
-    if value == "class" then
-        local _, class = UnitClass("player")
-        local rc = class and not issecret(class) and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
-        if rc then return { rc.r, rc.g, rc.b } end
-    end
-    return ns.ACCENTS[value] or ns.ACCENTS.teal
-end
-
 -- The game's colour picker for the custom colour, where the game has one
 -- (opened the new way or the old one). The sliders do the same.
 local function OpenPicker()
@@ -433,12 +420,6 @@ local function OpenPicker()
     if picker.Raise then picker:Raise() end
 end
 
-local function PaintSwatch(b)
-    local c = SwatchColor(b.value)
-    b.fill:SetColorTexture(c[1] or 0, c[2] or 0, c[3] or 0, 1)
-    if b.get() then b.ring:SetColorTexture(1, 1, 1, 1) else b.ring:SetColorTexture(0, 0, 0, 0.5) end
-end
-
 do
     local p = NewPage("Look", { "theme", "accent", "accentCustom", "scale", "showSilver", "showCopper", "showMinimap" })
 
@@ -449,40 +430,16 @@ do
         { "Receipt", "receipt", "Each player's loot on a till receipt." },
     }, ns.ThemeName, function(v) ns.db.theme = v end)
 
-    -- The Modern theme's accent: five to pick from, then Custom, the
-    -- player's own, as three values from 0 to 255 under the swatches.
-    RowLabel(p, "Color")
-    local x = ROW_X
-    for _, sw in ipairs({ { "Teal", "teal" }, { "Class", "class", "Your character's class color." },
-                          { "Amber", "amber" }, { "Light", "light" }, { "Dark", "dark" },
-                          { "Custom", "custom", "Your own: the sliders under it, or the game's color picker." } }) do
-        local b = CreateFrame("Button", nil, p)
-        b:SetSize(20, 20)
-        b:SetPoint("TOPLEFT", x, p.y - 1)
-        b.ring = b:CreateTexture(nil, "BACKGROUND")
-        b.ring:SetAllPoints()
-        b.fill = b:CreateTexture(nil, "ARTWORK")
-        b.fill:SetPoint("TOPLEFT", 2, -2)
-        b.fill:SetPoint("BOTTOMRIGHT", -2, 2)
-        b.label, b.value = sw[1], sw[2]
-        b.get = function() return Opt().accent == b.value end
-        b.Paint = PaintSwatch
-        if b.value == "custom" then
-            local plus = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            plus:SetPoint("CENTER", 0, 1)
-            plus:SetText("+")
-            plus:SetShadowOffset(1, -1)
-        end
-        b:SetScript("OnClick", function()
-            Opt().accent = b.value
-            Sync()
-            if b.value == "custom" then OpenPicker() end
-        end)
-        Tip(b, sw[1], sw[3], why.modern)
-        controls[#controls + 1] = b
-        x = x + 26
-    end
-    p.y = p.y - ROW_H - 2
+    -- The Modern theme's accent: the addon's teal, the class colour, or
+    -- Custom, the player's own, as three values from 0 to 255 under it.
+    Choice(p, "Color", {
+        { "TLB", "teal", "The addon's own teal." },
+        { "Class", "class", "Your character's class color." },
+        { "Custom", "custom", "Your own: the sliders under it, or the game's color picker." },
+    }, function() return Opt().accent end, function(v)
+        Opt().accent = v
+        if v == "custom" then OpenPicker() end
+    end, why.modern)
     for i, letter in ipairs({ "R", "G", "B" }) do
         local lx = ROW_X + (i - 1) * 98
         local s = Slider(p, 70, lx + 14, p.y - 3)

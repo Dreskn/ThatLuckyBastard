@@ -130,7 +130,7 @@ The minimap button does the same: left-click for the window, right-click for the
 
 Nine pages, named after what they set:
 
-- **Look:** the theme (Modern, the default, Classic, or Receipt: each player's loot printed on a till receipt), the Modern theme's accent colour (Teal, your class colour, Amber, Light, Dark, or your own, from three sliders or the game's colour picker), the size of every window, amounts as 12g 34s (the default), 12g 34s 56c or 12g, and the minimap button.
+- **Look:** the theme (Modern, the default, Classic, or Receipt: each player's loot printed on a till receipt), the Modern theme's accent colour (TLB, the addon's teal; Class, your class colour; or Custom, your own, from three sliders or the game's colour picker), the size of every window, amounts as 12g 34s (the default), 12g 34s 56c or 12g, and the minimap button.
 - **Breakdown:** the layout (Columns, List or Mini), then the window from top to bottom: the players' picture (2D portrait by default, 3D model, class icon or none), their names (as the game shows them, full, or first name only) and their order (Podium, top looter in the middle, by default; loot, role or name, with you first if you like); each player's share, share bar and vendor total; the items' order (value or name), icons, grouping by category and lining up across columns; what the bench shows (picture, award, gold); and the bottom line (run total, run stats).
 - **Meter:** what its rows show (rank, share, award), and whether it opens as a run starts and shuts as you leave. While this page is open, so is the meter.
 - **Loot:** auction or vendor prices, auction prices as recorded when looted or as they are today, the addon they come from, which categories to show, and whether hidden ones still count.
