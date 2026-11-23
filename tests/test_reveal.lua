@@ -14,7 +14,7 @@ Fire("PLAYER_LOGIN")
 Fire("PLAYER_ENTERING_WORLD", true, false)
 local db = ThatLuckyBastardDB
 local o = db.options
-o.ticker, o.bingo, o.streak = false, false, false
+o.ticker, o.streak = false, false
 local main = ThatLuckyBastardFrame
 
 -- Items worth 5g, 4g, 2g and 1g at the vendor (bind on pickup: no auction price).

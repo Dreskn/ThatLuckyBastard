@@ -559,8 +559,8 @@ end
 -- text and its skins. `closeOnEscape` puts it among the windows Escape
 -- closes. The caller places it on the screen.
 --
--- The main window, the run windows, the statistics and the bingo card
--- share the HIGH level: each comes to the front when it opens or is
+-- The main window, the run windows and the statistics share the HIGH
+-- level: each comes to the front when it opens or is
 -- clicked. The options sit above them, on DIALOG.
 --
 -- Every window follows the Size option (see ns.ApplyScale), unless it has
@@ -2684,7 +2684,6 @@ versionLabel:SetText(ns.VERSION ~= "" and ("v" .. ns.VERSION) or "")
 --                a window of its own each (Analysis: its timeline, rolls
 --                and numbers)
 --   Meter        the loot meter (Meter.lua), for the run in progress
---   Bingo        your bingo card (not there while bingo is switched off)
 --   Expand all   opens every player's loot (only in the list view)
 -- and on its own on the right, Share: the run on show as a link in chat
 -- or as a code (Share.lua). Each button closes its window again on a
@@ -2704,11 +2703,10 @@ end)
 TopButton("Front page", function() ns.ToggleRunWindow("paper", ns.ViewedRun()) end)
 local analysisBtn = TopButton("Analysis", function() ns.ToggleRunWindow("analysis", ns.ViewedRun()) end)
 f.meterBtn = TopButton("Meter", function() ns.ToggleMeter() end)
-local bingoBtn = TopButton("Bingo", function() ns.ToggleBingo() end)
 local shareBtn = MakeButton("Share", TOP_W, function() ns.ToggleShare(ns.ViewedRun()) end)
 shareBtn.loud = true -- a red key in the Receipt theme
 
--- Placed in Render, after the last button shown: Bingo may be hidden.
+-- After Meter; Render shows it in the list view only.
 local expandAll = MakeButton("Expand all", TOP_W, function()
     local s = currentRun
     if not s then return end
@@ -2719,6 +2717,7 @@ local expandAll = MakeButton("Expand all", TOP_W, function()
     for name in pairs(s.players) do expanded[name] = anyClosed or nil end
     Render()
 end)
+expandAll:SetPoint("LEFT", f.meterBtn, "RIGHT", TOP_GAP, 0)
 
 local runLabel = ui:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 runLabel:SetPoint("LEFT", deleteBtn, "RIGHT", 10, 0)
@@ -2923,7 +2922,6 @@ function Render()
     -- the full window, whose Columns arrow leads back.
     local small = useColumns and mini
     for _, b in ipairs(topRow) do b:SetShown(not small) end
-    bingoBtn:SetShown(not small and o.bingo and true or false)
     shareBtn:SetShown(not small)
     for _, w in ipairs(f.footRow) do w:SetShown(not small) end
     scroll:ClearAllPoints()
@@ -2969,8 +2967,6 @@ function Render()
     headers.share:SetShown(not useColumns and showShare)
     headers.diff:SetShown(not useColumns and showShare)
     expandAll:SetShown(not useColumns)
-    expandAll:ClearAllPoints()
-    expandAll:SetPoint("LEFT", bingoBtn:IsShown() and bingoBtn or f.meterBtn, "RIGHT", TOP_GAP, 0)
     -- Receipt theme: receipts come out of a printer slot; the list is
     -- printed on one long sheet.
     local paper = theme.paper and true or false

@@ -1,6 +1,5 @@
 -- Regression tests for faults found in the pre-release audit: run
--- boundaries, roll messages, statistics that must not be skewed, and the
--- bingo card.
+-- boundaries, roll messages, and statistics that must not be skewed.
 local ns = NS
 local function check(ok, what)
     print((ok and "  ok    " or "  FAIL  ") .. what)
@@ -180,37 +179,19 @@ ns.ToggleOptions()
 check(#db.history == kept and kept > 1, "choosing a lower number of runs to keep deletes nothing by itself (" .. kept .. " runs)")
 db.options.maxHistory = 30
 
-print("==== bingo ====")
-db.options.cats.junk = false -- hidden categories must still tick their squares
-local run = db.active
-run.bingo = { keys = { "junk10", "blue", "epic", "boss1", "green", "greens3", "quest", "junk5", "mats20", "mats50",
-                       "items100", "item1g", "item10g", "total5g", "total25g", "died" },
-              done = {} }
-local notices = 0
+-- What the checks below start from: more loot and a boss in this run,
+-- then a run alone.
 local realNotice = ns.Notice
-ns.Notice = function(title, ...)
-    if title:find("BINGO", 1, true) then notices = notices + 1 end
-    return realNotice(title, ...)
-end
 Loot(("%s receives loot: %sx%d."):format("Borin Oak", junk, 10))
 Loot(("You receive loot: %s."):format(epic))
 RunTimers()
-check(run.bingo.done.junk10 == true, "'10 greys looted' ticks although junk is hidden in the window")
-check(run.bingo.done.epic == true and not run.bingo.done.blue, "an epic ticks 'an epic drops' but not 'a blue item drops'")
 Fire("ENCOUNTER_END", 70, "Boss", 1, 4, 1)
 Loot(("You receive loot: %s."):format(blue))
 RunTimers()
-check(run.bingo.done.boss1 and run.bingo.done.blue, "a boss kill and a blue tick theirs: the top row is full")
 for _ = 1, 3 do
     Loot(("You receive loot: %s."):format(junk))
     RunTimers()
 end
-ns.ToggleBingo(); ns.ToggleBingo()
-check(notices == 0 and not run.bingo.won, "a full line nobody picked wins nothing, and is not announced (" .. notices .. ")")
-ns.Notice = realNotice
-db.options.cats.junk = true
-
--- A card dealt for a solo run has nothing that needs a group.
 WORLD.party = {}
 leave()
 NOW = NOW + 5000
@@ -218,14 +199,6 @@ Fire("PLAYER_ENTERING_WORLD", false, false)
 enter(3, "Alone")
 Loot(("You receive loot: %s."):format(junk))
 RunTimers()
-local solo, groupOnly = db.active.bingo, 0
-for _, key in ipairs(solo and solo.keys or {}) do
-    if key == "everyone" or key == "shared" or key == "needwin" or key == "youwin" or key == "twowins"
-            or key == "greed3" or key == "pass" or key == "high" or key == "low" then
-        groupOnly = groupOnly + 1
-    end
-end
-check(solo ~= nil and #solo.keys == 16 and groupOnly == 0, "a solo card has 16 squares, none of which needs a group")
 
 print("==== junk: vendor price by default, auction on a right-click ====")
 Auctionator = { API = { v1 = { GetAuctionPriceByItemLink = function() return 5000 end } } }
@@ -326,11 +299,6 @@ ns.ToggleOptions()
 check(inFront(ThatLuckyBastardOptionsFrame, browse) and inFront(ThatLuckyBastardOptionsFrame, ThatLuckyBastardFrame),
       "the options stay in front of both")
 ns.ToggleOptions()
-ThatLuckyBastardBingoFrame:Hide()
-ns.ToggleBingo()
-check(inFront(ThatLuckyBastardBingoFrame, ThatLuckyBastardFrame) and inFront(ThatLuckyBastardBingoFrame, browse),
-      "the bingo card opens in front of the main window and the statistics")
-ns.ToggleBingo()
 
 print("==== the buttons that open a window close it too ====")
 local paperWin, analysisWin = ThatLuckyBastardPaperFrame, ThatLuckyBastardAnalysisFrame
@@ -364,11 +332,10 @@ check(stats and cog and anchor(stats)[1] == "BOTTOMRIGHT" and anchor(cog)[1] == 
       and anchor(stats)[2] == anchor(cog)[2] - cog.__w - 4 and anchor(stats)[3] == anchor(cog)[3],
       "Statistics sits at the bottom, beside the cogwheel of the options: what is about all your runs")
 check(mainButton("Options") == nil, "the cogwheel has taken the Options button's place")
-local expand, bingo, analysis = mainButton("Expand all"), mainButton("Bingo"), mainButton("Analysis")
+local expand, analysis = mainButton("Expand all"), mainButton("Analysis")
 local meter = mainButton("Meter")
-check(expand and (anchor(expand)[2] == bingo or anchor(expand)[2] == meter)
-      and anchor(bingo)[2] == meter and anchor(meter)[2] == analysis,
-      "the top row is about the run on show: ... Analysis, Meter, Bingo, Expand all")
+check(expand and anchor(expand)[2] == meter and anchor(meter)[2] == analysis and mainButton("Bingo") == nil,
+      "the top row is about the run on show: ... Analysis, Meter, Expand all; no Bingo")
 
 print("==== the Analysis window: timeline, rolls and numbers of the run on show ====")
 -- Text drawn somewhere in a font string (drew wants the whole text).

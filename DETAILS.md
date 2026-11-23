@@ -58,7 +58,6 @@ Tables over all your runs, from the Statistics button beside Options. Click a co
 - **Familiar faces:** a notice when someone you have run with joins your group, with your history together.
 - **Tooltips:** one line in the tooltip of a player you have run with (runs together, both your loot, and the award they had most often), and one in the tooltip of an item seen in your runs ("seen in 3 runs, last to ..."). The options say which kinds of item get theirs: epic, blue and green BoE and Bind on Pickup unless you choose otherwise.
 - **Streak recap:** when you chain runs with mostly the same group, or in the same dungeon, each starting within half an hour of the one before, the end of a run brings a notice with the standings so far.
-- **Loot bingo:** a private 4x4 card dealt as each run starts ("a blue item drops", "someone passes", "you die"...), whose squares tick themselves off. You bet on one line of it: click the marker of a row, a column or a diagonal. A line can be picked as long as none of its squares is ticked, and the pick is for good. If your line fills before the run is over, it is announced on your screen, and the card counts the lines you have won.
 
 ## Sharing a run
 
@@ -104,7 +103,6 @@ A run starts automatically when you enter a dungeon (and raids, if enabled). The
 | `/tlb export` | The run on show as text for a spreadsheet; `/tlb export all` for every run |
 | `/tlb share` | Share the run on show: a link in chat, or a code |
 | `/tlb import` | The Shared runs window: import a code, and the runs shared with you |
-| `/tlb bingo` | Your loot bingo card |
 | `/tlb meter` | The loot meter |
 | `/tlb theme modern` / `classic` / `receipt` | Change the look |
 | `/tlb start` | Track a run manually, outside a dungeon |
@@ -134,7 +132,7 @@ Nine pages, named after what they set:
 - **Breakdown:** the layout (Columns, List or Mini), then the window from top to bottom: the players' picture (2D portrait by default, 3D model, class icon or none), their names (as the game shows them, full, or first name only) and their order (Podium, top looter in the middle, by default; loot, role or name, with you first if you like); each player's share, share bar and vendor total; the items' order (value or name), icons, grouping by category and lining up across columns; what the bench shows (picture, award, gold); and the bottom line (run total, run stats).
 - **Meter:** what its rows show (rank, share, award), and whether it opens as a run starts and shuts as you leave. While this page is open, so is the meter.
 - **Loot:** auction or vendor prices, auction prices as recorded when looted or as they are today, the addon they come from, which categories to show, and whether hidden ones still count.
-- **During a run:** the valuable loot notice and its amount (5 gold by default), familiar faces, and loot bingo.
+- **During a run:** the valuable loot notice and its amount (5 gold by default), and familiar faces.
 - **End of run:** on leaving a dungeon alive, whether the breakdown opens (if not, the reveal waits for the first time you open it), a line in your chat window that only you see, and the streak recap; awards, the race, their sounds and a screenshot. **Replay** plays the reveal again for the run on show, as `/tlb race` does.
 - **Tooltips:** the line in a player's tooltip, the line in an item's, and the kinds of item that get theirs.
 - **Share:** the chat summary: how many players (5 by default, up to 25), the first line (run link, run time, group total) and the player lines (share %, gap to equal split, award), with a preview.

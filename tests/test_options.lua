@@ -1,8 +1,8 @@
 -- The options panel: its pages, the choices that stand for two saved
 -- switches, the tooltips and what is greyed out when it does nothing (and
 -- why), the boxes typed in, the runs to keep, the Defaults button, the
--- meter shown beside its page, Replay, the size of the windows and the
--- Bingo button.
+-- meter shown beside its page, Replay, the size of the windows, and loot
+-- bingo gone.
 local ns = NS
 local function check(ok, what)
     print((ok and "  ok    " or "  FAIL  ") .. what)
@@ -127,7 +127,7 @@ for _, label in ipairs({
     "Name", "Me first", "Share", "Share bar", "Vendor total", "Value", "Icons", "Group by category", "Line up", "Picture",
     "Award", "Gold", "Run total", "Run stats", "Rank", "Open on entering", "Close on leaving", "Auction", "Vendor",
     "When looted", "Today", "Epic BoE", "Bind on Pickup", "Professions", "Coins", "Quest items", "Hidden still count",
-    "Valuable loot", "Familiar face", "Loot bingo", "Open breakdown", "Chat line", "Streak recap", "Awards", "Race",
+    "Valuable loot", "Familiar face", "Open breakdown", "Chat line", "Streak recap", "Awards", "Race",
     "Sounds", "Screenshot", "Runs together", "Seen in runs", "Run link", "Run time", "Group total", "Share %",
     "Gap to equal split", "Raids", "Ask", "New run",
 }) do
@@ -425,19 +425,27 @@ print("-- size")
 o.scale = 1.25
 ns.Rerender()
 check(ThatLuckyBastardFrame:GetScale() == 1.25 and ThatLuckyBastardBrowseFrame:GetScale() == 1.25
-      and ThatLuckyBastardBingoFrame:GetScale() == 1.25 and ThatLuckyBastardPaperFrame:GetScale() == 1.25
+      and ThatLuckyBastardPaperFrame:GetScale() == 1.25
       and ThatLuckyBastardShareFrame:GetScale() == 1.25, "Size scales every window")
 check(ThatLuckyBastardOptionsFrame:GetScale() == 1, "but the options, whose slider would move under the mouse")
 o.scale = 1
 ns.Rerender()
 
-print("-- bingo button")
-local bingo = button("Bingo")
-check(bingo and bingo:IsShown(), "the main window has a Bingo button")
-click("Loot bingo")
-check(o.bingo == false and not bingo:IsShown(), "it goes while bingo is off")
-click("Loot bingo")
-check(o.bingo and bingo:IsShown(), "and comes back")
+print("-- loot bingo is gone")
+check(button("Bingo") == nil and not pcall(control, "Loot bingo") and o.bingo == nil,
+      "no Bingo button, and no option for it")
+check(ThatLuckyBastardBingoFrame == nil and ns.ToggleBingo == nil and ns.BingoCheck == nil, "nor its window")
+local printed = {}
+local realPrint = print
+print = function(text) printed[#printed + 1] = tostring(text) end
+SlashCmdList.THATLUCKYBASTARD("bingo")
+print = realPrint
+local helpShown, bingoInHelp = false, false
+for _, line in ipairs(printed) do
+    if line:find("/tlb meter", 1, true) then helpShown = true end
+    if line:lower():find("bingo", 1, true) then bingoInHelp = true end
+end
+check(helpShown and not bingoInHelp, "/tlb bingo shows the help, which no longer mentions it")
 
 ns.ToggleOptions()
 check(not ThatLuckyBastardOptionsFrame:IsShown(), "a second toggle closes the options")

@@ -426,4 +426,43 @@ check(wrong == 0, ("all 300 come back the same (%d did not: %s)"):format(wrong, 
 check(packed >= 290, ("nearly all of them packed (%d)"):format(packed))
 check(Constants(SAVED.history) < 30000, "three hundred runs take a small part of the 262,143 the file can hold")
 
+print("==== loot bingo's leftovers (gone in 0.7.1) ====")
+-- What an older version kept for bingo: in a finished run (saved in its
+-- record's x), in the run in progress, and in the saved data itself.
+db.history[1].bingo = { keys = { "blue" }, done = { blue = true }, pick = 1, won = true }
+db.history[1].rollHigh, db.history[1].rollLow, db.history[1].myDeaths = true, true, 2
+db.bingo, db.options.bingo = { picked = 3, won = 1 }, true
+Fire("PLAYER_LOGOUT")
+local record = SAVED.history[1]
+check(Packed(record) and record.x and record.x.bingo ~= nil and record.x.myDeaths == 2 and SAVED.bingo ~= nil,
+      "an older version's file: the card and the rest are in the run's record, the tally beside the runs")
+SAVED.active = { name = "Old Keep", instanceID = 33, startedAt = NOW - 600, enteredAt = NOW - 600, lastSeen = NOW,
+                 players = {}, bingo = { keys = {}, done = {} }, rollHigh = true, myDeaths = 1 }
+local function Copy(v)
+    if type(v) ~= "table" then return v end
+    local out = {}
+    for k, x in next, v do out[k] = Copy(x) end
+    return out
+end
+ThatLuckyBastardDB = Copy(SAVED) -- the file read back, as Reload does
+Fire("ADDON_LOADED", "ThatLuckyBastard")
+Fire("PLAYER_LOGIN")
+db = ThatLuckyBastardDB
+local h = db.history[1]
+check(h.bingo == nil and h.rollHigh == nil and h.rollLow == nil and h.myDeaths == nil and h.players ~= nil,
+      "loaded, the run keeps everything but what bingo kept")
+check(db.bingo == nil and db.options.bingo == nil, "the tally of lines and the switch are gone")
+-- (Ended at login or not, the run that was in progress is somewhere.)
+local was = db.active and db.active.name == "Old Keep" and db.active or nil
+for _, s in ipairs(db.history) do
+    if s.name == "Old Keep" then was = s end
+end
+check(was ~= nil and was.bingo == nil and was.rollHigh == nil and was.myDeaths == nil,
+      "and so is the card of the run that was in progress")
+db = Reload()
+record = SAVED.history[1]
+check(Packed(record) and (record.x == nil or (record.x.bingo == nil and record.x.myDeaths == nil)),
+      "saved again, the run's record has none of it")
+check(Differ(made[2], Essence(db.history[2]), "run 2") == nil, "and the other runs are as they were")
+
 print(FAILED and (FAILED .. " check(s) FAILED") or "all checks passed (storage)")

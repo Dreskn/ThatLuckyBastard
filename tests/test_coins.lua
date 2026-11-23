@@ -14,7 +14,7 @@ Fire("PLAYER_LOGIN")
 Fire("PLAYER_ENTERING_WORLD", true, false)
 local db = ThatLuckyBastardDB
 local o = db.options
-o.ticker, o.streak, o.bingo, o.popupLeave, o.race = false, false, false, false, false
+o.ticker, o.streak, o.popupLeave, o.race = false, false, false, false
 
 ITEMS[301] = { 3, 50000, 4, 1 } -- 5g at the vendor, bind on pickup
 local sword = ItemLink(301, "Sword", 3)

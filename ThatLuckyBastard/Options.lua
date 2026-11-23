@@ -650,7 +650,7 @@ end
 ----------------------------------------------------------------------
 
 do
-    local p = NewPage("During a run", { "ticker", "tickerMin", "familiar", "bingo" }, true)
+    local p = NewPage("During a run", { "ticker", "tickerMin", "familiar" }, true)
 
     -- The notice's switch, and its amount typed in gold beside it.
     Section(p, "Notices", "On your screen. Only you see them.")
@@ -675,9 +675,6 @@ do
     end
     p.y = p.y - ROW_H
     Boxes(p, { { "Familiar face", "familiar", "Someone you've run with joins your group." } })
-
-    Section(p, "Bingo")
-    Boxes(p, { { "Loot bingo", "bingo", "A card each run. Pick a line: it wins if it fills." } })
 end
 
 ----------------------------------------------------------------------

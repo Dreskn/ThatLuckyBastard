@@ -21,7 +21,6 @@ ItemMenu.lua
 Code.lua
 Share.lua
 Social.lua
-Bingo.lua
 Meter.lua
 Coins.lua
 Options.lua

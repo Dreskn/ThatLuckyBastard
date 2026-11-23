@@ -1,7 +1,7 @@
 local _, ns = ...
 
 -- On-screen notices: a small box near the top of the screen, used for
--- valuable loot during a run and for bingo lines. It is drawn by the
+-- valuable loot, familiar faces, streaks and shares. It is drawn by the
 -- addon itself and seen only by the player running it; nothing is sent
 -- to chat. Several notices in a row are shown one after another.
 

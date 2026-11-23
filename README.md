@@ -17,7 +17,7 @@ It records what every player in your group loots, puts a gold value on it, and s
 - **Front page, analysis:** a mock newspaper, and the run's timeline, rolls and numbers, each in its own window.
 - **The meter:** a small window like a damage meter, with a bar per player that grows live as the loot comes in.
 - **Statistics:** your dungeons, records, luck, the people you run with and what dropped where, with item search and an export for spreadsheets.
-- **While you play:** notices for valuable loot and familiar faces, one line in player and item tooltips, and a private loot bingo card to bet a line on.
+- **While you play:** notices for valuable loot and familiar faces, and one line in player and item tooltips.
 - **Sharing:** post a run as a link in chat or as a short summary anyone can read, or copy it as a code to paste anywhere. Players with the addon open links and codes.
 
 | ![The front page](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/paper.png) | ![The timeline](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/timeline.png) |

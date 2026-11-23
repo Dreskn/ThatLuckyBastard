@@ -55,7 +55,6 @@ ns.OPTION_DEFAULTS = {
     ceremonySound = true,       -- sounds while the awards are revealed
     ceremonyScreenshot = false, -- take a screenshot once they are all shown
     race = true,         -- as a run is left, its columns race for their places
-    bingo = true,        -- deal a loot bingo card each run, to pick a line on
     ticker = true,       -- on-screen notice when someone loots something valuable
     tickerMin = 50000,   -- copper: smallest pickup worth a notice
     alignItems = false,  -- put the same item on the same line in every column
@@ -651,8 +650,6 @@ local function UpdateRoster()
         for name in pairs(set) do s.group[#s.group + 1] = name end
         table.sort(s.group)
     end
-    -- A bingo card dealt while alone is dealt again for the group.
-    if s.bingo and s.bingo.solo and ns.BingoCheck then ns.BingoCheck() end
     ns.Refresh()
 end
 
@@ -748,7 +745,6 @@ local function NewSession(name, instanceID, manual)
     }
     ns.fresh = nil -- a run that ended unseen is old news now (see ShowRunEnd)
     UpdateRoster()
-    if ns.BingoCheck then ns.BingoCheck() end -- deals the run's bingo card
     if ns.MeterAuto then ns.MeterAuto("start") end
 end
 
@@ -1041,7 +1037,6 @@ local function RecordLoot(name, rawLink, count)
     AnnounceLoot(s, name, e, count)
     s.lastSeen = time()
     ns.Refresh()
-    if ns.BingoCheck then ns.BingoCheck() end
 end
 
 -- Coins, kept per player as p.money (copper). The game splits a corpse's
@@ -1063,7 +1058,6 @@ local function RecordMoney(copper, split)
     end
     s.lastSeen = time()
     ns.Refresh()
-    if ns.BingoCheck then ns.BingoCheck() end
 end
 
 -- A roll in progress: who chose what and who rolled what. `rk` tells
@@ -1148,8 +1142,6 @@ local function RollStats(s, name)
     return st
 end
 
-ns.HIGH_ROLL, ns.LOW_ROLL = 95, 5 -- the rolls the bingo card calls high and low
-
 local function HandleRoll(text)
     local s = db.active
     if not Tracking(s) then return end
@@ -1168,9 +1160,6 @@ local function HandleRoll(text)
         if not st.high or roll > st.high then st.high = roll end
         if not st.low or roll < st.low then st.low = roll end
         r.num[name] = roll
-        -- Remembered for the bingo card.
-        if roll >= ns.HIGH_ROLL then s.rollHigh = true end
-        if roll <= ns.LOW_ROLL then s.rollLow = true end
     end
     if kind == "select" then
         r[method][name] = true
@@ -1187,7 +1176,6 @@ local function HandleRoll(text)
             end
         end
     end
-    if ns.BingoCheck then ns.BingoCheck() end
 end
 
 ----------------------------------------------------------------------
@@ -1317,7 +1305,7 @@ function ns.Summarize(s, needOnly)
                      money = 0,
                      -- for the awards: value won on Need / Greed rolls, and the best single item
                      needValue = 0, greedValue = 0, bestValue = 0,
-                     -- also used by the bingo card: rolls won, and the best item quality
+                     -- also for the awards: rolls won, and the best item quality
                      needWins = 0, greedWins = 0, bestQuality = 0,
                      -- every shown item in one group, for the ungrouped layout
                      all = { items = {} },
@@ -2580,6 +2568,16 @@ function handlers.ADDON_LOADED(name)
     end
     if db.active then DropLooks(db.active) end
     for _, s in ipairs(db.history) do DropLooks(s) end
+    -- Loot bingo is gone (0.7.1): its switch, its tally of lines, and what
+    -- each run kept for it (the card, high and low rolls, your deaths).
+    db.options.bingo, db.bingo = nil, nil
+    local function DropBingo(s)
+        s.bingo, s.rollHigh, s.rollLow, s.myDeaths = nil, nil, nil, nil
+    end
+    if db.active then DropBingo(db.active) end
+    for _, list in ipairs({ db.history, db.shared }) do
+        for _, s in ipairs(list) do DropBingo(s) end
+    end
     -- Modern unless another theme was chosen (themes that no longer exist
     -- fall back to it too).
     if db.theme ~= "classic" and db.theme ~= "receipt" then db.theme = "modern" end
@@ -2759,16 +2757,6 @@ function handlers.ENCOUNTER_END(encounterID, encounterName, _, _, success)
             t = math.max(time() - s.startedAt, 0),
             name = type(encounterName) == "string" and not issecret(encounterName) and encounterName or nil,
         }
-        if ns.BingoCheck then ns.BingoCheck() end
-    end
-end
-
--- Your own deaths, for the bingo card.
-function handlers.PLAYER_DEAD()
-    local s = db.active
-    if Tracking(s) then
-        s.myDeaths = (s.myDeaths or 0) + 1
-        if ns.BingoCheck then ns.BingoCheck() end
     end
 end
 
@@ -2989,8 +2977,6 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
         ns.ToggleShare(ns.ViewedRun())
     elseif cmd == "import" then
         ns.ToggleImport()
-    elseif cmd == "bingo" then
-        ns.ToggleBingo()
     elseif cmd == "meter" then
         ns.ToggleMeter()
     elseif cmd == "capture" then
@@ -3038,7 +3024,6 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
         Print("/tlb stats - dungeons, records, runs, luck, regulars, drops, roles")
         Print("/tlb search <item> - find an item in past runs")
         Print("/tlb awards - what each award means")
-        Print("/tlb bingo - your bingo card")
         Print("/tlb meter - the loot meter")
         Print("/tlb export - the run on show as text (/tlb export all: every run)")
         Print("/tlb share - share the run on show: a link in chat, or a code")

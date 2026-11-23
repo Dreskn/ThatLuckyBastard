@@ -114,7 +114,7 @@ local function Labelled(label)
     end
     return n
 end
-local BUTTONS = { "Need only", "Front page", "Analysis", "Bingo", "Share", "< Older", "Newer >", "Delete",
+local BUTTONS = { "Need only", "Front page", "Analysis", "Share", "< Older", "Newer >", "Delete",
                   "Statistics" }
 local function Buttons()
     local n = 0
