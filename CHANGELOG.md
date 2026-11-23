@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- Coins come first in the breakdown.
+
 ## 0.7.0
 
 ### New

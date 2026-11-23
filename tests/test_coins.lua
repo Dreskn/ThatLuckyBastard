@@ -114,6 +114,33 @@ check(Money(run, ME) == 3110 and Money(run, "Bryn Ash") == 2700, "a split share 
 Loot(("Bryn Ash receives loot: %s."):format(sword))
 local fair = ns.Fairness(ns.Summarize(run))
 check(Player(run, "Bryn Ash").market == 50000 + 2700, "items and coins together")
+local function firstAt(text, from)
+    for i = from or 1, #TEXTLOG do
+        if tostring(TEXTLOG[i]):find(text, 1, true) then return i end
+    end
+end
+for _, columns in ipairs({ true, false }) do
+    o.groupByCategory, o.useColumns = true, columns
+    ns.ShowRun(run)
+    RunTimers()
+    if not columns then -- the list's players open, with their lines under them
+        for _, w in ipairs(FRAMES) do
+            local text = rawget(w, "text")
+            if type(text) == "table" and text.__text == "Expand all" and w.__scripts.OnClick then
+                w.__scripts.OnClick(w, "LeftButton")
+            end
+        end
+    end
+    TEXTLOG = {}
+    ns.Refresh()
+    RunTimers()
+    -- In Bryn Ash's lines, who has both.
+    local from = firstAt("Bryn Ash") or 1
+    local coins, bop = firstAt("Coins", from), firstAt("Bind on Pickup", from) or firstAt("BoP", from)
+    check(coins and bop and coins < bop, "Coins come first, above the items ("
+          .. (columns and "columns" or "list") .. ")")
+end
+o.useColumns = true
 
 print("==== /tlb capture keeps money lines ====")
 SlashCmdList.THATLUCKYBASTARD("capture")

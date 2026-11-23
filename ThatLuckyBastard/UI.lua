@@ -80,6 +80,9 @@ end
 local inkMode = false
 
 local CATS = {
+    -- First: not items, one sum per player with nothing under it.
+    { key = "coins",    label = "Coins",                         short = "Coins",       color = { 0.90, 0.72, 0.36 },
+      coins = true },
     { key = "epic",     label = "Epic BoE",                      short = "Epic BoE",    color = { 0.64, 0.21, 0.93 } },
     { key = "rare",     label = "Blue BoE",                      short = "Blue BoE",    color = { 0.20, 0.55, 1.00 } },
     { key = "uncommon", label = "Green BoE",                     short = "Green BoE",   color = { 0.12, 1.00, 0.00 } },
@@ -87,9 +90,6 @@ local CATS = {
       name = "Bind on Pickup" }, -- name: what the options call it, when not by its label
     { key = "prof",     label = "Profession materials",          short = "Professions", color = { 1.00, 0.82, 0.00 } },
     { key = "other",    label = "Other",                         short = "Other",       color = { 0.85, 0.85, 0.85 } },
-    -- Not items: one sum per player, with nothing under it.
-    { key = "coins",    label = "Coins",                         short = "Coins",       color = { 0.90, 0.72, 0.36 },
-      coins = true },
     { key = "junk",     label = "Junk",                          short = "Junk",        color = { 0.62, 0.62, 0.62 } },
     -- Always last: quest items are worth nothing to anyone else.
     { key = "quest",    label = "Quest items (vendor value)",    short = "Quest",       color = { 1.00, 1.00, 0.45 },
