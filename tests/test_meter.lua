@@ -101,7 +101,7 @@ TEXTLOG = {}
 SlashCmdList.THATLUCKYBASTARD("meter")
 check(meter:IsShown() and #Rows() == 0 and Drew("No run yet.") and Title():find("Meter", 1, true),
       "/tlb meter opens it; with no run at all, it says so")
-check(meter:GetWidth() == 270 and meter:GetHeight() == TOP + 4 + 5 * PITCH - 2 + 12,
+check(meter:GetWidth() == 270 and meter:GetHeight() == TOP + 4 + 5 * PITCH - 2 + 4,
       ("as tall as five rows to begin with (%dx%d)"):format(meter:GetWidth(), meter:GetHeight()))
 SlashCmdList.THATLUCKYBASTARD("meter")
 check(not meter:IsShown(), "and a second time shuts it")
@@ -210,7 +210,7 @@ local tint
 tex, color, tint = Look("Borin Oak")
 check(tex == "Interface\\TargetingFrame\\UI-StatusBar" and tint[1] == 0.78 and tint[2] == 0.61,
       "Classic: the game's own bar, in the class colour")
-check(meter:GetHeight() == TOP + 4 + 5 * PITCH - 2 + 12, "the window keeps its size")
+check(meter:GetHeight() == 30 + 4 + 5 * PITCH - 2 + 4, "the window keeps its five rows, under Classic's taller title bar")
 ns.SetTheme("receipt")
 local bg
 tex, color, tint, bg = Look("Borin Oak")
@@ -233,10 +233,10 @@ check(scroll.__scroll == 4 * PITCH, "down to the last, and no further")
 for _ = 1, 10 do scroll.__scripts.OnMouseWheel(scroll, 1) end
 check(scroll.__scroll == 0, "and back up to the first")
 scroll.__scripts.OnMouseWheel(scroll, -2)
-meter:SetHeight(TOP + 4 + 9 * PITCH - 2 + 12)
+meter:SetHeight(TOP + 4 + 9 * PITCH - 2 + 4)
 ns.Rerender()
 check(scroll.__scroll == 0, "made taller for nine, there is nothing to scroll")
-meter:SetHeight(TOP + 4 + 5 * PITCH - 2 + 12)
+meter:SetHeight(TOP + 4 + 5 * PITCH - 2 + 4)
 Leave()
 Stop()
 
@@ -348,7 +348,7 @@ check(mtitle.__font == "GameFontHighlight" and tp[1] == "LEFT" and tp[3] == "TOP
       and mtitle.__justify == "LEFT"
       and scroll.__points[1][2] == 4 and scroll.__points[1][3] == -TOP - 4,
       "Modern: a slim title bar, 22 high, a smaller title in the middle of it, the rows close under it")
-check(Crosses(meter) == "12x12 18x18 20x16" and Crosses(main):find("24x24", 1, true) and Crosses(main):find("24x22", 1, true)
+check(Crosses(meter) == "12x12 14x14 18x18 20x16" and Crosses(main):find("24x24", 1, true) and Crosses(main):find("24x22", 1, true)
       and not Crosses(main):find("18x18", 1, true),
       "a smaller cross than the other windows' (" .. Crosses(meter) .. ")")
 local plain, _, plainTitle, plainSkins = ns.MakeWindow("ThatLuckyBastardPlainTest", 300, 200, "HIGH", false)
@@ -386,19 +386,81 @@ end
 Leave()
 Stop()
 
+print("-- whole rows")
+local grip, lock
+for _, w in ipairs(FRAMES) do
+    if rawget(w, "meterGrip") then grip = w end
+    if rawget(w, "meterLock") then lock = w end
+end
+local function Tall(n) return TOP + 4 + n * PITCH - 2 + 4 end
+local sp = scroll.__points[2]
+check(sp[1] == "BOTTOMRIGHT" and sp[2] == -4 and sp[3] == 4, "the rows end 4 above the bottom, as far as from the sides")
+grip.__scripts.OnMouseDown(grip)
+meter:SetHeight(Tall(5) + 9)
+ns.Rerender()
+check(meter:GetHeight() == Tall(5) + 9, "while the grip is held, the height follows the mouse")
+grip.__scripts.OnMouseUp(grip)
+check(meter:GetHeight() == Tall(5) and db.meter.h == Tall(5), "let go, it comes to whole rows, and that is what is kept")
+grip.__scripts.OnMouseDown(grip)
+meter:SetHeight(Tall(5) + 14)
+grip.__scripts.OnMouseUp(grip)
+check(meter:GetHeight() == Tall(6), "to the nearest: up as well as down")
+meter:SetHeight(Tall(5))
+ns.Rerender()
+
+print("-- the padlock")
+local function Is(c, r, g, b)
+    return c ~= nil and math.abs(c[1] - r) < 0.002 and math.abs(c[2] - g) < 0.002 and math.abs(c[3] - b) < 0.002
+end
+check(not lock:IsShown() and not grip:IsShown(), "the padlock and the grip are out of sight")
+meter.__over = true
+Tick(0.01)
+check(lock:IsShown() and grip:IsShown() and lock.icon.__coords[1] == 0.5, "the mouse over the meter shows them, the padlock open")
+check(Is(lock.icon.__tint, 1, 1, 1), "white in Modern")
+lock.__scripts.OnClick(lock)
+check(db.meter.locked == true and lock:IsShown() and not grip:IsShown() and lock.icon.__coords[1] == 0,
+      "a click locks it: the grip goes, the padlock shuts")
+check(TIP[1] == "Unlock", "its tooltip offers to unlock it")
+local moved = 0
+rawset(meter, "StartMoving", function() moved = moved + 1 end)
+meter.__scripts.OnDragStart(meter)
+check(moved == 0, "locked, dragging it does not move it")
+ns.SetTheme("receipt")
+check(Is(lock.icon.__tint, 0.165, 0.153, 0.141), "in ink on the Receipt's paper")
+ns.SetTheme("modern")
+meter.__over = false
+Tick(0.01)
+check(not lock:IsShown() and not grip:IsShown(), "the mouse gone, the padlock goes too")
+meter.__over = true
+Tick(0.01)
+check(lock:IsShown() and not grip:IsShown(), "back over a locked meter: the padlock alone")
+lock.__scripts.OnClick(lock)
+meter.__scripts.OnDragStart(meter)
+check(db.meter.locked == nil and grip:IsShown() and moved == 1 and TIP[1] == "Lock", "a second click unlocks it")
+lock.__scripts.OnClick(lock)
+meter.__over = false
+Tick(0.01)
+
 print("-- kept from one session to the next")
 meter:ClearAllPoints()
 meter:SetPoint("TOPLEFT", UIParent, "TOPLEFT", 40, -200)
-meter:SetSize(300, 220)
+meter:SetSize(300, Tall(8))
 meter.__scripts.OnDragStop(meter)
-check(db.meter.w == 300 and db.meter.h == 220 and db.meter.point ~= nil, "moved or sized, it notes where and how big")
+check(db.meter.w == 300 and db.meter.h == Tall(8) and db.meter.point ~= nil, "moved or sized, it notes where and how big")
 local saved = Reload()
 db = saved
 check(SAVED.meter.shown == true and saved.meter.w == 300, "logging out while it is open, it notes that too")
 meter:Hide()
 meter:SetSize(10, 10)
 Fire("PLAYER_LOGIN")
-check(meter:IsShown() and meter:GetWidth() == 300 and meter:GetHeight() == 220, "at login it is open again, as big as it was")
+check(meter:IsShown() and meter:GetWidth() == 300 and meter:GetHeight() == Tall(8), "at login it is open again, as big as it was")
+rawset(meter, "StartMoving", function() moved = moved + 1 end)
+meter.__scripts.OnDragStart(meter)
+check(saved.meter.locked == true and moved == 1, "and still locked")
+saved.meter.h = Tall(8) + 8 -- sized by an older version, with more room under the rows
+meter:Hide()
+Fire("PLAYER_LOGIN")
+check(meter:GetHeight() == Tall(8), "a height from before comes to whole rows")
 meter:Hide()
 Fire("PLAYER_LOGOUT")
 check(SAVED.meter.shown == nil, "shut at logout, it stays shut")

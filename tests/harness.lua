@@ -60,6 +60,9 @@ function known.Hide(self)
 end
 function known.SetShown(self, on) if on then self:Show() else self:Hide() end end
 function known.IsShown(self) return self.__shown end
+-- The mouse is over a widget when a test says so (w.__over).
+function known.IsMouseOver(self) return rawget(self, "__over") == true end
+function known.SetTexCoord(self, ...) self.__coords = { ... } end
 function known.IsVisible(self) return self.__shown end
 function known.SetText(self, text)
     self.__text = text == nil and "" or tostring(text)

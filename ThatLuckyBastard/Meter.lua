@@ -10,20 +10,22 @@ local _, ns = ...
 -- past one another when someone overtakes.
 --
 -- It stays open while you play (Escape leaves it alone), can be moved and
--- sized, and is where it was, as big as it was, and open if it was, from
--- one session to the next (db.meter). Rows that do not fit are a turn of
--- the mouse wheel away. The options say whether a row shows the rank, the
--- share and the award, and whether the meter opens by itself as a run
--- starts and shuts as you leave (see ns.MeterAuto). Its title bar is
--- slimmer than the other windows', and names the dungeon the way players
--- do: RFC, SFK, ZF.
+-- sized, or locked with the padlock in its corner, and is where it was,
+-- as big as it was, locked and open if it was, from one session to the
+-- next (db.meter). Its height is always whole rows; rows that do not fit
+-- are a turn of the mouse wheel away. The options say whether a row shows
+-- the rank, the share and the award, and whether the meter opens by
+-- itself as a run starts and shuts as you leave (see ns.MeterAuto). Its
+-- title bar is slimmer than the other windows', and names the dungeon the
+-- way players do: RFC, SFK, ZF.
 
 local WIDTH = 270
 local BAR_H = 22      -- the title bar, in the Modern and Receipt themes
 local ROW_H, ROW_GAP = 20, 2
 local PITCH = ROW_H + ROW_GAP
-local PAD = 4         -- around the rows
-local BOTTOM = 12     -- under them, room for the corner that sizes the window
+local PAD = 4         -- around the rows, the same on every side
+local CORNER = 12     -- the grip that sizes the window, and the padlock beside it
+local LOCK = "Interface\\AddOns\\ThatLuckyBastard\\Media\\lock" -- locked on the left half, open on the right
 local ROWS = 5        -- how many it is tall enough for, to begin with
 local SPEED = 8       -- how quickly bars and rows close in on where they are going, per second
 local CHECK = 1       -- seconds between two looks at which run to show
@@ -48,14 +50,15 @@ local shownRun, shownLive        -- the run the rows are for, and whether it was
 local top = -(BAR_H + 2)         -- where the rows start under the title bar (the theme's)
 local offset = 0                 -- rows scrolled past
 local moving = false             -- bars or rows still on their way
+local sizing = false             -- the grip held: the height follows the mouse until let go
 local Draw
 
 -- How tall the window is for `n` rows, and how many rows fit it.
 local function Height(n)
-    return -top + PAD + n * PITCH - ROW_GAP + BOTTOM
+    return -top + PAD + n * PITCH - ROW_GAP + PAD
 end
 local function Visible()
-    return math.max(1, math.floor((frame:GetHeight() + top - PAD - BOTTOM + ROW_GAP) / PITCH))
+    return math.max(1, math.floor((frame:GetHeight() + top - 2 * PAD + ROW_GAP) / PITCH))
 end
 local function Count()
     local n = 0
@@ -201,8 +204,16 @@ function Draw()
     local theme = ns.ThemeName()
     scroll:ClearAllPoints()
     scroll:SetPoint("TOPLEFT", PAD, top - PAD)
-    scroll:SetPoint("BOTTOMRIGHT", -PAD, BOTTOM)
+    scroll:SetPoint("BOTTOMRIGHT", -PAD, PAD)
     if frame.SetResizeBounds then frame:SetResizeBounds(180, Height(1), 600, 900) end
+    -- Whole rows, so the space under the last is the same as at the sides:
+    -- a height in between (sized by hand, or another theme's title bar)
+    -- goes to the nearest whole number of rows.
+    if not sizing then
+        local n = math.max(1, math.floor((frame:GetHeight() + top - 2 * PAD + ROW_GAP) / PITCH + 0.5))
+        if math.abs(frame:GetHeight() - Height(n)) >= 0.5 then frame:SetHeight(Height(n)) end
+    end
+    if frame.corner then frame.corner.Paint(theme) end
     local width = frame:GetWidth() - 2 * PAD
     title:SetWidth(math.max(20, frame:GetWidth() - (flat and 36 or 54))) -- cut short before the cross
     title:SetWordWrap(false)
@@ -287,6 +298,7 @@ local clock = CreateFrame("Frame", nil, frame)
 clock.meterClock = true
 local since = 0
 clock:SetScript("OnUpdate", function(_, dt)
+    frame.corner.Follow()
     if moving then moving = Animate(dt) end
     since = since + dt
     if since >= CHECK then
@@ -313,7 +325,10 @@ end
 ns.OnRerender(Redraw)
 ns.OnRunShown(Redraw)
 ns.OnAccent(Redraw)
-frame:SetScript("OnShow", Draw)
+frame:SetScript("OnShow", function()
+    frame.corner.Show(false) -- until the mouse comes over it
+    Draw()
+end)
 frame:SetScript("OnSizeChanged", function() ns.MeterRefresh() end)
 
 scroll:SetScript("OnMouseWheel", function(_, delta)
@@ -332,24 +347,93 @@ local function Save()
     m.w, m.h = frame:GetWidth(), frame:GetHeight()
     ns.db.meter = m
 end
+-- Locked, it stays where it is and as big as it is (db.meter.locked).
+local function Locked() return ns.db and ns.db.meter and ns.db.meter.locked == true end
+frame:SetScript("OnDragStart", function(self)
+    if not Locked() then self:StartMoving() end
+end)
 frame:SetScript("OnDragStop", function(self)
     self:StopMovingOrSizing()
     Save()
 end)
 
+-- The corner: the grip that sizes the window and, beside it, the padlock.
+-- Both sit over the last row, so they show only while the mouse is over
+-- the meter (or the grip is held); locked, the grip stays away.
 do
+    local corner = {}
+    frame.corner = corner
+    local level = ui:GetFrameLevel() + 10 -- above the rows
     local grip = CreateFrame("Button", nil, ui)
-    grip:SetSize(12, 12)
+    grip.meterGrip = true
+    grip:SetSize(CORNER, CORNER)
     grip:SetPoint("BOTTOMRIGHT", -2, 2)
+    grip:SetFrameLevel(level)
     grip:SetNormalTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Up")
     grip:SetHighlightTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Highlight")
     grip:SetPushedTexture("Interface\\ChatFrame\\UI-ChatIM-SizeGrabber-Down")
-    grip:SetScript("OnMouseDown", function() frame:StartSizing("BOTTOMRIGHT") end)
+    grip:SetScript("OnMouseDown", function()
+        if Locked() then return end
+        sizing = true
+        frame:StartSizing("BOTTOMRIGHT")
+    end)
     grip:SetScript("OnMouseUp", function()
         frame:StopMovingOrSizing()
+        sizing = false
+        Draw() -- to whole rows
         Save()
-        Draw()
     end)
+
+    local lock = CreateFrame("Button", nil, ui)
+    lock.meterLock = true
+    lock:SetSize(CORNER + 2, CORNER + 2)
+    lock:SetPoint("RIGHT", grip, "LEFT", -1, 0)
+    lock:SetFrameLevel(level)
+    lock.icon = lock:CreateTexture(nil, "OVERLAY")
+    lock.icon:SetTexture(LOCK)
+    lock.icon:SetSize(CORNER, CORNER)
+    lock.icon:SetPoint("CENTER")
+    lock.icon:SetAlpha(0.75)
+    local function Tip(self)
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:AddLine(Locked() and "Unlock" or "Lock")
+        GameTooltip:AddLine(Locked() and "Its place and size are locked." or "Keeps its place and size.", 0.8, 0.8, 0.8)
+        GameTooltip:Show()
+    end
+    lock:SetScript("OnEnter", function(self)
+        self.icon:SetAlpha(1)
+        Tip(self)
+    end)
+    lock:SetScript("OnLeave", function(self)
+        self.icon:SetAlpha(0.75)
+        GameTooltip:Hide()
+    end)
+
+    local shown = false -- the corner on show
+    function corner.Show(on)
+        shown = on
+        local locked = Locked()
+        lock:SetShown(on)
+        grip:SetShown(on and not locked)
+        lock.icon:SetTexCoord(locked and 0 or 0.5, locked and 0.5 or 1, 0, 1)
+    end
+    -- Ink on the Receipt's paper, white on the others.
+    function corner.Paint(theme)
+        local ink = theme == "receipt" and ns.INK or { 1, 1, 1 }
+        lock.icon:SetVertexColor(ink[1], ink[2], ink[3], 1)
+    end
+    -- At every frame (the clock): shown while the mouse is over the meter.
+    function corner.Follow()
+        local over = sizing or frame:IsMouseOver()
+        if over ~= shown then corner.Show(over) end
+    end
+    lock:SetScript("OnClick", function(self)
+        ns.db.meter = ns.db.meter or {}
+        ns.db.meter.locked = not Locked() or nil
+        corner.Show(true)
+        Tip(self)
+    end)
+    corner.Show(false)
 end
 
 function ns.ToggleMeter()

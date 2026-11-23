@@ -7,6 +7,7 @@
 - Coins come first in the breakdown.
 - Color choices are now TLB, Class or Custom.
 - Flat options gear in the Modern and Receipt themes.
+- A padlock in the meter's corner locks its place and size.
 
 ## 0.7.0
 
