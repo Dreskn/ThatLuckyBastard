@@ -1,6 +1,6 @@
 local _, ns = ...
 
--- The coins of the end-of-run race (see the race in UI.lua). Each player's
+-- The coins of the end-of-run race (see Race.lua). Each player's
 -- loot falls into their column as coins, one at a time and all at the
 -- same pace, so the smallest stack is done first and the last one still
 -- growing has won. A coin falls under gravity, spinning, bounces where it

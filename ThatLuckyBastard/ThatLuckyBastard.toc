@@ -12,6 +12,7 @@
 Core.lua
 Data.lua
 UI.lua
+Race.lua
 Toast.lua
 Browse.lua
 Show.lua
