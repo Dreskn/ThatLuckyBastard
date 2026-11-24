@@ -2,6 +2,10 @@
 
 ## Unreleased
 
+### New
+
+- Bets: call the lucky bastard as each dungeon or raid run starts.
+
 ### Changes
 
 - Coins come first in the breakdown.

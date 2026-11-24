@@ -272,6 +272,7 @@ function Draw()
         Paint(r, theme, o)
         local name = ns.DisplayName(p.name)
         if paper then name = name:upper() end
+        name = ns.BetMark(s, p.name) .. name -- a star beside your call
         r.rank:SetText(i)
         r.label:SetText(name .. ((r.won and o.meterAward) and ("  " .. stamp .. r.won.title .. "|r") or ""))
         r.value:SetText(ns.MoneyPlain(p.market))

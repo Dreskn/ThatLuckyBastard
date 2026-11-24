@@ -1853,7 +1853,7 @@ do
                 y = y - room
             end
             Put(seat.name, true, paper and "ThatLuckyBastardReceiptInkBold" or "GameFontHighlightSmall",
-                ClassColored(DisplayName(p.name), p.class), 14)
+                ns.BetMark(ns.ViewedRun(), p.name) .. ClassColored(DisplayName(p.name), p.class), 14)
             Put(seat.title, title, paper and "ThatLuckyBastardReceiptSmall" or "GameFontHighlightSmall",
                 seat.won and AwardTitle(seat.won) or "", 13)
             Put(seat.gold, gold, paper and "ThatLuckyBastardReceiptInk" or "GameFontHighlightSmall",
@@ -2206,7 +2206,7 @@ local function RenderColumns(sum, awards, insights)
         end
         PlaceText(c.name, yName)
         c.name:SetFontObject(paper and "ThatLuckyBastardReceiptInkBold" or "GameFontNormal")
-        c.name:SetText(ClassColored(DisplayName(p.name), p.class))
+        c.name:SetText(ns.BetMark(ns.ViewedRun(), p.name) .. ClassColored(DisplayName(p.name), p.class))
         c.hover.p = p
         c.hover:SetHeight(-yMarket) -- from the top down to just under the name
         PlaceText(c.market, yMarket)
@@ -2455,7 +2455,8 @@ local function BuildLines(sum, awards, insights)
         add({
             player = p.name, p = p, bg = 0.12,
             label = HeadCode() .. (open and "-" or "+") .. "|r "
-                .. ClassColored(DisplayName(p.name), p.class) .. (award and ("   " .. AwardTitle(award)) or ""),
+                .. ns.BetMark(ns.ViewedRun(), p.name) .. ClassColored(DisplayName(p.name), p.class)
+                .. (award and ("   " .. AwardTitle(award)) or ""),
             count = p.count, vendor = Money(p.vendor), market = Money(p.market),
             share = Pct(p.market, sum.market),
             diff = sum.market > 0 and DiffText(p.market - equal) or "",
@@ -2681,6 +2682,8 @@ versionLabel:SetText(ns.VERSION ~= "" and ("v" .. ns.VERSION) or "")
 --                a window of its own each (Analysis: its timeline, rolls
 --                and numbers; who needed what is under its Rolls)
 --   Meter        the loot meter (Meter.lua), for the run in progress
+--   Bet          your call on the lucky bastard (Bets.lua; not there
+--                while bets are switched off)
 --   Expand all   opens every player's loot (only in the list view)
 -- and on its own on the right, Share: the run on show as a link in chat
 -- or as a code (Share.lua). Each button closes its window again on a
@@ -2696,10 +2699,12 @@ end
 local pageBtn = TopButton("Front page", function() ns.ToggleRunWindow("paper", ns.ViewedRun()) end)
 local analysisBtn = TopButton("Analysis", function() ns.ToggleRunWindow("analysis", ns.ViewedRun()) end)
 f.meterBtn = TopButton("Meter", function() ns.ToggleMeter() end)
+local betBtn = TopButton("Bet", function() ns.ToggleBet(ns.ViewedRun()) end)
 local shareBtn = MakeButton("Share", TOP_W, function() ns.ToggleShare(ns.ViewedRun()) end)
 shareBtn.loud = true -- a red key in the Receipt theme
 
--- After Meter; Render shows it in the list view only.
+-- Placed in Render, after the last button shown (Bet may be hidden); in
+-- the list view only.
 local expandAll = MakeButton("Expand all", TOP_W, function()
     local s = currentRun
     if not s then return end
@@ -2710,7 +2715,6 @@ local expandAll = MakeButton("Expand all", TOP_W, function()
     for name in pairs(s.players) do expanded[name] = anyClosed or nil end
     Render()
 end)
-expandAll:SetPoint("LEFT", f.meterBtn, "RIGHT", TOP_GAP, 0)
 
 local runLabel = ui:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
 runLabel:SetPoint("LEFT", deleteBtn, "RIGHT", 10, 0)
@@ -2911,6 +2915,7 @@ function Render()
     -- the full window, whose Columns arrow leads back.
     local small = useColumns and mini
     for _, b in ipairs(topRow) do b:SetShown(not small) end
+    betBtn:SetShown(not small and o.bets and true or false)
     shareBtn:SetShown(not small)
     for _, w in ipairs(f.footRow) do w:SetShown(not small) end
     scroll:ClearAllPoints()
@@ -2956,6 +2961,8 @@ function Render()
     headers.share:SetShown(not useColumns and showShare)
     headers.diff:SetShown(not useColumns and showShare)
     expandAll:SetShown(not useColumns)
+    expandAll:ClearAllPoints()
+    expandAll:SetPoint("LEFT", betBtn:IsShown() and betBtn or f.meterBtn, "RIGHT", TOP_GAP, 0)
     -- Receipt theme: receipts come out of a printer slot; the list is
     -- printed on one long sheet.
     local paper = theme.paper and true or false

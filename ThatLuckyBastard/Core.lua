@@ -63,6 +63,7 @@ ns.OPTION_DEFAULTS = {
     -- colour), or "custom" (accentCustom: red, green and blue, each from 0
     -- to 1).
     accent = "teal",
+    bets = true,         -- a call on the lucky bastard as each dungeon or raid run starts (Bets.lua)
     accentCustom = { 0.25, 0.78, 0.72 },
     mini = false,        -- a small window: a card per player (picture, name, award, total) and no buttons
     -- What each player on the bench shows besides their name.
@@ -650,6 +651,7 @@ local function UpdateRoster()
         for name in pairs(set) do s.group[#s.group + 1] = name end
         table.sort(s.group)
     end
+    if ns.BetRoster then ns.BetRoster(s) end
     ns.Refresh()
 end
 
@@ -727,6 +729,7 @@ local function FinalizeSession()
         -- the run itself, which is already safely in the history.
         local ok, err = pcall(CommitRun, s)
         if not ok then Print("could not update records: " .. tostring(err)) end
+        if ns.BetScore then pcall(ns.BetScore, s) end
         StripRun(s)
     end
 end
@@ -834,6 +837,7 @@ local function ShowRunEnd(s)
     ns.fresh = s
     if ns.MeterAuto then ns.MeterAuto("leave") end
     if db.options.popupLeave then ns.ShowWindow(true, s) else ns.Refresh() end
+    if ns.BetResult then ns.BetResult(s) end
     if not s.streakShown then
         pcall(ns.StreakNotice, s)
         -- Only the run in progress can be left again: a closed one keeps no note.
@@ -1023,6 +1027,7 @@ local function RecordLoot(name, rawLink, count)
     e.count = e.count + count
     e.lastAt = time()
     LogPickup(s, name, e, count)
+    if Quality(e) >= 2 and ns.BetClose then ns.BetClose(s) end -- something worth having: calls close
     -- If this player just won a roll on this item, note how it was won. A
     -- win whose item never came (full bags, say) is dropped once it is too
     -- old, so that a later copy of the item is not taken for it.
@@ -1147,6 +1152,7 @@ local function HandleRoll(text)
     if not Tracking(s) then return end
     local kind, method, name, key, roll, rollID = ParseRoll(text)
     if not kind then return end
+    if ns.BetClose then ns.BetClose(s) end -- the first roll closes the calls
     local rk = rollID and ("#" .. rollID) or key
     if kind == "allpass" then -- nobody wanted it: the roll is over
         if s.rolls then s.rolls[rk] = nil end
@@ -2757,6 +2763,7 @@ function handlers.ENCOUNTER_END(encounterID, encounterName, _, _, success)
             t = math.max(time() - s.startedAt, 0),
             name = type(encounterName) == "string" and not issecret(encounterName) and encounterName or nil,
         }
+        if ns.BetClose then ns.BetClose(s) end
     end
 end
 
@@ -2979,6 +2986,8 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
         ns.ToggleImport()
     elseif cmd == "meter" then
         ns.ToggleMeter()
+    elseif cmd == "bet" then
+        ns.ToggleBet(ns.ViewedRun())
     elseif cmd == "capture" then
         if db.capturing then
             db.capturing = nil
@@ -3025,6 +3034,7 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
         Print("/tlb search <item> - find an item in past runs")
         Print("/tlb awards - what each award means")
         Print("/tlb meter - the loot meter")
+        Print("/tlb bet - your call on the lucky bastard")
         Print("/tlb export - the run on show as text (/tlb export all: every run)")
         Print("/tlb share - share the run on show: a link in chat, or a code")
         Print("/tlb import - open a run from a code, and the runs shared with you")

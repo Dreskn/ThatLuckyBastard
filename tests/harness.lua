@@ -227,8 +227,10 @@ TooltipDataProcessor = { AddTooltipPostCall = function(kind, fn) TOOLTIP_HOOKS[k
 WORLD = { inInstance = false, instance = "Test Keep", instanceID = 9001, dead = false,
           me = "Mira Vale", party = {} } -- party: { { name, class, role }, ... }
 
+-- WORLD.raid: the group is a raid, its members "raid1"... (you are not
+-- among them here); a member's fourth field is their raid group.
 local function PartyMember(unit)
-    local i = tonumber(unit:match("^party(%d+)$"))
+    local i = tonumber(unit:match("^party(%d+)$") or (WORLD.raid and unit:match("^raid(%d+)$")))
     return i and WORLD.party[i]
 end
 function UnitName(unit) if unit == "player" then return "Mira", "Vale" end local m = PartyMember(unit) return m and m[1] end
@@ -247,7 +249,11 @@ function UnitIsVisible() return WORLD.visible == true end -- close enough to be 
 function UnitIsDeadOrGhost() return WORLD.dead end
 function UnitGroupRolesAssigned(unit) if unit == "player" then return "HEALER" end local m = PartyMember(unit) return m and m[3] or "NONE" end
 function GetNumGroupMembers() return #WORLD.party end
-function IsInRaid() return false end
+function IsInRaid() return WORLD.raid == true end
+function GetRaidRosterInfo(i)
+    local m = WORLD.party[i]
+    if m then return m[1], 0, m[4] or 1 end
+end
 function IsInGroup() return #WORLD.party > 0 end
 function IsInInstance() return WORLD.inInstance, WORLD.inInstance and "party" or "none" end
 function GetInstanceInfo() return WORLD.instance, "party", 1, "Normal", 5, 0, false, WORLD.instanceID end

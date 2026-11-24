@@ -22,6 +22,7 @@ Code.lua
 Share.lua
 Social.lua
 Meter.lua
+Bets.lua
 Coins.lua
 Options.lua
 Minimap.lua

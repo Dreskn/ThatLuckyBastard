@@ -127,7 +127,7 @@ for _, label in ipairs({
     "Name", "Me first", "Share", "Share bar", "Vendor total", "Value", "Icons", "Group by category", "Line up", "Picture",
     "Award", "Gold", "Run total", "Run stats", "Rank", "Open on entering", "Close on leaving", "Auction", "Vendor",
     "When looted", "Today", "Epic BoE", "Bind on Pickup", "Professions", "Coins", "Quest items", "Hidden still count",
-    "Valuable loot", "Familiar face", "Open breakdown", "Chat line", "Streak recap", "Awards", "Race",
+    "Valuable loot", "Familiar face", "Bets", "Open breakdown", "Chat line", "Streak recap", "Awards", "Race",
     "Sounds", "Screenshot", "Runs together", "Seen in runs", "Run link", "Run time", "Group total", "Share %",
     "Gap to equal split", "Raids", "Ask", "New run",
 }) do
