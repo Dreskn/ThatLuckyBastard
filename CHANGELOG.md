@@ -4,15 +4,11 @@
 
 ### New
 
-- Ignore part of a stack.
-- Enchanting materials are ignored as you loot them: most come from disenchanting.
-- Reprice a run with today's auction prices.
+- Reprice a run with today's auction prices, next to the Delete button.
 
 ### Changes
 
-- Ignore and Split only cover the copies already looted.
-- Ignored items no longer count for awards.
-- Statistics count every run the same way, whatever your options.
+- Ignore reworked, and enchanting mats are now ignored automatically.
 - Small tweaks to options and UI.
 
 ## 0.8.0
