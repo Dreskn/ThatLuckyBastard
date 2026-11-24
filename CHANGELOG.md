@@ -1,19 +1,15 @@
 # Changelog
 
-## Unreleased
+## 0.8.0
 
 ### New
 
-- Bets: call the lucky bastard as each dungeon or raid run starts.
+- Bets: call the lucky bastard as each run starts. Loot bingo is gone.
+- A padlock locks the meter's place and size.
 
 ### Changes
 
-- Coins come first in the breakdown.
-- Color choices are now TLB, Class or Custom.
-- Flat options gear in the Modern and Receipt themes.
-- A padlock in the meter's corner locks its place and size.
-- Loot bingo removed.
-- Need only moved to Analysis › Rolls, as an All | Need switch.
+- Need only moved to Analysis › Rolls; coins listed first; simpler colors; flat options gear.
 
 ## 0.7.0
 
