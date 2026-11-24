@@ -715,6 +715,26 @@ local function DropLateJoiners(s)
     end
 end
 
+-- Statistics count every run the same way, whatever the options say:
+-- auction prices as recorded (the vendor's where there is none) and every
+-- category. fn(s) runs with those options in place. The player's own
+-- come back after it, and so do the run's prices of today (MarkPrice),
+-- which the window may still be using.
+local STAT_OPTIONS = { "valueMode", "priceTime", "cats", "countHidden" }
+local function AtDefaults(fn, s)
+    local o, kept = db.options, {}
+    for _, key in ipairs(STAT_OPTIONS) do
+        kept[key], o[key] = o[key], ns.OPTION_DEFAULTS[key]
+    end
+    local ok, out = pcall(fn, s)
+    for _, key in ipairs(STAT_OPTIONS) do o[key] = kept[key] end
+    for _, p in pairs(s.players) do
+        for _, e in pairs(p.items) do MarkPrice(s, e) end
+    end
+    if not ok then error(out, 0) end
+    return out
+end
+
 local function FinalizeSession()
     local s = db.active
     if not s then return end
@@ -727,7 +747,7 @@ local function FinalizeSession()
         ns.TrimHistory()
         -- Records and regulars are extras: a fault there must never cost
         -- the run itself, which is already safely in the history.
-        local ok, err = pcall(CommitRun, s)
+        local ok, err = pcall(AtDefaults, CommitRun, s)
         if not ok then Print("could not update records: " .. tostring(err)) end
         if ns.BetScore then pcall(ns.BetScore, s) end
         StripRun(s)
@@ -1007,6 +1027,19 @@ local function EntryKey(link)
 end
 ns.EntryKey = EntryKey
 
+-- Enchanting materials (Trade Goods › Enchanting: dust, essences, shards,
+-- crystals) nearly all come from disenchanting an item already counted,
+-- so the general rule ignores them as they are looted, whoever loots
+-- them. The rare one from a chest can be counted in the item menu.
+function ns.EnchantingMaterial(link)
+    local info = (C_Item and C_Item.GetItemInfoInstant) or GetItemInfoInstant
+    if not info or not link then return false end
+    local _, _, _, _, _, classID, subclassID = info(link)
+    local goods = Enum and Enum.ItemClass and Enum.ItemClass.Tradegoods or 7
+    local enchanting = Enum and Enum.ItemTradeGoodsSubclass and Enum.ItemTradeGoodsSubclass.Enchanting or 12
+    return classID == goods and subclassID == enchanting
+end
+
 local function RecordLoot(name, rawLink, count)
     local s = db.active
     if not Tracking(s) then return end
@@ -1015,6 +1048,15 @@ local function RecordLoot(name, rawLink, count)
     local entryKey = EntryKey(link)
     local p = AddPlayer(s, name)
     local e = p.items[entryKey]
+    -- A split covers the copies there when it was made: a copy looted
+    -- later is filed apart ("<item>#2", as codes of older versions are
+    -- read), counted the normal way.
+    local base, nth = entryKey, 1
+    while e and e.split do
+        nth = nth + 1
+        entryKey = base .. "#" .. nth
+        e = p.items[entryKey]
+    end
     if not e then
         e = { link = link, count = 0, vendor = 0, cat = "other" }
         p.items[entryKey] = e
@@ -1024,10 +1066,16 @@ local function RecordLoot(name, rawLink, count)
         s.nextId = (s.nextId or 0) + 1
         e.id = s.nextId
     end
+    -- Every copy ignored so far: those. The new ones follow the general
+    -- rule, which ignores enchanting materials only.
+    if e.ignored == true then e.ignored = e.count end
     e.count = e.count + count
+    local mat = ns.EnchantingMaterial(link)
+    if mat then ns.SetIgnored(e, ns.IgnoredCopies(e) + count) end
     e.lastAt = time()
     LogPickup(s, name, e, count)
-    if Quality(e) >= 2 and ns.BetClose then ns.BetClose(s) end -- something worth having: calls close
+    -- Something worth having closes the calls; ignored copies are not.
+    if Quality(e) >= 2 and not mat and ns.BetClose then ns.BetClose(s) end
     -- If this player just won a roll on this item, note how it was won. A
     -- win whose item never came (full bags, say) is dropped once it is too
     -- old, so that a later copy of the item is not taken for it.
@@ -1039,7 +1087,7 @@ local function RecordLoot(name, rawLink, count)
         if fresh then TagWin(e, wins) end
         if not fresh or (wins.need or 0) + (wins.greed or 0) == 0 then pending[key] = nil end
     end
-    AnnounceLoot(s, name, e, count)
+    if not mat then AnnounceLoot(s, name, e, count) end -- no notice for ignored copies
     s.lastSeen = time()
     ns.Refresh()
 end
@@ -1198,29 +1246,54 @@ end
 -- Summary used by the window
 ----------------------------------------------------------------------
 
+-- Ignore covers some or all of one player's copies of an item, the ones
+-- there when it was set: `e.ignored` is true for every copy, or how many
+-- (fewer than all). Copies looted later follow the general rule. Ignored
+-- copies are listed but count for nothing: no value, no item count, no
+-- award. How many copies of a real entry are ignored:
+local function IgnoredCopies(e)
+    local n = e.ignored
+    if n == true then return e.count end
+    return math.min(n or 0, e.count)
+end
+ns.IgnoredCopies = IgnoredCopies
+
+-- How many of an entry's copies count. On a stand-in (see Summarize) that
+-- lists fewer copies, the counted ones go first.
+local function CountedCopies(e)
+    local n = e.ignored
+    if not n then return e.count end
+    if n == true then return 0 end
+    return math.max(math.min(e.count, ns.RealEntry(e).count - n), 0)
+end
+ns.CountedCopies = CountedCopies
+
+-- Ignores `n` of the entry's copies: none, some, or all of them.
+function ns.SetIgnored(e, n)
+    n = math.floor(tonumber(n) or 0)
+    e.ignored = (n >= e.count and true) or (n > 0 and n) or nil
+end
+
 -- The value used for totals, shares and sorting. `e.noAH` says this item
--- is valued at its vendor price in its run: call MarkPrice first. An
--- ignored item is worth nothing; `e.part`, on the stand-ins of a split
--- item (see Summarize), is the share of it one player holds.
+-- is valued at its vendor price in its run: call MarkPrice first. Ignored
+-- copies are worth nothing; `e.part`, on the stand-ins of a split item
+-- (see Summarize), is the share of it one player holds.
 local function EntryMarket(e)
-    if e.ignored then return 0 end
     local unit = (db.options.valueMode == "vendor" or e.noAH) and e.vendor or (e.now or e.ah or e.vendor)
-    return unit * e.count * (e.part or 1)
+    return unit * CountedCopies(e) * (e.part or 1)
 end
 ns.EntryMarket = EntryMarket
 
 -- The same at the prices recorded when it was looted, whatever the price
 -- setting says.
 function ns.EntryRecorded(e)
-    if e.ignored then return 0 end
     local unit = (db.options.valueMode == "vendor" or e.noAH) and e.vendor or (e.ah or e.vendor)
-    return unit * e.count * (e.part or 1)
+    return unit * CountedCopies(e) * (e.part or 1)
 end
 
 -- The same at vendor prices.
 local function EntryVendor(e)
-    if e.ignored then return 0 end
-    return e.vendor * e.count * (e.part or 1)
+    return e.vendor * CountedCopies(e) * (e.part or 1)
 end
 ns.EntryVendor = EntryVendor
 
@@ -1253,8 +1326,9 @@ end
 
 -- Ignore: the item stays on show, worth nothing. It is for one player's
 -- copies of an item (an entry), where a price is for every copy in the run.
+-- Every copy ignored: none any more; else every copy.
 function ns.ToggleIgnore(e)
-    e.ignored = (not e.ignored) or nil
+    ns.SetIgnored(e, IgnoredCopies(e) >= e.count and 0 or e.count)
 end
 
 -- Split: the item's value shared equally by `names`, players of the run,
@@ -1324,18 +1398,20 @@ function ns.Summarize(s, needOnly)
     -- One player's hold on an entry: `e` is what is listed (the entry or a
     -- stand-in), `part` their share of it, `own` true for its looter.
     local function Hold(ps, real, e, part, own)
+        local counted = CountedCopies(real)
         if real.count > 0 and o.cats[real.cat] ~= false then
-            local unit = EntryMarket(real) / real.count * part
+            -- Worth of one counted copy: ignored ones are worth nothing.
+            local unit = counted > 0 and EntryMarket(real) / counted * part or 0
             ps.needValue = ps.needValue + unit * (real.need or 0)
             ps.greedValue = ps.greedValue + unit * (real.greed or 0)
             if unit > ps.bestValue then ps.bestValue, ps.bestLink = unit, real.link end
             if own then
                 ps.needWins = ps.needWins + (real.need or 0)
                 ps.greedWins = ps.greedWins + (real.greed or 0)
-                ps.bestQuality = math.max(ps.bestQuality, Quality(real))
+                if counted > 0 then ps.bestQuality = math.max(ps.bestQuality, Quality(real)) end
             end
         end
-        local count = own and e.count or 0 -- copies picked up
+        local count = own and CountedCopies(e) or 0 -- copies picked up, the ignored ones left out
         local v, m = EntryVendor(e), EntryMarket(e)
         local shown = e.count > 0 and o.cats[e.cat] ~= false
         if shown then
@@ -1667,7 +1743,9 @@ local AWARDS = {
       detail = function(p)
           local best
           for _, e in ipairs(p.all.items) do
-              if Quality(e) >= EPIC and (not best or e.vendor > best.vendor) then best = e end
+              if Quality(e) >= EPIC and CountedCopies(e) > 0 and (not best or e.vendor > best.vendor) then
+                  best = e
+              end
           end
           return { text = "Looted an epic", link = best and best.link }
       end },
@@ -2135,8 +2213,9 @@ local function Moments(s, sum, extra, g)
     for _, p in ipairs(sum.players) do
         local x = extra[p.name]
         for _, e in ipairs(p.all.items) do
-            local unit = e.from and 0 or EntryMarket(e) / e.count
-            if Quality(e) >= UNCOMMON and not e.from then x.magpie = x.magpie + e.count end
+            local counted = CountedCopies(e)
+            local unit = (e.from or counted == 0) and 0 or EntryMarket(e) / counted
+            if Quality(e) >= UNCOMMON and not e.from then x.magpie = x.magpie + CountedCopies(e) end
             if unit > 0 then
                 if not x.cheapest or unit < x.cheapest then x.cheapest, x.cheapestLink = unit, e.link end
                 if (e.need or 0) > 0 and unit < OVERKILL_MAX and (not x.overkill or unit < x.overkill) then
@@ -2488,7 +2567,9 @@ function ns.RunInsights(s, sum)
     -- the records never saw.
     if not rec or ns.InProgress(s) or s.example or (not s.recorded and s ~= db.active) then return out end
 
-    local st = RunStats(s, sum)
+    -- Counted as the records count, whatever the options say (see
+    -- AtDefaults); `sum` is only for the window.
+    local st = RunStats(s, s.recorded and sum or AtDefaults(ns.Summarize, s))
     if s.recorded and s.stats then
         -- As it was counted: today's options and prices must not move an
         -- old run against its own average.
@@ -2885,6 +2966,66 @@ function ns.AskDeleteRun(s)
     else
         deleteTarget = s
         StaticPopup_Show("THATLUCKYBASTARD_DELETE_RUN", (s.name or "Run") .. ", " .. ns.DateText(s.startedAt))
+    end
+end
+
+-- Reprice: today's auction prices put on one of your runs for good, for
+-- when the auction house was not scanned before it. Every item that has a
+-- price today gets it as the price recorded for it; the others keep
+-- theirs. Ignore, Split and the Auction/Vendor switch stay as they are,
+-- and statistics keep what the run added when it closed. Runs shared with
+-- you keep their owner's prices.
+function ns.CanReprice(s)
+    return IsStored(s) and not s.sharedBy and ns.HasPriceSource()
+end
+
+-- Returns how many items changed price.
+function ns.RepriceRun(s)
+    if not ns.CanReprice(s) then return end
+    local changed = 0
+    for _, p in pairs(s.players) do
+        for _, e in pairs(p.items) do
+            local price = ns.CanAuction(e) and AuctionPrice(e.link) or nil
+            if price and price ~= e.ah then
+                e.ah, changed = price, changed + 1
+            end
+        end
+    end
+    s.pricedAt = time()
+    ns.Rerender()
+    return changed
+end
+
+local repriceTarget
+StaticPopupDialogs["THATLUCKYBASTARD_REPRICE_RUN"] = {
+    text = ns.NAME .. "\n\nUse today's auction prices for this run?\n%s\n\n"
+        .. "|cff909090This cannot be undone. Statistics keep what the run added.|r",
+    button1 = YES,
+    button2 = NO,
+    OnAccept = function()
+        if repriceTarget then
+            local changed = ns.RepriceRun(repriceTarget)
+            if changed then Print(Plural(changed, "price", "prices") .. " updated.") end
+        end
+        repriceTarget = nil
+    end,
+    timeout = 0,
+    whileDead = true,
+    hideOnEscape = true,
+    preferredIndex = 3,
+}
+
+-- Asks before repricing a run, and says why when it cannot be.
+function ns.AskRepriceRun(s)
+    if not IsStored(s) then
+        Print(s and s.example and "Example runs are not saved." or "No run to reprice.")
+    elseif s.sharedBy then
+        Print("Runs shared with you keep their owner's prices.")
+    elseif not ns.HasPriceSource() then
+        Print("No Auctionator or TradeSkillMaster: no prices of today.")
+    else
+        repriceTarget = s
+        StaticPopup_Show("THATLUCKYBASTARD_REPRICE_RUN", (s.name or "Run") .. ", " .. ns.DateText(s.startedAt))
     end
 end
 

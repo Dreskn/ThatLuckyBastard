@@ -260,11 +260,17 @@ check(o.valueMode == "vendor" and greyed("Vendor total"), "vendor totals mean no
 check(greyed("When looted") and greyed("Today") and tip("Today"):find("Value is set to Vendor.", 1, true),
       "nor does the day of an auction price")
 click("Auction")
+check(o.priceTime == "then" and not greyed("When looted") and greyed("Today")
+      and tip("Today"):find("No Auctionator or TradeSkillMaster.", 1, true),
+      "with no addon giving auction prices, there are no prices of today to choose")
+Auctionator = { API = { v1 = { GetAuctionPriceByItemLink = function() return nil end } } }
+click("Auction")
 check(o.priceTime == "then" and not greyed("Today"), "auction prices are the recorded ones unless chosen otherwise")
 click("Today")
 check(o.priceTime == "now", "current prices can be chosen")
 click("When looted")
 check(o.priceTime == "then", "and recorded ones again")
+Auctionator = nil
 check(greyed("Hidden still count"), "with every category shown, nothing is hidden to count")
 click("Junk")
 check(o.cats.junk == false and not greyed("Hidden still count"), "unticking one makes it count")

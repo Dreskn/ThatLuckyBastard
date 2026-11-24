@@ -295,6 +295,43 @@ check(before and not Stored(), "today's prices are dropped when logging out")
 o.priceTime = "then"
 check(ns.Summarize(s).market == 50000, "and back to historical prices")
 
+print("-- statistics count every run the default way, whatever the options")
+o.valueMode, o.priceTime, o.cats.uncommon = "vendor", "now", false
+PRICES[100] = 70000
+local stat = Enter(9030, "Stat Keep")
+NOW = NOW + 300
+Loot(("You receive loot: %s."):format(green))
+Loot(("You receive loot: %s."):format(junk))
+PRICES[100] = 90000
+NOW = NOW + 301
+check(ns.Summarize(stat).market == 300, "on show: vendor prices only, the green hidden")
+Reset()
+local statRec = db.records[9030]
+check(statRec and statRec.sumGroup == 70300 and statRec.sumMine == 70300 and stat.stats.group == 70300,
+      "the records count it at the auction price recorded, the hidden green too")
+check(o.valueMode == "vendor" and o.priceTime == "now" and o.cats.uncommon == false
+      and ns.Summarize(stat).market == 300, "the options are untouched, and the window still shows it their way")
+PRICES[100] = 70000
+local again = Enter(9030, "Stat Keep")
+NOW = NOW + 300
+Loot(("You receive loot: %s."):format(green))
+Loot(("You receive loot: %s."):format(junk))
+PRICES[100] = 90000
+NOW = NOW + 301
+Leave()
+local cmp = Insights(again)
+check(again == db.active and cmp.priorRuns == 1 and cmp.groupPct and math.abs(cmp.groupPct) < 0.01,
+      "a run about to be counted is compared with them the same way: level with the one before")
+o.valueMode, o.cats.uncommon = "market", true
+Insights(again)
+local gloves
+for _, e in pairs(again.players[WORLD.me].items) do
+    if e.link == green then gloves = e end
+end
+check(gloves and gloves.now == 90000, "and the window keeps its prices of today")
+Reset()
+o.valueMode, o.priceTime, o.cats.uncommon = "market", "then", true
+
 print("-- more than five players: columns for the top five, the others on cards under them")
 -- A button by its label: its outer frame (shown or hidden with it), and
 -- a click on it.

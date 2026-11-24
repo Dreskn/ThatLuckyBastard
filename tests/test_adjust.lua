@@ -98,7 +98,7 @@ Click("Ignore")
 local sum = Sum()
 check(sword.ignored == true and Ticked("Ignore"), "Ignore ticks, and marks the item")
 check(P(BRYN, sum).market == 0 and sum.market == before.market - 50000, "an ignored item is worth nothing")
-check(P(BRYN, sum).count == 1 and #P(BRYN, sum).cats.bop.items == 1, "but stays listed, and picked up")
+check(P(BRYN, sum).count == 0 and #P(BRYN, sum).cats.bop.items == 1, "but stays listed, out of the item count")
 check(P(BRYN, sum).needWins == 1 and P(BRYN, sum).needValue == 0, "its roll stays won, at no value")
 TEXTLOG = {}
 ns.Refresh()
@@ -246,3 +246,37 @@ check(menu:IsShown() and Ticked("Cole") and Ticked("Bryn"), "opened on a split i
 ThatLuckyBastardFrame:Hide()
 ns.Rerender()
 check(not menu:IsShown(), "it closes when the run window does")
+
+print("==== the menu closes when the window moves to another run ====")
+WORLD.inInstance, WORLD.instanceID, WORLD.instance = true, 9002, "Other Keep"
+NOW = NOW + 4000
+Fire("PLAYER_ENTERING_WORLD", false, false)
+Fire("GROUP_ROSTER_UPDATE")
+Loot(("You receive loot: %s."):format(gemLink))
+RunTimers()
+local fresh = ThatLuckyBastardDB -- the table the reload made
+local second, first = fresh.active, fresh.history[1]
+local fsword = first and first.players[BRYN] and select(2, next(first.players[BRYN].items))
+check(second ~= nil and first ~= nil and fsword ~= nil and second ~= first, "a second run, the first one older")
+local function Press(words)
+    for _, w in ipairs(FRAMES) do
+        local tpl = rawget(w, "tpl")
+        if type(tpl) == "table" and tpl.__text == words then tpl.__scripts.OnClick(tpl) return end
+    end
+end
+ns.ShowRun(first)
+ns.ShowItemMenu(first, fsword)
+check(menu:IsShown(), "the menu is open on the older run")
+Press("Newer >")
+check(ns.ViewedRun() == second and not menu:IsShown(), "Newer closes it")
+ns.ShowItemMenu(second, select(2, next(second.players[ME].items)))
+Press("< Older")
+check(ns.ViewedRun() == first and not menu:IsShown(), "Older closes it")
+ns.ShowItemMenu(first, fsword)
+ns.ShowRun(second)
+check(not menu:IsShown(), "opening another run closes it")
+ns.ShowItemMenu(second, select(2, next(second.players[ME].items)))
+ns.Rerender()
+check(menu:IsShown(), "a redraw on the same run keeps it open")
+ns.DeleteRun(second)
+check(ns.ViewedRun() ~= second and not menu:IsShown(), "deleting its run closes it")

@@ -256,7 +256,7 @@ function ns.Reprice(s)
     local biggest = 0
     for _, p in pairs(s.players) do
         for _, e in pairs(p.items) do
-            if Counted(e) and not e.ignored then
+            if Counted(e) and ns.CountedCopies(e) > 0 then
                 ns.MarkPrice(s, e)
                 local was = ns.EntryRecorded(e)
                 local unit = e.vendor
@@ -264,7 +264,7 @@ function ns.Reprice(s)
                     -- No price today says nothing: the recorded one stands.
                     unit = ns.TodaysPrice(e.link) or e.ah or e.vendor
                 end
-                local now = unit * e.count
+                local now = unit * ns.CountedCopies(e)
                 out.was, out.now = out.was + was, out.now + now
                 if math.abs(now - was) > biggest then
                     biggest = math.abs(now - was)
@@ -460,7 +460,10 @@ function ns.CommitStats(s, sum)
         local seen = {}
         for name, p in pairs(s.players) do
             for _, e in pairs(p.items) do
-                if e.count > 0 then
+                -- Ignored copies were no drop of the dungeon's (disenchanted
+                -- materials, say).
+                local copies = ns.CountedCopies(e)
+                if copies > 0 then
                     local id = ns.ItemKey(e)
                     local d = drops[id]
                     if not d then
@@ -471,9 +474,9 @@ function ns.CommitStats(s, sum)
                         seen[id] = true
                         d.n = d.n + 1
                     end
-                    d.c = d.c + e.count
+                    d.c = d.c + copies
                     local unit = ns.VendorByDefault(e) and e.vendor or e.ah or e.vendor or 0
-                    d.v = d.v + unit * e.count
+                    d.v = d.v + unit * copies
                     d.name, d.q = ns.ItemName(e), ns.Quality(e)
                     local at = e.lastAt or s.startedAt or 0
                     if not d.at or at >= d.at then d.at, d.by = at, name end
@@ -561,7 +564,10 @@ function ns.ExportRun(s)
         end)
         for _, e in ipairs(items) do
             local total = ns.EntryMarket(e)
-            local note = (e.ignored and "Ignored") or (e.away and "Given away")
+            local ignored = ns.IgnoredCopies(ns.RealEntry(e))
+            local note = (ignored > 0 and (ns.CountedCopies(e) == 0 and "Ignored"
+                                           or ("%d of %d ignored"):format(ignored, ns.RealEntry(e).count)))
+                or (e.away and "Given away")
                 or ((e.ways or 1) > 1 and ("Split %d ways"):format(e.ways)) or (e.from and ("Given by " .. e.from))
             lines[#lines + 1] = Csv(RunDate(s), s.name, p.name, p.class, p.role, ns.ItemName(e), ns.ItemKey(e),
                                     e.count, Gold(total / e.count), Gold(total), Gold(ns.EntryVendor(e)),

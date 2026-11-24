@@ -560,8 +560,10 @@ local function NumberLines(s)
     end
 
     local price = over and ns.Reprice(s) or nil
-    if price and price.was > 0 then
+    if (price and price.was > 0) or s.pricedAt then
         head("At today's prices")
+    end
+    if price and price.was > 0 then
         local change = (price.now - price.was) / price.was * 100
         local text = ("%s today, %s when looted"):format(ns.Money(price.now), ns.Money(price.was))
         if math.abs(change) >= 1 then
@@ -573,6 +575,8 @@ local function NumberLines(s)
                 ns.Money(price.mover.now)))
         end
     end
+    -- Reprice (beside Delete) made today's prices the recorded ones.
+    if s.pricedAt then note("Repriced on " .. ns.DateText(s.pricedAt) .. ".") end
 
     local awards = ns.RunAwards(s, sum)
     if next(awards) then

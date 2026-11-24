@@ -258,9 +258,9 @@ function IsInGroup() return #WORLD.party > 0 end
 function IsInInstance() return WORLD.inInstance, WORLD.inInstance and "party" or "none" end
 function GetInstanceInfo() return WORLD.instance, "party", 1, "Normal", 5, 0, false, WORLD.instanceID end
 
--- Items: [id] = { quality, sell price, classID, bindType }. An item
--- string (no link) gets a full link back, as in the game; so does an
--- item's number.
+-- Items: [id] = { quality, sell price, classID, bindType, subclassID }
+-- (the subclass 0 when left out). An item string (no link) gets a full
+-- link back, as in the game; so does an item's number.
 ITEMS = {}
 function GetItemInfo(link)
     if type(link) == "number" then link = "item:" .. link end
@@ -270,7 +270,15 @@ function GetItemInfo(link)
     if not tostring(link):find("|H", 1, true) then
         link = ("|cnIQ%d:|H%s|h[Thing %d]|h|r"):format(it[1], link, id)
     end
-    return "Item " .. id, link, it[1], 30, 25, "Type", "Sub", 1, "", 134400, it[2], it[3], 0, it[4]
+    return "Item " .. id, link, it[1], 30, 25, "Type", "Sub", 1, "", 134400, it[2], it[3], it[5] or 0, it[4]
+end
+-- What the game knows of an item without loading it: its class and subclass.
+function GetItemInfoInstant(link)
+    if type(link) == "number" then link = "item:" .. link end
+    local id = tonumber(tostring(link):match("item:(%d+)"))
+    local it = id and ITEMS[id]
+    if not it then return end
+    return id, "Type", "Sub", "", 134400, it[3], it[5] or 0
 end
 function ItemLink(id, name, quality)
     return ("|cnIQ%d:|Hitem:%d::::::::38:1489:::::::::|h[%s]|h|r"):format(quality or 1, id, name)

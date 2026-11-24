@@ -1434,7 +1434,8 @@ end
 -- because aligned mode merges several entries of the same item.
 -- `total` is the run's total value.
 -- An ignored item, or one given to the others (`e.away`), is listed but
--- worth nothing here; a share of a split item says which share it is.
+-- worth nothing here; a share of a split item says which share it is,
+-- and a stack partly ignored how much of it.
 local function ItemLine(e, count, market, total)
     local names = {}
     for i, name in ipairs(e.split or {}) do names[i] = DisplayName(name) end
@@ -1442,13 +1443,15 @@ local function ItemLine(e, count, market, total)
     local ways = e.ways or 1
     -- The roll was the looter's, not a sharer's.
     local roll = not e.from and RollNote(e) or nil
-    if e.ignored or e.away then
+    local none = e.ignored and ns.CountedCopies(e) == 0 -- every copy ignored
+    if none or e.away then
         return {
             link = e.link, e = e,
             label = ItemLabel(e, count),
-            value = Grey(e.ignored and "ignored" or "given"),
+            value = Grey(none and "ignored" or "given"),
             dim = true,
-            note = e.ignored and "Ignored: not counted." or ("Given to " .. split .. "."),
+            note = none and (ns.EnchantingMaterial(e.link) and "Ignored: most come from disenchanting."
+                             or "Ignored: not counted.") or ("Given to " .. split .. "."),
             roll = roll,
         }
     end
@@ -1461,6 +1464,10 @@ local function ItemLine(e, count, market, total)
         note = ("Split %d ways: %s."):format(ways, split) .. (note and ("\n" .. note) or "")
     elseif e.from then
         note = "Given by " .. DisplayName(e.from) .. "." .. (note and ("\n" .. note) or "")
+    end
+    if e.ignored then
+        local real = ns.RealEntry(e)
+        note = ("%d of %d ignored."):format(ns.IgnoredCopies(real), real.count) .. (note and ("\n" .. note) or "")
     end
     return {
         link = e.link, e = e,
@@ -1596,7 +1603,9 @@ local function BuildColumnLines(sum, o)
     -- With aligned items an empty-handed player has a column of dashes,
     -- which says it already; unless nobody has anything.
     for i, p in ipairs(sum.players) do
-        if p.count == 0 and p.money == 0 and (not o.alignItems or (sum.count == 0 and sum.money == 0)) then
+        -- (Nothing counted, and nothing listed either: an ignored item is.)
+        if p.count == 0 and p.money == 0 and #p.all.items == 0
+                and (not o.alignItems or (sum.count == 0 and sum.money == 0)) then
             add(i, { label = NoLootLabel(sum) })
         end
     end
@@ -2463,7 +2472,7 @@ local function BuildLines(sum, awards, insights)
             frac = sum.market > 0 and p.market / sum.market or 0,
         })
         if open then
-            if p.count == 0 and p.money == 0 then
+            if p.count == 0 and p.money == 0 and #p.all.items == 0 then
                 add({ indent = 24, wide = true, label = NoLootLabel(sum) })
             end
             for _, cat in ipairs(o.groupByCategory and CATS or { false }) do
@@ -2647,6 +2656,7 @@ end
 local function Step(by)
     viewIndex = viewIndex + by
     currentRun = nil -- a deliberate move: do not follow the run that was on show
+    if ns.HideItemMenu then ns.HideItemMenu() end -- it was for the run that was on show
     Render()
 end
 
@@ -2662,6 +2672,11 @@ pinBtn:SetPoint("LEFT", newer, "RIGHT", 12, 0)
 local deleteBtn = MakeButton("Delete", 60, function() ns.AskDeleteRun(currentRun) end)
 deleteBtn:SetPoint("LEFT", pinBtn, "RIGHT", 4, 0)
 deleteBtn:SetTextColor(1, 0.36, 0.32)
+-- Reprice: today's auction prices put on the run on show (asks first; your
+-- own runs, with a price addon). Kept on deleteBtn: this file is short of
+-- names (Lua allows 200).
+deleteBtn.reprice = MakeButton("Reprice", 70, function() ns.AskRepriceRun(currentRun) end)
+deleteBtn.reprice:SetPoint("LEFT", deleteBtn, "RIGHT", 4, 0)
 
 -- Bottom right, what is about the whole addon rather than the run on
 -- show: Statistics (the tables over all runs) and the cogwheel that opens
@@ -2717,12 +2732,12 @@ local expandAll = MakeButton("Expand all", TOP_W, function()
 end)
 
 local runLabel = ui:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-runLabel:SetPoint("LEFT", deleteBtn, "RIGHT", 10, 0)
+runLabel:SetPoint("LEFT", deleteBtn.reprice, "RIGHT", 10, 0)
 runLabel:SetPoint("RIGHT", versionLabel, "LEFT", -10, 0)
 runLabel:SetJustifyH("LEFT")
 runLabel:SetWordWrap(false)
 -- What the mini window does without: the bar at the foot of the window.
-f.footRow = { older, newer, pinBtn, deleteBtn, runLabel, versionLabel, statsBtn, f.grip }
+f.footRow = { older, newer, pinBtn, deleteBtn, deleteBtn.reprice, runLabel, versionLabel, statsBtn, f.grip }
 -- The cogwheel that opens the options: at the foot of the full window,
 -- right of Statistics; in the mini window, which has no foot, in the
 -- title bar beside the cross (and so the way out of mini mode). Render
@@ -2869,6 +2884,7 @@ function Render()
     pinBtn:SetLabel(s and s.pinned and "Unpin" or "Pin")
     pinOutline:SetShown(s ~= nil and s.pinned == true)
     deleteBtn:SetOn(stored and not s.pinned)
+    deleteBtn.reprice:SetOn(ns.CanReprice(s))
 
     local sum
     if s then
@@ -3162,6 +3178,7 @@ function ns.ShowWindow(ceremony, s)
         if run == s then viewIndex = i end
     end
     ceremonyPending = ceremony and true or false
+    if ns.HideItemMenu then ns.HideItemMenu() end
     RestoreWindow()
     f:Show()
     f:Raise() -- above the other windows, which may have been opened since

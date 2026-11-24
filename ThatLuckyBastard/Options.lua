@@ -69,6 +69,9 @@ end
 function why.auction()
     return Opt().valueMode == "vendor" and "Value is set to Vendor." or nil
 end
+function why.today()
+    return why.auction() or (not ns.HasPriceSource() and "No Auctionator or TradeSkillMaster.") or nil
+end
 function why.selfFirst()
     return Opt().sortPlayers == "podium" and "Not with Podium order." or nil
 end
@@ -314,7 +317,7 @@ local function Choice(p, label, options, get, set, reason)
             set(value)
             Sync()
         end)
-        Tip(b, label .. ": " .. opt[1], opt[3], reason)
+        Tip(b, label .. ": " .. opt[1], opt[3], opt[4] or reason) -- a choice may have its own reason
         c.buttons[i] = b
         controls[#controls + 1] = b
     end
@@ -619,7 +622,7 @@ do
     get, set = Key("priceTime")
     Choice(p, "Auction", {
         { "When looted", "then", "Prices as they were when it dropped." },
-        { "Today", "now", "Prices as they are now. Statistics keep the recorded ones." },
+        { "Today", "now", "Prices as they are now. Statistics keep the recorded ones.", why.today },
     }, get, set, why.auction)
     RowLabel(p, "Source")
     local source = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")

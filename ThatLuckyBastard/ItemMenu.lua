@@ -173,10 +173,33 @@ local function Build()
     rule:SetColorTexture(1, 1, 1, 0.12)
     y = y - 4
 
-    Add("Ignore", entry.ignored == true, function()
+    -- Ignore: the box for every copy; for a stack, - and + say how many.
+    local ignored, count = ns.IgnoredCopies(entry), entry.count
+    Add("Ignore", ignored >= count, function()
         ns.ToggleIgnore(entry)
         Changed()
-    end)
+    end, nil, nil, nil, count > 1 and 80 or nil)
+    if count > 1 then
+        local x = PAD + 84
+        for _, step in ipairs({ { "-", -1 }, { ("%d/%d"):format(ignored, count) }, { "+", 1 } }) do
+            nLink = nLink + 1
+            local b = Link(nLink)
+            b:ClearAllPoints()
+            b:SetPoint("TOPLEFT", x, y)
+            b.text:SetText(step[1])
+            b:SetWidth(b.text:GetStringWidth() + 8)
+            local by = step[2]
+            local stuck = by and (ignored + by < 0 or ignored + by > count)
+            b.rest = (stuck and 0.3) or (by and 0.75) or 0.9
+            b.text:SetAlpha(b.rest)
+            b.onClick = by and not stuck and function()
+                ns.SetIgnored(entry, ignored + by)
+                Changed()
+            end or nil
+            b:Show()
+            x = x + b:GetWidth() + 4
+        end
+    end
     y = y - ROW_H
 
     -- Split with: a heading that opens the list of players.
@@ -256,10 +279,17 @@ function ns.ShowItemMenu(s, e)
     menu:Raise()
 end
 
--- Redrawn with every other window; gone with the run window.
+-- Closed when the run window moves to another run (Older, Newer, a run
+-- opened from elsewhere), so a click never changes a run off screen.
+function ns.HideItemMenu()
+    menu:Hide()
+end
+
+-- Redrawn with every other window; gone with the run window, or with its
+-- run (deleted, or no longer the one on show).
 ns.OnRerender(function()
     if not menu:IsShown() then return end
-    if not (ThatLuckyBastardFrame and ThatLuckyBastardFrame:IsShown()) then
+    if not (ThatLuckyBastardFrame and ThatLuckyBastardFrame:IsShown()) or run ~= ns.ViewedRun() then
         menu:Hide()
         return
     end

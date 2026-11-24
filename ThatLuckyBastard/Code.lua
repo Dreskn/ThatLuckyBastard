@@ -203,12 +203,15 @@ function ns.EncodeRun(s, written)
                 if e.id then entryIds[e.id] = true end
                 local kind = ((CAT_INDEX[e.cat] or CAT_INDEX.other) - 1) * 8 + math.min(e.quality or 1, 7)
                 -- Since 0.7.0: ignored, and who shares its value (older
-                -- versions read past both).
+                -- versions read past both). Since 0.8.1: how many copies
+                -- are ignored when it is some of them, in a field of its
+                -- own: 0.8.0 reads past it and counts them all.
                 local split = {}
                 for i, who in ipairs(e.split or {}) do split[i] = N(Name(who)) end
+                local some = type(e.ignored) == "number" and e.ignored or nil
                 fields[#fields + 1] = Join({ N(e.id), N(id), N(e.count), N(e.vendor), N(kind), N(e.ah),
-                                             N(Tail(itemString)), N(e.need), N(e.greed), e.ignored and "1" or "",
-                                             table.concat(split, "'") }, ".")
+                                             N(Tail(itemString)), N(e.need), N(e.greed), e.ignored == true and "1" or "",
+                                             table.concat(split, "'"), N(some) }, ".")
             end
         end
         players[#players + 1] = table.concat(fields, ",")
@@ -351,6 +354,9 @@ local function Build(sec, itemNames, read)
             copies[itemString] = nth
             local key = nth == 1 and itemString or (itemString .. "#" .. nth)
             assert((f[10] or "") == "" or f[10] == "1", "ignored")
+            local count = Num(f[3], 0, 1e6) or 1
+            local some = (f[12] or "") ~= "" and Num(f[12], 1, count - 1) or nil
+            assert((f[12] or "") == "" or (some and f[10] ~= "1"), "ignored copies")
             local split
             if (f[11] or "") ~= "" then
                 split = {}
@@ -363,10 +369,10 @@ local function Build(sec, itemNames, read)
                 end
             end
             p.items[key] = {
-                id = entryId, count = Num(f[3], 0, 1e6) or 1, vendor = Num(f[4], 0, 1e10) or 0,
+                id = entryId, count = count, vendor = Num(f[4], 0, 1e10) or 0,
                 cat = CATS[math.floor(kind / 8) + 1], quality = quality, ah = Num(f[6], 0, 1e11),
                 need = Num(f[8], 0, 1e6), greed = Num(f[9], 0, 1e6),
-                ignored = f[10] == "1" or nil, split = split,
+                ignored = f[10] == "1" or some, split = split,
                 -- Valued as the owner saw it: never priced again here.
                 resolved = true,
                 link = Link(itemString, quality, id),
@@ -673,7 +679,7 @@ end
 -- What a code holds of an item, and as what.
 local ITEM_CODED = { id = "number", count = "number", vendor = "number", ah = "number", need = "number",
                      greed = "number", quality = "number", cat = "text", link = "text", resolved = "flag",
-                     ignored = "flag", split = "names" }
+                     ignored = "ignored", split = "names" }
 local function Whole(v) return type(v) == "number" and v >= 0 and v % 1 == 0 end
 
 -- Are the players and items of `s` exactly what a code holds: no value it
@@ -698,6 +704,10 @@ local function Plain(s, written)
             if not ITEM_PASSING[k] then
                 local kind = ITEM_CODED[k]
                 if not kind or (kind == "number" and not Whole(v)) or (kind == "flag" and v ~= true) then
+                    return false
+                end
+                -- Every copy ignored, or some of them: more than none, fewer than all.
+                if kind == "ignored" and v ~= true and not (Whole(v) and v >= 1 and v < e.count) then
                     return false
                 end
                 if kind == "names" then -- a list of different names, and nothing else

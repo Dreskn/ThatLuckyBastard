@@ -384,8 +384,9 @@ PAGES.search = {
                                 ns.ClassColored(ns.DisplayName(name), p.class),
                                 (e.count > 1 and (e.count .. "x ") or "") .. e.link,
                                 -- As looted: an ignored item, or one shared out, says so.
-                                e.ignored and "|cff8a8a8aignored|r"
-                                    or (ns.Money(value) .. (e.split and "|cff8a8a8a split|r" or "")),
+                                ns.CountedCopies(e) == 0 and "|cff8a8a8aignored|r"
+                                    or (ns.Money(value) .. (e.split and "|cff8a8a8a split|r" or "")
+                                        .. (e.ignored and ("|cff8a8a8a %d ignored|r"):format(ns.IgnoredCopies(e)) or "")),
                             },
                             keys = { s.startedAt or 0, s.name or "Run", name, ns.ItemName(e), value },
                         }
