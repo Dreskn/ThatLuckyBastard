@@ -12,6 +12,7 @@
 Core.lua
 Data.lua
 UI.lua
+Receipt.lua
 Footer.lua
 Bench.lua
 Columns.lua
