@@ -396,6 +396,277 @@ end
 
 local HEADER_GLOW_H = 72 -- Modern theme: the class-coloured glow at the top of a column
 
+-- RenderColumns draws each column in pieces, below: `v` holds what it
+-- worked out for every column (where each part of the head goes, the
+-- options, the reveal under way).
+
+-- The head of column `c`, for player `p`: their place (and medal),
+-- picture, name, totals and share, and Modern's glow, strip and pill.
+local function DrawHead(c, p, v)
+    local o, sum, theme, paper, podium, colW = v.o, v.sum, v.theme, v.paper, v.podium, v.colW
+    local equal, showBar, headerH, yRank = v.equal, v.showBar, v.headerH, v.yRank
+    local yPortrait, yName, yMarket, yVendor = v.yPortrait, v.yName, v.yMarket, v.yVendor
+    local yShare, yBar = v.yShare, v.yBar
+    c.rank:ClearAllPoints()
+    if paper then
+        -- Every receipt says its place, podium order or not.
+        c.rank:SetFontObject("ThatLuckyBastardReceiptInkBold")
+        c.rank:SetTextColor(INK[1], INK[2], INK[3])
+        c.rank:SetPoint("TOP", 0, yRank)
+        c.rank:SetText("*** " .. ns.Ordinal(p.rank):upper() .. " ***")
+    else
+        c.rank:SetFontObject("GameFontNormalSmall")
+        c.rank:SetPoint("TOPLEFT", 6, -8)
+        if podium then
+            local medal = MEDALS[p.rank] or MEDALS[4]
+            c.medal:SetColorTexture(medal[1], medal[2], medal[3], 0.95)
+            c.rank:SetText(ns.Ordinal(p.rank))
+            c.rank:SetTextColor(medal[1], medal[2], medal[3])
+        end
+    end
+    c.medal:SetShown(podium and not paper)
+    c.rank:SetShown(podium or paper)
+
+    SetPortrait(c, p, o.portrait)
+    -- On paper the picture is printed: in grey, ringed in grey ink.
+    c.portrait:SetDesaturated(paper)
+    if paper then
+        c.ring:SetVertexColor(INK_GREY[1], INK_GREY[2], INK_GREY[3])
+        c.ringInner:SetVertexColor(0.851, 0.824, 0.761)
+    else
+        c.ringInner:SetVertexColor(DISC[1], DISC[2], DISC[3])
+    end
+    if yPortrait then
+        c.portrait:ClearAllPoints()
+        c.portrait:SetPoint("TOP", 0, yPortrait)
+        c.model:ClearAllPoints()
+        c.model:SetPoint("TOP", 0, yPortrait + 2)
+    end
+    PlaceText(c.name, yName)
+    c.name:SetFontObject(paper and "ThatLuckyBastardReceiptInkBold" or "GameFontNormal")
+    c.name:SetText(ns.BetMark(ns.ViewedRun(), p.name) .. ClassColored(DisplayName(p.name), p.class))
+    c.hover.p = p
+    c.hover:SetHeight(-yMarket) -- from the top down to just under the name
+    PlaceText(c.market, yMarket)
+    c.market:SetText(Money(p.market))
+    c.vendor:SetShown(yVendor ~= nil)
+    if yVendor then
+        PlaceText(c.vendor, yVendor)
+        if paper then
+            c.vendor:SetFontObject("ThatLuckyBastardReceiptGrey")
+            c.vendor:SetText("VENDOR " .. Money(p.vendor))
+        else
+            c.vendor:SetFontObject("GameFontHighlightSmall")
+            c.vendor:SetText("|cff909090Vendor|r " .. Money(p.vendor))
+        end
+    end
+    c.share:SetShown(yShare ~= nil)
+    c.share:SetFontObject(paper and "ThatLuckyBastardReceiptInk" or "GameFontHighlightSmall")
+    if yShare then PlaceText(c.share, yShare) end
+
+    -- Modern's decoration: the glow, the strip and the pill. None on paper.
+    local flat = theme.flat and not paper
+    local cr, cg, cb = ClassRGB(p.class)
+    c.top:SetShown(flat)
+    c.top:SetHeight(math.min(HEADER_GLOW_H, headerH))
+    c.strip:SetShown(flat and not podium)
+    c.track:SetShown(showBar)
+    if showBar then
+        c.track:ClearAllPoints()
+        c.track:SetPoint("TOPLEFT", 8, yBar)
+        c.track:SetPoint("TOPRIGHT", -8, yBar)
+        if paper then
+            c.track:SetColorTexture(0.839, 0.812, 0.749, 1)
+        else
+            c.track:SetColorTexture(1, 1, 1, 0.08)
+        end
+    end
+    if flat and c.glowClass ~= (p.class or "") then -- only when the column changes hands
+        c.glowClass = p.class or ""
+        c.strip:SetColorTexture(cr, cg, cb, 0.9)
+        if not SetFade(c.top, "VERTICAL", cr, cg, cb, 0, 0.30) then
+            c.top:SetColorTexture(cr, cg, cb, 0.12)
+        end
+    end
+    c.market:SetFontObject(paper and "ThatLuckyBastardReceiptTotal"
+        or flat and "GameFontHighlightLarge" or "GameFontHighlight")
+
+    local diff = p.market - equal
+    local diffText = sum.market > 0 and DiffText(diff) or ""
+    local showDiff = diffText ~= ""
+    if sum.market > 0 then
+        c.share:SetText((paper and "SHARE " or "") .. Pct(p.market, sum.market)
+            .. (showDiff and ("  " .. diffText) or ""))
+    else
+        c.share:SetText("")
+    end
+    if flat and showDiff and yShare then
+        c.pill:ClearAllPoints()
+        c.pill:SetPoint("TOP", 0, yShare + 2)
+        c.pill:SetWidth(math.min(colW - 4, c.share:GetStringWidth() + 14))
+        if diff > 0 then
+            c.pill:SetColorTexture(0.25, 0.82, 0.25, 0.16)
+        else
+            c.pill:SetColorTexture(0.88, 0.31, 0.31, 0.16)
+        end
+        c.pill:Show()
+    else
+        c.pill:Hide()
+    end
+end
+
+-- The award card under the totals, if the player has an award. During a
+-- reveal it comes up a little after the one before.
+local function DrawAwardCard(c, award, v)
+    local o, paper, racing, token, revealIndex = v.o, v.paper, v.racing, v.token, v.revealIndex
+    local yAward = v.yAward
+    if award or c.awardFrame then
+        local af = GetAwardFrame(c)
+        af.award = award
+        af:SetShown(award ~= nil)
+        if award then
+            af:ClearAllPoints()
+            af:SetPoint("TOPLEFT", 4, yAward)
+            af:SetPoint("TOPRIGHT", -4, yAward)
+            af.icon:SetTexture("Interface\\Icons\\" .. award.icon)
+            StyleAward(af, award, paper)
+            af.title:SetText(AwardTitle(award))
+            af.detail:SetText(AwardShort(award))
+            if reveal.pending and not racing then
+                -- Hidden now, faded in a little later than the one before.
+                revealIndex = revealIndex + 1
+                af:SetAlpha(0)
+                C_Timer.After(REVEAL_STEP * revealIndex, function()
+                    if token ~= reveal.token or not af.award then return end
+                    if UIFrameFadeIn then UIFrameFadeIn(af, REVEAL_FADE, 0, 1) else af:SetAlpha(1) end
+                    if o.ceremonySound and f:IsShown() then PlayKit("IG_MAINMENU_OPTION_CHECKBOX_ON", 856) end
+                end)
+            elseif GetTime() >= reveal.ends then
+                af:SetAlpha(1)
+            end
+        end
+    end
+    v.revealIndex = revealIndex
+end
+
+-- Share bar: total length = share of the run, segments = categories.
+local function DrawShareBar(c, p, v)
+    local sum, paper, colW, showBar, yBar = v.sum, v.paper, v.colW, v.showBar, v.yBar
+    local x = 8
+    local full = (colW - 16) * (sum.market > 0 and p.market / sum.market or 0)
+    for k, cat in ipairs(CATS) do
+        local seg, cs = c.segs[k], p.cats[cat.key]
+        if showBar and cs and cs.market > 0 and p.market > 0 then
+            local w = full * cs.market / p.market
+            seg:ClearAllPoints()
+            seg:SetPoint("TOPLEFT", x, yBar)
+            seg:SetWidth(math.max(w, 1))
+            if paper then -- one bar in ink: a till prints in one colour
+                seg:SetColorTexture(INK[1], INK[2], INK[3], 1)
+            else
+                seg:SetColorTexture(cat.color[1], cat.color[2], cat.color[3], 0.95)
+            end
+            seg:Show()
+            x = x + w
+        else
+            seg:Hide()
+        end
+    end
+end
+
+-- The item rows under the head.
+local function DrawItemRows(c, lines, v)
+    local o, paper, rowH, headerH = v.o, v.paper, v.rowH, v.headerH
+    for j, line in ipairs(lines) do
+        local r = GetColRow(c, j)
+        r.line = line
+        r:ClearAllPoints()
+        r:SetPoint("TOPLEFT", 0, -(headerH + (j - 1) * rowH))
+        r:SetPoint("TOPRIGHT", 0, -(headerH + (j - 1) * rowH))
+        r:SetHeight(rowH)
+        local left = 4
+        -- A receipt prints no icons and no colour chips.
+        if line.link and o.showIcons and not paper then
+            r.icon:SetSize(rowH - 4, rowH - 4)
+            r.icon:SetTexture(ItemIcon(line.link))
+            r.icon:Show()
+            left = rowH + 4
+        else
+            r.icon:Hide()
+        end
+        if line.cat and not paper then
+            r.chip:SetColorTexture(line.cat.color[1], line.cat.color[2], line.cat.color[3], 0.9)
+            r.chip:Show()
+            left = 8
+        else
+            r.chip:Hide()
+        end
+        local font = paper and (line.cat and "ThatLuckyBastardReceiptInkBold" or "ThatLuckyBastardReceiptInk")
+            or "GameFontHighlightSmall"
+        r.label:SetFontObject(font)
+        r.value:SetFontObject(font)
+        r.label:ClearAllPoints()
+        r.label:SetPoint("LEFT", left, 0)
+        r.label:SetPoint("RIGHT", r.value, "LEFT", -4, 0)
+        r.label:SetText(line.label or "")
+        r.value:SetText(line.value or "")
+        -- An item worth nothing here (ignored, given away) is faded.
+        r.label:SetAlpha(line.dim and 0.5 or 1)
+        r.icon:SetAlpha(line.dim and 0.5 or 1)
+        SetMark(r.mark, line.mark)
+        SetRowBg(r.bg, line)
+        r:EnableMouse(line.link ~= nil)
+        r:Show()
+    end
+    for j = #lines + 1, #c.rows do c.rows[j]:Hide() end
+end
+
+-- Once every column is drawn: when the reveal will be over, and after
+-- the last card a fanfare and the souvenir photo.
+local function EndReveal(v)
+    local o, token, revealIndex = v.o, v.token, v.revealIndex
+    if reveal.pending then
+        reveal.pending = false
+        local length = REVEAL_STEP * revealIndex
+        reveal.ends = GetTime() + length + REVEAL_FADE
+        if revealIndex > 0 then
+            -- A fanfare once the last card is up, then the souvenir photo.
+            if o.ceremonySound then
+                C_Timer.After(length + FANFARE_DELAY, function()
+                    if token == reveal.token and f:IsShown() then PlayKit("IG_QUEST_LIST_COMPLETE", 878) end
+                end)
+            end
+            if o.ceremonyScreenshot and Screenshot then
+                C_Timer.After(length + SCREENSHOT_DELAY, function()
+                    if token == reveal.token and f:IsShown() then Screenshot() end
+                end)
+            end
+        end
+    end
+end
+
+-- The lines under the columns, from `bottom` down, and the height of all
+-- that scrolls.
+local function DrawFooter(sum, insights, bottom, paper)
+    local texts = FooterTexts(sum, insights, true)
+    for i, text in ipairs(texts) do
+        local fs = footLines[i]
+        if not fs then
+            fs = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+            fs:SetJustifyH("LEFT")
+            footLines[i] = fs
+        end
+        fs:SetFontObject(paper and "ThatLuckyBastardReceiptCounter" or "GameFontHighlightSmall")
+        fs:ClearAllPoints()
+        fs:SetPoint("TOPLEFT", 4, -bottom)
+        fs:SetText(text)
+        fs:Show()
+        bottom = bottom + 16
+    end
+    for i = #texts + 1, #footLines do footLines[i]:Hide() end
+    content:SetHeight(bottom + 4)
+end
+
 local function RenderColumns(sum, awards, insights)
     local theme = Breakdown.theme
     -- A bigger group: columns for its top five, the bench for the others.
@@ -448,7 +719,6 @@ local function RenderColumns(sum, awards, insights)
     -- The reveal: in podium order the columns race for their places (if
     -- there is anything to race for), else the award cards come up one
     -- after another.
-    local revealIndex = 0
     local racing = false
     if reveal.pending then
         CancelReveal() -- an earlier one, if any
@@ -461,6 +731,13 @@ local function RenderColumns(sum, awards, insights)
     local step = (podium and not o.alignItems and not paper) and 14 or 0
     local colLines = BuildColumnLines(view, o)
     local tint = theme.flat and 0.045 or 0.03 -- how bright a column's panel is
+    local v = {
+        o = o, sum = sum, theme = theme, paper = paper, podium = podium, colW = colW, rowH = rowH,
+        equal = equal, showBar = showBar, headerH = headerH, racing = racing, token = token,
+        revealIndex = 0, -- award cards come up one after another: how many so far
+        yRank = yRank, yPortrait = yPortrait, yName = yName, yMarket = yMarket, yVendor = yVendor,
+        yShare = yShare, yBar = yBar, yAward = yAward,
+    }
 
     for i, p in ipairs(view.players) do
         local c = GetCol(i)
@@ -473,207 +750,11 @@ local function RenderColumns(sum, awards, insights)
         else
             c.bg:SetColorTexture(1, 1, 1, tint + ((podium and p.rank == 1) and 0.04 or 0))
         end
-        c.rank:ClearAllPoints()
-        if paper then
-            -- Every receipt says its place, podium order or not.
-            c.rank:SetFontObject("ThatLuckyBastardReceiptInkBold")
-            c.rank:SetTextColor(INK[1], INK[2], INK[3])
-            c.rank:SetPoint("TOP", 0, yRank)
-            c.rank:SetText("*** " .. ns.Ordinal(p.rank):upper() .. " ***")
-        else
-            c.rank:SetFontObject("GameFontNormalSmall")
-            c.rank:SetPoint("TOPLEFT", 6, -8)
-            if podium then
-                local medal = MEDALS[p.rank] or MEDALS[4]
-                c.medal:SetColorTexture(medal[1], medal[2], medal[3], 0.95)
-                c.rank:SetText(ns.Ordinal(p.rank))
-                c.rank:SetTextColor(medal[1], medal[2], medal[3])
-            end
-        end
-        c.medal:SetShown(podium and not paper)
-        c.rank:SetShown(podium or paper)
-
-        SetPortrait(c, p, o.portrait)
-        -- On paper the picture is printed: in grey, ringed in grey ink.
-        c.portrait:SetDesaturated(paper)
-        if paper then
-            c.ring:SetVertexColor(INK_GREY[1], INK_GREY[2], INK_GREY[3])
-            c.ringInner:SetVertexColor(0.851, 0.824, 0.761)
-        else
-            c.ringInner:SetVertexColor(DISC[1], DISC[2], DISC[3])
-        end
-        if yPortrait then
-            c.portrait:ClearAllPoints()
-            c.portrait:SetPoint("TOP", 0, yPortrait)
-            c.model:ClearAllPoints()
-            c.model:SetPoint("TOP", 0, yPortrait + 2)
-        end
-        PlaceText(c.name, yName)
-        c.name:SetFontObject(paper and "ThatLuckyBastardReceiptInkBold" or "GameFontNormal")
-        c.name:SetText(ns.BetMark(ns.ViewedRun(), p.name) .. ClassColored(DisplayName(p.name), p.class))
-        c.hover.p = p
-        c.hover:SetHeight(-yMarket) -- from the top down to just under the name
-        PlaceText(c.market, yMarket)
-        c.market:SetText(Money(p.market))
-        c.vendor:SetShown(yVendor ~= nil)
-        if yVendor then
-            PlaceText(c.vendor, yVendor)
-            if paper then
-                c.vendor:SetFontObject("ThatLuckyBastardReceiptGrey")
-                c.vendor:SetText("VENDOR " .. Money(p.vendor))
-            else
-                c.vendor:SetFontObject("GameFontHighlightSmall")
-                c.vendor:SetText("|cff909090Vendor|r " .. Money(p.vendor))
-            end
-        end
-        c.share:SetShown(yShare ~= nil)
-        c.share:SetFontObject(paper and "ThatLuckyBastardReceiptInk" or "GameFontHighlightSmall")
-        if yShare then PlaceText(c.share, yShare) end
-
-        -- Modern's decoration: the glow, the strip and the pill. None on paper.
-        local flat = theme.flat and not paper
-        local cr, cg, cb = ClassRGB(p.class)
-        c.top:SetShown(flat)
-        c.top:SetHeight(math.min(HEADER_GLOW_H, headerH))
-        c.strip:SetShown(flat and not podium)
-        c.track:SetShown(showBar)
-        if showBar then
-            c.track:ClearAllPoints()
-            c.track:SetPoint("TOPLEFT", 8, yBar)
-            c.track:SetPoint("TOPRIGHT", -8, yBar)
-            if paper then
-                c.track:SetColorTexture(0.839, 0.812, 0.749, 1)
-            else
-                c.track:SetColorTexture(1, 1, 1, 0.08)
-            end
-        end
-        if flat and c.glowClass ~= (p.class or "") then -- only when the column changes hands
-            c.glowClass = p.class or ""
-            c.strip:SetColorTexture(cr, cg, cb, 0.9)
-            if not SetFade(c.top, "VERTICAL", cr, cg, cb, 0, 0.30) then
-                c.top:SetColorTexture(cr, cg, cb, 0.12)
-            end
-        end
-        c.market:SetFontObject(paper and "ThatLuckyBastardReceiptTotal"
-            or flat and "GameFontHighlightLarge" or "GameFontHighlight")
-
-        local diff = p.market - equal
-        local diffText = sum.market > 0 and DiffText(diff) or ""
-        local showDiff = diffText ~= ""
-        if sum.market > 0 then
-            c.share:SetText((paper and "SHARE " or "") .. Pct(p.market, sum.market)
-                .. (showDiff and ("  " .. diffText) or ""))
-        else
-            c.share:SetText("")
-        end
-        if flat and showDiff and yShare then
-            c.pill:ClearAllPoints()
-            c.pill:SetPoint("TOP", 0, yShare + 2)
-            c.pill:SetWidth(math.min(colW - 4, c.share:GetStringWidth() + 14))
-            if diff > 0 then
-                c.pill:SetColorTexture(0.25, 0.82, 0.25, 0.16)
-            else
-                c.pill:SetColorTexture(0.88, 0.31, 0.31, 0.16)
-            end
-            c.pill:Show()
-        else
-            c.pill:Hide()
-        end
-
-        local award = awards[p.name]
-        if award or c.awardFrame then
-            local af = GetAwardFrame(c)
-            af.award = award
-            af:SetShown(award ~= nil)
-            if award then
-                af:ClearAllPoints()
-                af:SetPoint("TOPLEFT", 4, yAward)
-                af:SetPoint("TOPRIGHT", -4, yAward)
-                af.icon:SetTexture("Interface\\Icons\\" .. award.icon)
-                StyleAward(af, award, paper)
-                af.title:SetText(AwardTitle(award))
-                af.detail:SetText(AwardShort(award))
-                if reveal.pending and not racing then
-                    -- Hidden now, faded in a little later than the one before.
-                    revealIndex = revealIndex + 1
-                    af:SetAlpha(0)
-                    C_Timer.After(REVEAL_STEP * revealIndex, function()
-                        if token ~= reveal.token or not af.award then return end
-                        if UIFrameFadeIn then UIFrameFadeIn(af, REVEAL_FADE, 0, 1) else af:SetAlpha(1) end
-                        if o.ceremonySound and f:IsShown() then PlayKit("IG_MAINMENU_OPTION_CHECKBOX_ON", 856) end
-                    end)
-                elseif GetTime() >= reveal.ends then
-                    af:SetAlpha(1)
-                end
-            end
-        end
-
-        -- Share bar: total length = share of the run, segments = categories.
-        local x = 8
-        local full = (colW - 16) * (sum.market > 0 and p.market / sum.market or 0)
-        for k, cat in ipairs(CATS) do
-            local seg, cs = c.segs[k], p.cats[cat.key]
-            if showBar and cs and cs.market > 0 and p.market > 0 then
-                local w = full * cs.market / p.market
-                seg:ClearAllPoints()
-                seg:SetPoint("TOPLEFT", x, yBar)
-                seg:SetWidth(math.max(w, 1))
-                if paper then -- one bar in ink: a till prints in one colour
-                    seg:SetColorTexture(INK[1], INK[2], INK[3], 1)
-                else
-                    seg:SetColorTexture(cat.color[1], cat.color[2], cat.color[3], 0.95)
-                end
-                seg:Show()
-                x = x + w
-            else
-                seg:Hide()
-            end
-        end
-
+        DrawHead(c, p, v)
+        DrawAwardCard(c, awards[p.name], v)
+        DrawShareBar(c, p, v)
         local lines = colLines[i]
-
-        for j, line in ipairs(lines) do
-            local r = GetColRow(c, j)
-            r.line = line
-            r:ClearAllPoints()
-            r:SetPoint("TOPLEFT", 0, -(headerH + (j - 1) * rowH))
-            r:SetPoint("TOPRIGHT", 0, -(headerH + (j - 1) * rowH))
-            r:SetHeight(rowH)
-            local left = 4
-            -- A receipt prints no icons and no colour chips.
-            if line.link and o.showIcons and not paper then
-                r.icon:SetSize(rowH - 4, rowH - 4)
-                r.icon:SetTexture(ItemIcon(line.link))
-                r.icon:Show()
-                left = rowH + 4
-            else
-                r.icon:Hide()
-            end
-            if line.cat and not paper then
-                r.chip:SetColorTexture(line.cat.color[1], line.cat.color[2], line.cat.color[3], 0.9)
-                r.chip:Show()
-                left = 8
-            else
-                r.chip:Hide()
-            end
-            local font = paper and (line.cat and "ThatLuckyBastardReceiptInkBold" or "ThatLuckyBastardReceiptInk")
-                or "GameFontHighlightSmall"
-            r.label:SetFontObject(font)
-            r.value:SetFontObject(font)
-            r.label:ClearAllPoints()
-            r.label:SetPoint("LEFT", left, 0)
-            r.label:SetPoint("RIGHT", r.value, "LEFT", -4, 0)
-            r.label:SetText(line.label or "")
-            r.value:SetText(line.value or "")
-            -- An item worth nothing here (ignored, given away) is faded.
-            r.label:SetAlpha(line.dim and 0.5 or 1)
-            r.icon:SetAlpha(line.dim and 0.5 or 1)
-            SetMark(r.mark, line.mark)
-            SetRowBg(r.bg, line)
-            r:EnableMouse(line.link ~= nil)
-            r:Show()
-        end
-        for j = #lines + 1, #c.rows do c.rows[j]:Hide() end
+        DrawItemRows(c, lines, v)
 
         -- A receipt ends where its print does, with its tail; the other
         -- looks keep the columns level.
@@ -688,43 +769,9 @@ local function RenderColumns(sum, awards, insights)
     end
     for i = n + 1, #cols do cols[i]:Hide() end
     Breakdown.ink = false -- the footer is written on the counter, not on paper
-    if reveal.pending then
-        reveal.pending = false
-        local length = REVEAL_STEP * revealIndex
-        reveal.ends = GetTime() + length + REVEAL_FADE
-        if revealIndex > 0 then
-            -- A fanfare once the last card is up, then the souvenir photo.
-            if o.ceremonySound then
-                C_Timer.After(length + FANFARE_DELAY, function()
-                    if token == reveal.token and f:IsShown() then PlayKit("IG_QUEST_LIST_COMPLETE", 878) end
-                end)
-            end
-            if o.ceremonyScreenshot and Screenshot then
-                C_Timer.After(length + SCREENSHOT_DELAY, function()
-                    if token == reveal.token and f:IsShown() then Screenshot() end
-                end)
-            end
-        end
-    end
-
+    EndReveal(v)
     local bottom = RenderBench(bench, awards, maxH + 10, paper)
-    local texts = FooterTexts(sum, insights, true)
-    for i, text in ipairs(texts) do
-        local fs = footLines[i]
-        if not fs then
-            fs = content:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
-            fs:SetJustifyH("LEFT")
-            footLines[i] = fs
-        end
-        fs:SetFontObject(paper and "ThatLuckyBastardReceiptCounter" or "GameFontHighlightSmall")
-        fs:ClearAllPoints()
-        fs:SetPoint("TOPLEFT", 4, -bottom)
-        fs:SetText(text)
-        fs:Show()
-        bottom = bottom + 16
-    end
-    for i = #texts + 1, #footLines do footLines[i]:Hide() end
-    content:SetHeight(bottom + 4)
+    DrawFooter(sum, insights, bottom, paper)
 
     -- A race in progress takes the columns from here.
     if race.on then
