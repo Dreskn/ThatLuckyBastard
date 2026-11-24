@@ -12,6 +12,7 @@
 Core.lua
 Data.lua
 UI.lua
+Footer.lua
 Bench.lua
 Columns.lua
 Race.lua

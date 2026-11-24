@@ -1111,105 +1111,6 @@ local function ShowTail(c, show, name, width)
     t.edge:Show()
 end
 
-----------------------------------------------------------------------
--- Footer: the text lines under the breakdown. Totals, run time, dungeon
--- records, comparison with your average, and the legend for the dots.
-----------------------------------------------------------------------
-
-
-local function Duration(seconds)
-    local minutes = math.floor(seconds / 60)
-    if minutes >= 60 then
-        return ("%dh %02dm"):format(math.floor(minutes / 60), minutes % 60)
-    end
-    return ("%dm %02ds"):format(minutes, seconds % 60)
-end
-
--- Is any item of the run valued at an auction price? (The legend for the
--- dots is pointless otherwise.)
-local function AnyAuctionPrice(sum)
-    for _, p in ipairs(sum.players) do
-        for _, e in ipairs(p.all.items) do
-            if e.ah then return true end
-        end
-    end
-    return false
-end
-
-local RECORD_LABELS = {
-    { "group", "richest run" }, { "mine", "your best haul" },
-    { "jackpot", "biggest single item" }, { "fastest", "fastest run" },
-}
-
--- "40% higher" / "12% lower" / "about the same"
-local function Versus(pct)
-    if math.abs(pct) < 5 then return "about the same" end
-    return ("%d%% %s"):format(math.abs(pct) + 0.5, pct > 0 and (GoodCode() .. "higher|r") or (BadCode() .. "lower|r"))
-end
-
--- insights: nil when they are switched off. includeTotals: the list view
--- shows its totals as rows of its own.
-local function FooterTexts(sum, insights, includeTotals)
-    local o = ns.db.options
-    local texts = {}
-    local n = #sum.players
-    -- Headings and secondary words: gold and grey, or two inks on paper.
-    local hi, lo = HeadCode(), LowCode()
-
-    if includeTotals and o.showTotals and n > 0 then
-        local equal = sum.market / n
-        if o.valueMode == "vendor" then
-            texts[#texts + 1] = ("%sTotal|r  %s      %sEqual split|r  %s"):format(
-                hi, Money(sum.market), lo, Money(equal))
-        else
-            texts[#texts + 1] = ("%sTotal|r  %s      %sVendor|r  %s      %sEqual split|r  %s")
-                :format(hi, Money(sum.market), lo, Money(sum.vendor), lo, Money(equal))
-        end
-    end
-
-    if insights then
-        local parts = {}
-        if insights.duration then
-            parts[#parts + 1] = lo .. "Run time|r  " .. Duration(insights.duration)
-            if insights.perHour then
-                parts[#parts + 1] = lo .. "Group per hour|r  " .. Money(insights.perHour)
-            end
-        end
-        if insights.fair then
-            parts[#parts + 1] = ("%sFairness|r  %d / 100"):format(lo, insights.fair)
-        end
-        if #parts > 0 then texts[#texts + 1] = table.concat(parts, "      ") end
-        if insights.streak then
-            local streak = insights.streak
-            texts[#texts + 1] = ("%s%s|r      %stogether so far|r  %s      %syours|r  %s")
-                :format(hi, ns.StreakLabel(streak), lo, Money(streak.total), lo, Money(streak.mine))
-        end
-        if insights.records then
-            local names = {}
-            for _, label in ipairs(RECORD_LABELS) do
-                if insights.records[label[1]] then names[#names + 1] = label[2] end
-            end
-            if #names > 0 then
-                texts[#texts + 1] = hi .. "New record here:|r  " .. table.concat(names, ", ")
-            end
-        end
-        if insights.groupPct then
-            local text = ("%sAgainst your average here|r  group loot %s"):format(lo, Versus(insights.groupPct))
-            if insights.minePct then
-                text = text .. (",  your own %s"):format(Versus(insights.minePct))
-            end
-            texts[#texts + 1] = text .. ("  %s(%d %s %s)|r"):format(
-                lo, insights.priorRuns, insights.earlier and "earlier" or "other",
-                insights.priorRuns == 1 and "run" or "runs")
-        end
-    end
-
-    if n > 0 and o.valueMode ~= "vendor" and (ns.HasPriceSource() or AnyAuctionPrice(sum)) then
-        texts[#texts + 1] = Breakdown.ink and LEGEND_INK or LEGEND
-    end
-    return texts
-end
-
 -- A column-view item row. `count` and `market` are passed separately
 -- because aligned mode merges several entries of the same item.
 -- `total` is the run's total value.
@@ -1345,7 +1246,7 @@ local function BuildLines(sum, awards, insights)
         add({ indent = 4, label = "Equal split (" .. n .. " players)",
               vendor = Money(sum.vendor / n), market = Money(sum.market / n), share = Pct(1, n) })
     end
-    local texts = FooterTexts(sum, insights, false)
+    local texts = Breakdown.FooterTexts(sum, insights, false)
     if #texts > 0 then add({}) end
     for _, text in ipairs(texts) do
         add({ indent = 4, label = text, wide = true })
@@ -2055,10 +1956,11 @@ Breakdown.StyleHighlight, Breakdown.DISC = StyleHighlight, DISC
 Breakdown.NewRoundPicture, Breakdown.Pct, Breakdown.UnitForName = NewRoundPicture, Pct, UnitForName
 Breakdown.InSight, Breakdown.FillPortrait, Breakdown.TAIL_H = InSight, FillPortrait, TAIL_H
 Breakdown.EDGE_H, Breakdown.StyleAward, Breakdown.ShowTail = EDGE_H, StyleAward, ShowTail
-Breakdown.FooterTexts, Breakdown.ItemLine = FooterTexts, ItemLine
-Breakdown.NoLootLabel, Breakdown.GroupOf, Breakdown.ACCENT = NoLootLabel, GroupOf, ACCENT
-Breakdown.KEY, Breakdown.KEY_EDGE, Breakdown.INK_GREY_CODE = KEY, KEY_EDGE, INK_GREY_CODE
-Breakdown.listRuns = listRuns
+Breakdown.ItemLine, Breakdown.NoLootLabel, Breakdown.GroupOf = ItemLine, NoLootLabel, GroupOf
+Breakdown.ACCENT, Breakdown.KEY, Breakdown.KEY_EDGE = ACCENT, KEY, KEY_EDGE
+Breakdown.INK_GREY_CODE, Breakdown.listRuns, Breakdown.LEGEND = INK_GREY_CODE, listRuns, LEGEND
+Breakdown.LEGEND_INK, Breakdown.GoodCode, Breakdown.BadCode = LEGEND_INK, GoodCode, BadCode
+Breakdown.HeadCode, Breakdown.LowCode = HeadCode, LowCode
 
 -- Shared with the other panels.
 ns.MoneyPlain = function(copper) return MoneyText(copper, false) end
@@ -2067,7 +1969,6 @@ ns.PlayKit = PlayKit
 ns.CATS = CATS
 ns.PAPER, ns.INK, ns.INK_GREY = PAPER, INK, INK_GREY
 ns.Money = Money
-ns.Duration = Duration
 ns.ClassColored = ClassColored
 ns.DisplayName = DisplayName
 ns.ItemIcon = ItemIcon
