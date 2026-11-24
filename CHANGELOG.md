@@ -1,5 +1,11 @@
 # Changelog
 
+## Unreleased
+
+### Changes
+
+- Under the hood: the main window's code split into smaller files.
+
 ## 0.8.1
 
 ### New

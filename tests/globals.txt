@@ -1,0 +1,33 @@
+# Global names the addon's files may read or write (tests/luacheck.py).
+# A name used that isn't here fails the check: a typo, or a local the
+# file doesn't have. Add a new game function here when the addon starts
+# using it.
+
+# Lua
+_G assert date error getmetatable ipairs math next pairs pcall print rawget select setmetatable
+string table time tonumber tostring type
+
+# The game
+Ambiguate BNET_CLIENT_WOW BNGetNumFriends BreakUpLargeNumbers CANCEL CLASS_ICON_TCOORDS
+COPPER_AMOUNT C_AddOns C_BattleNet C_ChatInfo C_Club C_CurrencyInfo C_FriendList C_GuildInfo C_Item
+C_PlayerInfo C_Timer ChatEdit_ChooseBoxForSend ChatEdit_InsertLink ChatEdit_UpdateHeader
+ChatFrameUtil ChatFrame_AddMessageEventFilter ChatFrame_OpenChat ChatFrame_ResolveChannelName
+ColorPickerFrame CreateColor CreateFont CreateFrame Enum EnumerateServerChannels EventRegistry
+GOLD_AMOUNT GameFontHighlight GameFontNormal GameTooltip GameTooltip_Hide GetAddOnMetadata
+GetChannelList GetCoinTextureString GetCursorPosition GetGuildRosterInfo GetInstanceInfo GetItemIcon
+GetItemInfo GetItemInfoInstant GetNumGroupMembers GetNumGuildMembers GetRaidRosterInfo
+GetRealZoneText GetRealmName GetTime GetUnitName INSTANCE_RESET_SUCCESS ITEM_QUALITY_COLORS
+IsInGroup IsInGuild IsInInstance IsInRaid IsModifiedClick Item ItemRefTooltip LE_PARTY_CATEGORY_HOME
+LE_PARTY_CATEGORY_INSTANCE LOCALIZED_CLASS_NAMES_MALE Minimap NO PlaySound RAID_CLASS_COLORS
+SILVER_AMOUNT SOUNDKIT STANDARD_TEXT_FONT Screenshot SendAddonMessage SendChatMessage SetItemRef
+SetPortraitTexture ShowUIPanel SlashCmdList StaticPopupDialogs StaticPopup_Show TooltipDataProcessor
+UIFrameFadeIn UIParent UISpecialFrames UNKNOWNOBJECT UnitClass UnitExists UnitGroupRolesAssigned
+UnitIsDeadOrGhost UnitIsGroupAssistant UnitIsGroupLeader UnitIsPlayer UnitIsUnit UnitIsVisible
+UnitName YES hooksecurefunc issecretvalue tinsert wipe
+
+# Price addons, when installed
+Auctionator TSM_API
+
+# The addon's own: saved data, slash command, named frames, the public table
+SLASH_THATLUCKYBASTARD1 SLASH_THATLUCKYBASTARD2 ThatLuckyBastard ThatLuckyBastardDB
+ThatLuckyBastardFrame ThatLuckyBastardMeterFrame ThatLuckyBastard_OnAddonCompartmentClick

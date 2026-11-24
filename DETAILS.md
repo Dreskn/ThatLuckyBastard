@@ -196,6 +196,8 @@ The commands changed with the name: `/fs` is now `/tlb`.
 python tests/luacheck.py ThatLuckyBastard/*.lua
 ```
 
+`luacheck.py` compiles every file and fails one that nears Lua's limits (180 of 200 top-level locals, 50 of 60 outside variables in a function) or uses a global name missing from `tests/globals.txt`. The main window is `UI.lua` plus `Receipt`, `Footer`, `Bench`, `Columns` and `Race`, loaded in that order and sharing the `ns.Breakdown` table.
+
 ```bash
 python tests/run_tests.py ThatLuckyBastard tests/test_ui.lua
 ```
