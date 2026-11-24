@@ -4,12 +4,14 @@
 
 ### New
 
-- Bets: call the lucky bastard as each run starts. Loot bingo is gone.
-- A padlock locks the meter's place and size.
+- Bets: call the lucky bastard as each run starts.
+- Lock the meter's place and size.
 
 ### Changes
 
-- Need only moved to Analysis › Rolls; coins listed first; simpler colors; flat options gear.
+- Need only moved to Analysis › Rolls.
+- Loot bingo has retired in a cozy Elwynn farmstead.
+- Small tweaks to options and UI.
 
 ## 0.7.0
 
