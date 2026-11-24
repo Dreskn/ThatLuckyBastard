@@ -74,10 +74,26 @@ function ns.ThemeAccent()
     return ThemeName() == "receipt" and ns.RECEIPT_ACCENT or ACCENT
 end
 
--- True while the window draws on paper (the Receipt theme): money, names
--- and items are then written in dark inks rather than the game's bright
--- colours. Only ever on during a redraw, so tooltips keep their colours.
-local inkMode = false
+-- What the main window's files share: this one, Receipt, Footer, Bench,
+-- Columns and Race (they load after it, in that order). This file puts on
+-- it, at its end, what the others use; they put back what it calls. Its
+-- fields here are the drawing state more than one of them changes.
+local Breakdown = {
+    -- True while the window draws on paper (the Receipt theme): money,
+    -- names and items are then written in dark inks rather than the game's
+    -- bright colours. Only ever on during a redraw, so tooltips keep their
+    -- colours.
+    ink = false,
+    -- The reveal of a run as it is left: due at the next draw (`pending`),
+    -- the run being revealed, the GetTime() at which it is over, and a
+    -- token raised when one starts or is called off, so its timers can tell.
+    reveal = { pending = false, run = nil, ends = 0, token = 0 },
+    race = { on = false }, -- the columns' race for their places (Race.lua)
+    footLines = {},        -- font strings used by the column view, under it
+    theme = nil,           -- the theme in force, as ApplyTheme set it
+}
+ns.Breakdown = Breakdown
+local reveal, race, footLines = Breakdown.reveal, Breakdown.race, Breakdown.footLines
 
 local CATS = {
     -- First: not items, one sum per player with nothing under it.
@@ -117,6 +133,9 @@ local theme, currentTheme
 local currentRun      -- the run being displayed
 local Render
 
+-- The run on show, for the window's other files.
+function Breakdown.CurrentRun() return currentRun end
+
 -- Colour codes used all over the window.
 local GREY, DIM = "|cff909090", "|cff8a8a8a" -- secondary text; subtotals
 local GOOD, BAD = "|cff40d040", "|cffe05050" -- above / below
@@ -154,14 +173,14 @@ end
 
 -- Gold, silver and copper in their colours; on paper, in plain ink.
 local function Money(c)
-    local text = MoneyText(c, not inkMode)
-    if text == "-" then return (inkMode and INK_GREY_CODE or GREY) .. "-|r" end
+    local text = MoneyText(c, not Breakdown.ink)
+    if text == "-" then return (Breakdown.ink and INK_GREY_CODE or GREY) .. "-|r" end
     return text
 end
 
 -- Subtotals are shown in flat grey so they do not read as item values.
 local function Grey(text)
-    return (inkMode and INK_GREY_CODE or DIM) .. text .. "|r"
+    return (Breakdown.ink and INK_GREY_CODE or DIM) .. text .. "|r"
 end
 
 local function MoneyGrey(c)
@@ -169,7 +188,7 @@ local function MoneyGrey(c)
 end
 
 local function CatColored(text, cat)
-    if inkMode then return text:upper() end -- a receipt's heading
+    if Breakdown.ink then return text:upper() end -- a receipt's heading
     local c = cat.color
     return ("|cff%02x%02x%02x%s|r"):format(c[1] * 255, c[2] * 255, c[3] * 255, text)
 end
@@ -196,7 +215,7 @@ end
 
 -- What an item row says: "3x [Item]", or on paper "3 [Item]" in ink.
 local function ItemLabel(e, count)
-    if inkMode then return (count > 1 and (count .. " ") or "") .. InkLink(e) end
+    if Breakdown.ink then return (count > 1 and (count .. " ") or "") .. InkLink(e) end
     return (count > 1 and (count .. "x ") or "") .. e.link
 end
 
@@ -266,7 +285,7 @@ end
 local function SetRowBg(tex, line)
     if line.warn then
         tex:SetColorTexture(1, 0.55, 0.15, 0.20)
-    elseif inkMode then
+    elseif Breakdown.ink then
         tex:SetColorTexture(INK[1], INK[2], INK[3], (line.bg or 0) * 0.5)
     else
         tex:SetColorTexture(1, 1, 1, line.bg or 0)
@@ -287,7 +306,7 @@ end
 -- prints it: "+28g 65s" over, "10g 88s-" under.
 local function DiffText(diff)
     if math.abs(diff) < 1 then return "" end
-    if inkMode then
+    if Breakdown.ink then
         return diff > 0 and ("+" .. Money(diff)) or (Money(-diff) .. "-")
     end
     return (diff > 0 and (GOOD .. "+|r") or (BAD .. "-|r")) .. Money(math.abs(diff))
@@ -295,11 +314,11 @@ end
 
 -- Above / below, as colour codes: brighter ones on the dark windows,
 -- darker inks on paper.
-local function GoodCode() return inkMode and "|cff2f7a1f" or GOOD end
-local function BadCode() return inkMode and "|cffb23a2a" or BAD end
+local function GoodCode() return Breakdown.ink and "|cff2f7a1f" or GOOD end
+local function BadCode() return Breakdown.ink and "|cffb23a2a" or BAD end
 -- Headings and secondary text in the footer, likewise.
-local function HeadCode() return inkMode and INK_CODE or "|cffffd100" end
-local function LowCode() return inkMode and INK_GREY_CODE or "|cff909090" end
+local function HeadCode() return Breakdown.ink and INK_CODE or "|cffffd100" end
+local function LowCode() return Breakdown.ink and INK_GREY_CODE or "|cff909090" end
 
 -- Answers that cannot change while the window is being drawn are worked
 -- out once per redraw and kept here: who is in the group, and how names
@@ -343,7 +362,7 @@ end
 -- A name in its class colour. On paper, class colours (yellow, pink) do
 -- not read: the name is printed in ink, in capitals.
 local function ClassColored(name, class)
-    if inkMode then return INK_CODE .. name:upper() .. "|r" end
+    if Breakdown.ink then return INK_CODE .. name:upper() .. "|r" end
     local c = class and RAID_CLASS_COLORS and RAID_CLASS_COLORS[class]
     if c then
         return ("|cff%02x%02x%02x%s|r"):format(c.r * 255, c.g * 255, c.b * 255, name)
@@ -767,7 +786,7 @@ local shownAwards = {} -- the award of each player of the run on show, by name
 
 local function AwardTitle(award)
     -- On paper, stamped in red or blue ink.
-    if inkMode then
+    if Breakdown.ink then
         return (RED_STAMPS[award.key] and "|cffb23a2a" or "|cff2b4c9b") .. award.title:upper() .. "|r"
     end
     return "|cffffd100" .. award.title .. "|r" -- every award in the same gold: none is a verdict
@@ -1091,12 +1110,6 @@ local REVEAL_FADE = 0.4       -- seconds a card takes to appear
 local FANFARE_DELAY = 0.3     -- after the last card
 local SCREENSHOT_DELAY = 1.2  -- after the last card, or the race
 
-local ceremonyPending = false -- reveal the run on the next draw
-local race = { on = false }   -- the columns' race for their places: see further down
-local revealEnd = 0           -- GetTime() at which the reveal is over
-local revealRun               -- the run being revealed
-local revealToken = 0         -- raised when a reveal starts or is called off, so its timers can tell
-
 -- Plays one of the game's own interface sounds, by name with the numeric
 -- id as a fallback. A missing sound is not worth an error.
 local function PlayKit(name, id)
@@ -1105,8 +1118,8 @@ end
 
 -- Calls off a reveal in progress: its timers do nothing from now on.
 local function CancelReveal()
-    revealToken = revealToken + 1
-    revealRun, revealEnd = nil, 0
+    reveal.token = reveal.token + 1
+    reveal.run, reveal.ends = nil, 0
     race.Cancel()
 end
 
@@ -1329,7 +1342,6 @@ end
 -- records, comparison with your average, and the legend for the dots.
 ----------------------------------------------------------------------
 
-local footLines = {} -- font strings used by the column view
 
 local function Duration(seconds)
     local minutes = math.floor(seconds / 60)
@@ -1419,7 +1431,7 @@ local function FooterTexts(sum, insights, includeTotals)
     end
 
     if n > 0 and o.valueMode ~= "vendor" and (ns.HasPriceSource() or AnyAuctionPrice(sum)) then
-        texts[#texts + 1] = inkMode and LEGEND_INK or LEGEND
+        texts[#texts + 1] = Breakdown.ink and LEGEND_INK or LEGEND
     end
     return texts
 end
@@ -1483,7 +1495,7 @@ end
 
 -- What a column or an opened player row says when there is nothing in it.
 local function NoLootLabel(sum)
-    return (inkMode and INK_GREY_CODE or GREY) .. "No loot seen|r"
+    return (Breakdown.ink and INK_GREY_CODE or GREY) .. "No loot seen|r"
 end
 
 -- A player's items for one category, or all of them when `cat` is false
@@ -1503,7 +1515,7 @@ local function BuildColumnLines(sum, o)
 
     local function Header(cat, cs)
         -- On paper, a heading and its sum in the same bold ink.
-        local value = cs and (inkMode and Money(cs.market) or MoneyGrey(cs.market)) or Grey("-")
+        local value = cs and (Breakdown.ink and Money(cs.market) or MoneyGrey(cs.market)) or Grey("-")
         return { label = CatColored(cat.short, cat), cat = cat, bg = 0.08, value = value }
     end
 
@@ -1723,7 +1735,8 @@ do
         b.arrow = b:CreateTexture(nil, "ARTWORK")
         b.text = b:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
         b:SetScript("OnClick", function()
-            if currentRun then listRuns[currentRun] = list or nil end
+            local run = Breakdown.CurrentRun()
+            if run then listRuns[run] = list or nil end
             GameTooltip:Hide()
             Render()
         end)
@@ -1740,6 +1753,7 @@ do
     -- on it (in capitals on a till key), with `under` in grey on a line of
     -- its own beneath when given. `back`: pointing left.
     local function PaintArrow(b, label, paper, back, under)
+        local theme = Breakdown.theme
         b.edge:SetShown(paper and true or false)
         b.arrow:SetDesaturated(false)
         b.arrow:SetTexCoord(0, 1, 0, 1)
@@ -1793,6 +1807,7 @@ do
     -- are up to five of them, and the arrow only when there are more
     -- players than that.
     function RenderBench(bench, awards, top, paper, all)
+        local theme = Breakdown.theme
         HideBench()
         if #bench == 0 then return top end
         local o = ns.db.options
@@ -1817,7 +1832,7 @@ do
         end
         local x = math.max(0, (width - BenchRoom(shown, arrow)) / 2)
 
-        inkMode = paper -- a ticket is paper: its text is printed in ink
+        Breakdown.ink = paper -- a ticket is paper: its text is printed in ink
         for i = 1, shown do
             local p = bench[i]
             local seat = BenchSeat(i)
@@ -1874,7 +1889,7 @@ do
             seat:Show()
             x = x + CARD_W + CARD_GAP
         end
-        inkMode = false
+        Breakdown.ink = false
 
         if not arrow then return top + height + 10 end
         -- The arrow at the end of the row: this run as a list.
@@ -1898,6 +1913,7 @@ do
     -- the list, the mirror of the bench's arrow, pointing left, with
     -- "Columns" beside it. Returns the room it takes there.
     function ShowBackButton(show)
+        local theme = Breakdown.theme
         if not show then
             if backButton then backButton:Hide() end
             return 0
@@ -2103,6 +2119,7 @@ do
 end
 
 local function RenderColumns(sum, awards, insights)
+    local theme = Breakdown.theme
     -- A bigger group: columns for its top five, the bench for the others.
     -- `view` is the summary with the columns' players only; every total
     -- and the equal split stay the whole run's.
@@ -2124,7 +2141,7 @@ local function RenderColumns(sum, awards, insights)
     local rowH = theme.rowH
     local equal = sum.market / #sum.players
     local maxH = 0
-    inkMode = paper -- the footer under the receipts is on the counter: see below
+    Breakdown.ink = paper -- the footer under the receipts is on the counter: see below
 
     -- Header layout depends on what the options show.
     local o = ns.db.options
@@ -2155,13 +2172,13 @@ local function RenderColumns(sum, awards, insights)
     -- after another.
     local revealIndex = 0
     local racing = false
-    if ceremonyPending then
+    if reveal.pending then
         CancelReveal() -- an earlier one, if any
-        revealRun = currentRun
+        reveal.run = Breakdown.CurrentRun()
         racing = (o.race and podium and n > 1 and sum.market > 0) and true or false
         if racing then race.Start() end
     end
-    local token = revealToken
+    local token = reveal.token
     -- Receipts all come out of the printer at the same height.
     local step = (podium and not o.alignItems and not paper) and 14 or 0
     local colLines = BuildColumnLines(view, o)
@@ -2298,16 +2315,16 @@ local function RenderColumns(sum, awards, insights)
                 StyleAward(af, award, paper)
                 af.title:SetText(AwardTitle(award))
                 af.detail:SetText(AwardShort(award))
-                if ceremonyPending and not racing then
+                if reveal.pending and not racing then
                     -- Hidden now, faded in a little later than the one before.
                     revealIndex = revealIndex + 1
                     af:SetAlpha(0)
                     C_Timer.After(REVEAL_STEP * revealIndex, function()
-                        if token ~= revealToken or not af.award then return end
+                        if token ~= reveal.token or not af.award then return end
                         if UIFrameFadeIn then UIFrameFadeIn(af, REVEAL_FADE, 0, 1) else af:SetAlpha(1) end
                         if o.ceremonySound and f:IsShown() then PlayKit("IG_MAINMENU_OPTION_CHECKBOX_ON", 856) end
                     end)
-                elseif GetTime() >= revealEnd then
+                elseif GetTime() >= reveal.ends then
                     af:SetAlpha(1)
                 end
             end
@@ -2392,21 +2409,21 @@ local function RenderColumns(sum, awards, insights)
         c:SetHeight(paper and c.ownH or (maxH - c.offset))
     end
     for i = n + 1, #cols do cols[i]:Hide() end
-    inkMode = false -- the footer is written on the counter, not on paper
-    if ceremonyPending then
-        ceremonyPending = false
+    Breakdown.ink = false -- the footer is written on the counter, not on paper
+    if reveal.pending then
+        reveal.pending = false
         local length = REVEAL_STEP * revealIndex
-        revealEnd = GetTime() + length + REVEAL_FADE
+        reveal.ends = GetTime() + length + REVEAL_FADE
         if revealIndex > 0 then
             -- A fanfare once the last card is up, then the souvenir photo.
             if o.ceremonySound then
                 C_Timer.After(length + FANFARE_DELAY, function()
-                    if token == revealToken and f:IsShown() then PlayKit("IG_QUEST_LIST_COMPLETE", 878) end
+                    if token == reveal.token and f:IsShown() then PlayKit("IG_QUEST_LIST_COMPLETE", 878) end
                 end)
             end
             if o.ceremonyScreenshot and Screenshot then
                 C_Timer.After(length + SCREENSHOT_DELAY, function()
-                    if token == revealToken and f:IsShown() then Screenshot() end
+                    if token == reveal.token and f:IsShown() then Screenshot() end
                 end)
             end
         end
@@ -2497,7 +2514,7 @@ local function BuildLines(sum, awards, insights)
                         -- The column view's item line, with the list's own columns.
                         local line = ItemLine(e, e.count, ns.EntryMarket(e), sum.market)
                         line.indent, line.icon = cat and 36 or 24, true
-                        line.label = (inkMode and InkLink(e) or e.link) .. (line.part or "")
+                        line.label = (Breakdown.ink and InkLink(e) or e.link) .. (line.part or "")
                         line.count = "x" .. e.count
                         line.vendor, line.market = line.dim and "" or Money(ns.EntryVendor(e)), line.value
                         add(line)
@@ -2800,6 +2817,7 @@ end
 local function ApplyTheme()
     currentTheme = ThemeName()
     theme = THEMES[currentTheme]
+    Breakdown.theme = theme
     ns.ApplyWindowTheme(skins, title)
 
     for _, c in ipairs(cols) do c.glowClass = nil end -- the glow is drawn afresh
@@ -2868,13 +2886,13 @@ function Render()
     viewIndex = math.max(1, math.min(viewIndex, math.max(#runs, 1)))
     local s = runs[viewIndex]
     currentRun = s
-    if s ~= revealRun then CancelReveal() end
+    if s ~= reveal.run then CancelReveal() end
     -- A run left while the window was not showing it (the core names it
     -- in ns.fresh) is revealed the first time it is on show, however it
     -- got there: the window opened, or stepped back to it.
     if s ~= nil and s == ns.fresh then
         ns.fresh = nil
-        ceremonyPending = true
+        reveal.pending = true
     end
 
     older:SetOn(viewIndex < #runs)
@@ -2987,7 +3005,7 @@ function Render()
     listPaper:SetShown(paper and not useColumns)
     if small then
         -- No columns, so no reveal either.
-        ceremonyPending = false
+        reveal.pending = false
         CancelReveal()
         for _, r in ipairs(rows) do r:Hide() end
         for _, c in ipairs(cols) do c:Hide() end
@@ -3016,7 +3034,7 @@ function Render()
     else
         -- The reveal only exists in the column view: one under way stops,
         -- sounds and screenshot included.
-        ceremonyPending = false
+        reveal.pending = false
         CancelReveal()
         for _, c in ipairs(cols) do c:Hide() end
         for _, fs in ipairs(footLines) do fs:Hide() end
@@ -3024,11 +3042,11 @@ function Render()
         -- Only its bench can have made a list of a run the options give
         -- columns to: that run gets the way back.
         local top = ShowBackButton(big and o.useColumns and true or false)
-        inkMode = paper
+        Breakdown.ink = paper
         RenderList(sum and BuildLines(sum, awards, insights) or {
             { indent = 4, wide = true, label = "No run recorded yet. Enter a dungeon, or type /tlb start." },
         }, showVendor, showShare, top)
-        inkMode = false
+        Breakdown.ink = false
     end
     title:SetWordWrap(false)
     drawing = false
@@ -3177,7 +3195,7 @@ function ns.ShowWindow(ceremony, s)
     for i, run in ipairs(s and Runs() or {}) do
         if run == s then viewIndex = i end
     end
-    ceremonyPending = ceremony and true or false
+    reveal.pending = ceremony and true or false
     if ns.HideItemMenu then ns.HideItemMenu() end
     RestoreWindow()
     f:Show()
