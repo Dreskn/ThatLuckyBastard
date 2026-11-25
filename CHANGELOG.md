@@ -1,10 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.8.2
 
 ### Changes
 
-- Under the hood: the main window's code split into smaller files.
+- Under the hood update: the main window's code split into smaller files. Restart the game after updating.
 
 ## 0.8.1
 
