@@ -701,7 +701,7 @@ do
     Section(p, "Awards")
     Boxes(p, {
         { "Awards", "showAwards", "Hand out awards. /tlb awards lists them." },
-        { "Race", "race", "The loot falls as coins. The last stack still growing wins.", why.race },
+        { "Race", "race", "The loot falls in, each item as big as its worth, the three best last.", why.race },
     })
     Boxes(p, {
         { "Sounds", "ceremonySound", "While the awards come up.", why.reveal },
