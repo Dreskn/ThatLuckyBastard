@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.8.3
+
+### Changes
+
+- Caught too many players rolling loaded dice, so `/lucky` is gone (use `/tlb`).
+- Small fixes to wording, and more.
+
 ## 0.8.2
 
 ### Changes
