@@ -222,7 +222,6 @@ function DrawTimeline(s)
     timelineNote:SetShown(not has)
     if not has then
         timelineNote:SetText(not s and "No run to show yet."
-            or s.example and "Example runs have no timeline."
             or ((s.log or s == ns.db.active) and "Nothing has been picked up in this run."
                 or "No timeline: this run was recorded before pickup times were kept."))
         return
@@ -419,14 +418,14 @@ function DrawRolls(s)
         end
     end
     if #all == 0 then
-        rollsSummary:SetText("|cff909090" .. ((s.log or s.example or s == ns.db.active)
+        rollsSummary:SetText("|cff909090" .. ((s.log or s == ns.db.active)
             and "Nothing has been rolled for in this run."
             or "No roll sheet: this run was recorded before rolls were kept in full.") .. "|r")
     elseif rollsShow == "need" then
         rollsSummary:SetText(NeedLine(s))
     else
-        rollsSummary:SetText(("%d rolls: %d Need, %d Greed.   |cff909090Hover a line for every roll.|r")
-            :format(#all, need, #all - need))
+        rollsSummary:SetText(("%d %s: %d Need, %d Greed.   |cff909090Hover a line for every roll.|r")
+            :format(#all, #all == 1 and "roll" or "rolls", need, #all - need))
     end
 
     for i, roll in ipairs(rolls) do

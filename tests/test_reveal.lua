@@ -86,11 +86,12 @@ local function DoneAt(name)
     end
 end
 -- Where a coin is drawn (its middle, from its column's top left corner,
--- y going down), how tall, how see-through; nil while it is not there.
+-- y going down), how tall, how see-through, how far turned and its place
+-- in the drawing order; nil while it is not there.
 local function Drawn(c)
-    if not c.tex:IsShown() then return nil end
-    local p = c.tex.__points[1]
-    return { x = p[4], y = -p[5], h = c.tex.__h, alpha = c.tex:GetAlpha(), frame = p[2] }
+    if not c.box:IsShown() then return nil end
+    local p = c.box.__points[1]
+    return { x = p[4], y = -p[5], h = c.box.__h, alpha = c.box:GetAlpha(), frame = p[2], rot = c.rot, level = c.level }
 end
 local function Showing(name)
     local n = 0
@@ -196,22 +197,52 @@ At(HOLD + first.ts + 0.10)
 local b = Drawn(first)
 check(a and b and math.abs(a.y - (first.y0 + 0.5 * G * 0.05 ^ 2)) < 0.01 and (b.y - a.y) > (a.y - first.y0),
       "a coin falls under gravity, faster and faster")
-check(a.frame == me.frame and a.h < 15 or b.h < 15, ("spinning as it falls: seen at %.1f and %.1f of its 15 pixels"):format(a.h, b.h))
-At(HOLD + first.tl + 0.03)
-local c = Drawn(first)
-check(c.y < first.y1 and c.h == 15, "where it lands, it bounces")
-At(HOLD + first.th + 0.01)
-c = Drawn(first)
-check(c.y == first.y1 and c.h == 15 and math.abs(c.x - me.w / 2) <= 1.5, "and settles, in the middle of its column")
-local straight = true
-for _, coin in ipairs(mine) do
-    if math.abs(coin.x1 - me.w / 2) > 1.5 then straight = false end
+check(a.frame == me.frame and a.rot ~= b.rot, ("turning as it falls (%.2f, then %.2f)"):format(a.rot, b.rot))
+-- It comes into sight rather than popping up.
+At(HOLD + first.ts + 0.02)
+check(Drawn(first).alpha > 0.1 and Drawn(first).alpha < 0.5, "a coin fades into sight as it starts to fall")
+-- It tumbles, spinning over: seen edge on and face on, and lands nearly flat.
+local thinnest, tallest = math.huge, 0
+for k = 1, 40 do
+    At(HOLD + first.ts + (first.tl - first.ts) * k / 41)
+    local d = Drawn(first)
+    thinnest, tallest = math.min(thinnest, d.h), math.max(tallest, d.h)
 end
-check(math.abs(mine[2].y1 - mine[1].y1 + 5) < 0.001 and math.abs(mine[20].y1 - mine[1].y1 + 95) < 0.001 and straight,
-      "each coin 5 pixels above the one before, within a pixel and a half of the middle: a stack")
-check(math.abs(first.y1 + 7.5 - (me.h - 6)) < 0.001, "standing on the foot of the column, in sight")
+check(thinnest < 6 and tallest > 22 and tallest <= 24, ("tumbling over: from %.1f to %.1f pixels tall (15 lying flat, never quite round)"):format(thinnest, tallest))
+At(HOLD + first.tl - 0.001)
+local before = Drawn(first)
+check(before.h > 11 and before.h < 20 and math.abs(before.rot) < 0.2, ("it comes down nearly flat (%.1f pixels)"):format(before.h))
+At(HOLD + first.tl + 0.001)
+local hit = Drawn(first)
+check(hit.h < before.h, ("and gives a little as it hits (%.1f, then %.1f)"):format(before.h, hit.h))
+local hops = first.hops
+check(#hops >= 2 and hops[2].v < hops[1].v and hops[1].v * hops[1].v / (2 * G) <= 6 + 0.001,
+      ("it bounces %d times, each lower, the first at most 6 pixels"):format(#hops))
+At(HOLD + hops[1].at + hops[1].len / 2)
+local c = Drawn(first)
+check(c.y < first.y1 - 1, "where it lands, it bounces")
+At(HOLD + first.still + 0.5)
+c = Drawn(first)
+check(c.y == first.y1 and math.abs(c.h - 15) < 0.05 and math.abs(c.rot) < 0.01 and math.abs(c.x - me.w / 2) <= 1.5,
+      "then rocks still, flat, in the middle of its column")
+local straight, lineUp, order = true, true, true
+for k, coin in ipairs(mine) do
+    if math.abs(coin.x1 - me.w / 2) > 1.5 then straight = false end
+    if k > 1 and math.abs(coin.y1 - mine[k - 1].y1 + 5) > 1.5 + 0.001 then lineUp = false end
+    if k > 1 and coin.order <= mine[k - 1].order then order = false end
+end
+check(lineUp and straight, "each coin about 5 pixels above the one before, within a pixel and a half of the middle: a stack")
+check(order, "each drawn over the one under it")
+check(math.abs(first.y1 + 7.5 - (me.h - 6)) <= 0.75 + 0.001, "standing on the foot of the column, in sight")
+-- Not in step: coins of the same height in different columns fall at
+-- slightly different moments; a stack's last coin keeps its exact time.
+local apart = false
+for k = 1, 3 do
+    if mine[k].ts ~= borins[k].ts then apart = true end
+end
+check(apart, "the columns drop their coins out of step, a little")
 -- Everyone at the same pace.
-At(HOLD + 0.45)
+At(HOLD + 0.495)
 check(Showing("Mira Vale") == 5 and Showing("Borin Oak") == 5 and Showing("Sela Marrow") == 5 and Showing("Kett Longstride") == 4,
       "half a second in, five coins each: the same pace for everyone (Kett has only four)")
 check(clinks > 0, ("coins clink as they land (%d so far)"):format(clinks))
@@ -234,7 +265,7 @@ me = Col("Mira Vale")
 check(me.total == Gold(50000) and me.place == 1 and fanfares == 1, "the last coin down: the winner's 5g, with the fanfare")
 check(Down() < 3, ("the coins take %.1f seconds"):format(Plan().endAt))
 local landed = Drawn(mine[20])
-check(landed and landed.alpha == 1 and landed.y == mine[20].y1, "every coin where it fell")
+check(landed and landed.alpha == 1 and landed.y == mine[20].y1 and landed.x == mine[20].x1, "every coin where it fell")
 
 print("-- the walk to the podium")
 At(Down() + PAUSE - 0.01)
@@ -294,33 +325,45 @@ check(heap[1].ts > lastStack and math.abs(heap[2].ts - heap[1].ts - 0.035) < 0.0
       "they come once the stack is full, three times as fast")
 check(DoneAt("Mira Vale") > DoneAt("Borin Oak"), "the winner is still the last one done")
 me = Col("Mira Vale")
-local left, right, highest, inside = 0, 0, math.huge, true
+local left, right, front, back, highest, inside = 0, 0, 0, 0, math.huge, true
+local bottom = math.huge -- the drawing order of the stack's lowest coin
+for _, coin in ipairs(stack) do bottom = math.min(bottom, coin.order) end
+local behindUnder, frontOver = true, true
 for _, coin in ipairs(heap) do
     if coin.x2 < me.w / 2 - 5 then left = left + 1 elseif coin.x2 > me.w / 2 + 5 then right = right + 1 end
+    if coin.row > 0 then front = front + 1 elseif coin.row < 0 then back = back + 1 end
+    if coin.row < 0 and coin.order >= bottom then behindUnder = false end
+    if coin.row > 0 and coin.order <= stack[20].order then frontOver = false end
     highest = math.min(highest, coin.y2)
-    if coin.x2 - 15 < 0 or coin.x2 + 15 > me.w or coin.y2 + 7.5 * coin.squash > me.h - 6 + 0.001 then inside = false end
+    if coin.x2 - 15 < 0 or coin.x2 + 15 > me.w or coin.y2 + 7.5 * coin.hf2 > me.h + 0.001 then inside = false end
 end
 check(left >= 8 and right >= 8, ("they roll down both sides of the stack (%d left, %d right)"):format(left, right))
+check(front >= 3 and back >= 3, ("and to its front and back (%d in front, %d behind)"):format(front, back))
+check(behindUnder and frontOver, "those behind it drawn under it, those in front over it")
 check(highest > stack[20].y1 and inside, "into a heap lower than the stack, within the column, on its foot")
 local poured = heap[10]
 At(HOLD + poured.tl + 0.01)
 local onTop = Drawn(poured)
-check(onTop and onTop.x == poured.x1 and onTop.y <= poured.y1 and math.abs(poured.y1 + 7.5 - (stack[20].y1 + 2.5)) < 0.001,
-      "a poured coin lands on top of the stack")
-At(HOLD + poured.th + 0.25 / 2)
+check(onTop and math.abs(onTop.x - poured.x1) <= 2 and onTop.y <= poured.y1 and onTop.level == poured.top
+      and math.abs(poured.y1 + 7.5 - (stack[20].y1 + 2.5)) <= 0.75 + 0.001,
+      "a poured coin lands on top of the stack, drawn over everything")
+At(HOLD + poured.roll + 0.3 / 2)
 local rolling = Drawn(poured)
-check(rolling and math.abs(rolling.x - (poured.x1 + poured.x2) / 2) < 0.01 and rolling.y > onTop.y,
-      "then rolls off it and down")
+local function Gap(d, x, y) return math.sqrt((d.x - x) ^ 2 + (d.y - y) ^ 2) end
+check(rolling and math.abs(Gap(rolling, poured.x1, poured.y1) / Gap({ x = poured.x2, y = poured.y2 }, poured.x1, poured.y1) - 0.25) < 0.01,
+      "then rolls off it and down, faster and faster: a quarter of the way at half the time")
 At(HOLD + poured.tr + 0.01)
 local lying = Drawn(poured)
-local flattest, roundest = 1, 0
+local flattest, roundest, turned = math.huge, 0, 0
 for _, coin in ipairs(heap) do
-    flattest, roundest = math.min(flattest, coin.squash), math.max(roundest, coin.squash)
+    flattest, roundest = math.min(flattest, coin.hf2), math.max(roundest, coin.hf2)
+    turned = math.max(turned, math.abs(coin.psi2))
 end
-check(lying.x == poured.x2 and lying.y == poured.y2 and math.abs(lying.h - 15 * poured.squash) < 0.001,
-      ("and lies on the heap (%.1f pixels tall)"):format(lying.h))
-check(flattest < 0.8 and roundest <= 1 and roundest - flattest > 0.2,
-      ("the heap's coins lying anyhow, some flatter than others (%.2f to %.2f)"):format(flattest, roundest))
+check(lying.x == poured.x2 and lying.y == poured.y2 and math.abs(lying.h - 15 * poured.hf2) < 0.001
+      and lying.rot == poured.psi2 and lying.level == poured.order,
+      ("and lies on the heap (%.1f pixels tall, turned %.2f)"):format(lying.h, lying.rot))
+check(flattest < 0.85 and roundest > 1.15 and turned > 0.2,
+      ("the heap's coins tipped down its slopes: %.2f to %.2f of flat, turned up to %.2f"):format(flattest, roundest, turned))
 check(Total() < 6.5, ("all in %.1f seconds"):format(Total()))
 curtain.__scripts.OnClick(curtain, "LeftButton")
 check(Showing("Mira Vale") == 0, "a click puts the heap away with the rest")
@@ -332,6 +375,15 @@ began = nil
 Leave()
 check(not Plan().overflow and #CoinsOf("Mira Vale") == 20 and #CoinsOf("Borin Oak") == 14,
       "a winner less than half as much again ahead: a full stack, and no more")
+curtain.__scripts.OnClick(curtain, "LeftButton")
+Reset()
+-- Nearly level: as many coins each, and still done in the right order.
+ITEMS[206] = { 3, 49000, 4, 1 }
+s = Run(9123, "Near Keep", { me = five, ["Borin Oak"] = ItemLink(206, "Nearly five", 3) })
+began = nil
+Leave()
+check(#CoinsOf("Mira Vale") == 20 and #CoinsOf("Borin Oak") == 20 and DoneAt("Borin Oak") < DoneAt("Mira Vale"),
+      ("4g 90s against 5g, 20 coins each: 4g 90s is done first (%.3f against %.3f s)"):format(DoneAt("Borin Oak"), DoneAt("Mira Vale")))
 curtain.__scripts.OnClick(curtain, "LeftButton")
 Reset()
 -- Alone with loot among the others: the most of all.
@@ -417,7 +469,8 @@ check(main:IsShown() and Racing() and Col("Mira Vale").total == "" and said == "
 curtain.__scripts.OnClick(curtain, "LeftButton")
 o.race = false
 said = Printed(function() SlashCmdList.THATLUCKYBASTARD("race") end)
-check(not Racing() and said:find("No race: it takes the Race option", 1, true) ~= nil,
+check(not Racing() and said:find("No race: it takes the Race option, columns in podium order (not mini mode), "
+          .. "two players and some loot.", 1, true) ~= nil,
       "and says what it takes when there is nothing to run")
 o.race = true
 
@@ -560,7 +613,7 @@ Leave()
 At(HOLD + 1)
 me = Col("Mira Vale")
 local base = Drawn(CoinsOf("Mira Vale")[1])
-check(Racing() and me.h < 400 and base and math.abs(base.y + 7.5 - (me.h - 6)) < 0.001,
+check(Racing() and me.h < 400 and base and math.abs(base.y + 7.5 - (me.h - 6)) <= 0.75 + 0.001,
       ("thirty lines of loot to come: the column races short (%d), its coins in sight under its head"):format(me.h))
 At(Total() + 0.1)
 check(not Racing() and Col("Mira Vale").h > 600 and Showing("Mira Vale") == 0,

@@ -471,8 +471,12 @@ local function Paper(s)
         if a and a.fit and STORIES[a.key] and (not starFit or a.fit > starFit) then star, starFit = p, a.fit end
     end
 
+    -- A run still going: nobody has walked out of it yet.
+    local going = s == ns.db.active
+
     local doc = { stories = {} }
-    doc.masthead = "The " .. place .. " Gazette"
+    -- "The Deadmines Gazette", not "The The Deadmines Gazette".
+    doc.masthead = "The " .. place:gsub("^[Tt]he ", "") .. " Gazette"
     doc.tagline = date("%A %d %B %Y", s.startedAt)
         .. "    -    All the loot that's fit to print    -    Price: your dignity"
 
@@ -484,25 +488,32 @@ local function Paper(s)
         starHead = choose(#heads)
         doc.headline = ("%s: %s"):format(ns.DisplayName(star.name):upper(), heads[starHead])
     elseif top and top.market > 0 then
-        doc.headline = pick({
-            "%s WALKS OUT OF %s THE RICHEST",
-            "%s TOPS THE LOOT TABLE IN %s",
-        }):format(ns.DisplayName(top.name):upper(), place:upper())
+        local heads = { "%s WALKS OUT OF %s THE RICHEST", "%s TOPS THE LOOT TABLE IN %s" }
+        local head = pick(heads)
+        if going then head = heads[2] end
+        doc.headline = head:format(ns.DisplayName(top.name):upper(), place:upper())
     else
         doc.headline = ("QUIET DAY IN %s: NOBODY GETS ANYTHING"):format(place:upper())
     end
 
     local duration = ns.RunDuration(s)
     local after = duration and (" after " .. ns.Duration(duration)) or ""
+    local inside = duration and (" for " .. ns.Duration(duration)) or ""
     if top and sum.market > 0 then
-        doc.lead = ("A party of %d emerged from %s%s carrying loot worth %s. %s took home %d%% of it%s")
-            :format(n, place, after, ns.MoneyPlain(sum.market), ns.DisplayName(top.name),
+        local lead = going
+            and "A party of %d has been in %s%s, carrying loot worth %s so far. %s holds %d%% of it%s"
+            or "A party of %d emerged from %s%s carrying loot worth %s. %s took home %d%% of it%s"
+        doc.lead = lead
+            :format(n, place, going and inside or after, ns.MoneyPlain(sum.market), ns.DisplayName(top.name),
                     top.market / sum.market * 100 + 0.5,
                     pick({
                         ", and is said to be \"very humble about it\".",
                         ". Nobody else wishes to comment.",
                         ", to nobody's surprise but their own.",
                     }))
+    elseif going then
+        doc.lead = ("A party of %d has been in %s%s with nothing to show for it yet. Morale is described as \"fine\".")
+            :format(n, place, inside)
     else
         doc.lead = ("A party of %d emerged from %s%s with nothing to show for it. Morale is described as \"fine\".")
             :format(n, place, after)

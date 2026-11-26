@@ -811,7 +811,7 @@ local function Refresh()
 end
 
 StaticPopupDialogs["THATLUCKYBASTARD_KEEP_FEWER"] = {
-    text = ns.NAME .. "\n\nKeep only %s runs?\n\n%s",
+    text = ns.NAME .. "\n\nKeep only %s?\n\n%s",
     button1 = YES,
     button2 = NO,
     OnAccept = function(_, limit)
@@ -837,8 +837,9 @@ local function KeepRuns(limit)
     if over == 0 then
         Opt().maxHistory = limit
     else
-        Confirm("THATLUCKYBASTARD_KEEP_FEWER", tostring(limit),
-            ("The %d oldest will be deleted now. Pinned runs stay."):format(over), limit)
+        Confirm("THATLUCKYBASTARD_KEEP_FEWER", limit == 1 and "1 run" or (limit .. " runs"),
+            over == 1 and "The oldest will be deleted now. Pinned runs stay."
+                or ("The %d oldest will be deleted now. Pinned runs stay."):format(over), limit)
     end
 end
 

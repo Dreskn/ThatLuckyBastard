@@ -1850,11 +1850,11 @@ local AWARDS = {
       fit = function(_, x) return x.repeated and 0.5 or nil end,
       detail = function(_, x) return { text = ("Rolled %d twice in a row"):format(x.repeated) } end },
     { key = "hotstreak", title = "Hot Streak", icon = "Spell_Fire_Fireball02", group = "moment",
-      how = "Won 3 rolls in a row, each against another roller.",
+      how = "Won 3 or more rolls in a row, each against another roller.",
       fit = function(_, x) return Fit(x.winRun, HOT_STREAK, 6) end,
       detail = function(_, x) return { text = ("Won %d rolls in a row"):format(x.winRun) } end },
     { key = "dryspell", title = "Dry Spell", icon = "Spell_Frost_ChainsOfIce", group = "moment",
-      how = "Lost 12 rolls in a row.",
+      how = "Lost 12 or more rolls in a row.",
       fit = function(_, x) return Fit(x.loseRun, DRY_SPELL, 20) end,
       detail = function(_, x) return { text = ("Lost %d rolls in a row"):format(x.loseRun) } end },
     { key = "nemesis", title = "Nemesis", icon = "Spell_Shadow_PsychicHorrors", group = "moment",
@@ -2446,9 +2446,9 @@ end
 ----------------------------------------------------------------------
 
 -- Seconds from the start of a run to its end (or to now while it is in
--- progress). Nil for example runs.
+-- progress).
 function ns.RunDuration(s)
-    if s.example or not s.startedAt then return end
+    if not s.startedAt then return end
     local finish = s.endedAt or s.leftAt or (s == db.active and time()) or nil
     if finish then return math.max(finish - s.startedAt, 0) end
 end
@@ -3095,7 +3095,6 @@ end
 ----------------------------------------------------------------------
 
 SLASH_THATLUCKYBASTARD1 = "/tlb"
-SLASH_THATLUCKYBASTARD2 = "/lucky"
 SlashCmdList.THATLUCKYBASTARD = function(msg)
     local cmd, arg = (msg or ""):lower():match("^%s*(%S*)%s*(%S*)")
     if cmd == "" or cmd == "show" then
@@ -3115,7 +3114,7 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
     elseif cmd == "race" then
         ns.ShowWindow(true, ns.ViewedRun()) -- the reveal again, for the run on show
         if not ns.Racing() then
-            Print("No race: it takes the Race option, columns in podium order, and two players with loot.")
+            Print("No race: it takes the Race option, columns in podium order (not mini mode), two players and some loot.")
         end
     elseif cmd == "analysis" or cmd == "timeline" or cmd == "rolls" or cmd == "numbers" then
         ns.ShowAnalysis(cmd ~= "analysis" and cmd or nil, ns.ViewedRun())
@@ -3183,7 +3182,7 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
         Print("/tlb delete - delete the run on show")
         Print("/tlb clear - delete all runs except pinned ones (asks first)")
         Print("/tlb start, /tlb stop - track a run by hand, outside a dungeon")
-        Print("/tlb theme modern|classic|receipt")
+        Print("/tlb theme modern, classic or receipt")
         Print("/tlb capture - record raw loot messages, for troubleshooting")
     end
 end
@@ -3195,36 +3194,119 @@ end
 
 ns.exampleRuns = {}
 
--- Example loot is given as item IDs only. Each item goes through the same
--- valuation as real loot: vendor price and category from the client,
--- auction price from Auctionator / TSM.
-local function AddItemByID(p, id, count)
-    if C_Item and C_Item.DoesItemExistByID and not C_Item.DoesItemExistByID(id) then return end
-    if not Item or not Item.CreateFromItemID then return end
-    local item = Item:CreateFromItemID(id)
-    if item:IsItemEmpty() then return end
-    item:ContinueOnItemLoad(function()
-        local link = item:GetItemLink()
-        if not link then return end
-        local e = { link = link, count = count or 1, vendor = 0, cat = "other" }
-        p.items[#p.items + 1] = e
-        FillItem(e)
-        ns.Refresh()
-    end)
+-- Calls done(links) once, with links[id] for every item of `ids` the
+-- client knows, when it has them all (or after EXAMPLE_WAIT seconds). An
+-- item that does not exist on this client is left out.
+local EXAMPLE_WAIT = 10
+local function LoadItems(ids, done)
+    local links, waiting, called = {}, 1, false
+    local function call()
+        if called then return end
+        called = true
+        done(links)
+    end
+    local function one()
+        waiting = waiting - 1
+        if waiting == 0 then call() end
+    end
+    for id in pairs(ids) do
+        local _, link = GetItemInfo(id)
+        if link then
+            links[id] = link
+        elseif Item and Item.CreateFromItemID
+                and not (C_Item and C_Item.DoesItemExistByID and not C_Item.DoesItemExistByID(id)) then
+            local item = Item:CreateFromItemID(id)
+            if not item:IsItemEmpty() then
+                waiting = waiting + 1
+                item:ContinueOnItemLoad(function()
+                    links[id] = item:GetItemLink()
+                    one()
+                end)
+            end
+        end
+    end
+    one()
+    C_Timer.After(EXAMPLE_WAIT, call)
+end
+
+-- Fills an example run with its loot and rolls, as a finished run is
+-- saved, so that every window treats it like one. Each item goes through
+-- the same valuation as real loot: vendor price and category from the
+-- client, auction price from Auctionator / TSM.
+local function BuildExample(s, loot, links)
+    for _, l in ipairs(loot) do
+        local minute, who, id, count, roll = l[1], l[2], l[3], l[4] or 1, l[5]
+        local p, link = s.players[who], links[id]
+        if p and link then
+            local entryKey = EntryKey(link)
+            local e = p.items[entryKey]
+            if not e then
+                e = { link = link, count = 0, vendor = 0, cat = "other" }
+                p.items[entryKey] = e
+                FillItem(e)
+                s.nextId = (s.nextId or 0) + 1
+                e.id = s.nextId
+            end
+            e.count = e.count + count
+            if ns.EnchantingMaterial(link) then ns.SetIgnored(e, ns.IgnoredCopies(e) + count) end
+            local t = math.floor(minute * 60)
+            s.log[#s.log + 1] = ("%d:%d:%d:%d"):format(t, NameIndex(s, who), e.id, count)
+            if roll and roll[who] then
+                local r = { key = ItemKey(e), t = t, need = {}, greed = {}, pass = {}, num = {} }
+                for name, choice in pairs(roll) do
+                    local how, n = choice:match("^(%a)(%d*)$")
+                    n = tonumber(n)
+                    local st = RollStats(s, name)
+                    if how == "n" then
+                        r.need[name] = true
+                    elseif how == "g" then
+                        r.greed[name] = true
+                    else
+                        r.pass[name] = true
+                        st.passes = st.passes + 1
+                    end
+                    if n then
+                        r.num[name] = n
+                        st.sum, st.n = st.sum + n, st.n + 1
+                        if not st.high or n > st.high then st.high = n end
+                        if not st.low or n < st.low then st.low = n end
+                    end
+                end
+                local method = r.need[who] and "need" or "greed"
+                LogRoll(s, r, who, method)
+                TagWin(e, { [method] = 1 })
+            end
+        end
+    end
+    s.nextId = nil
+    ns.Refresh()
 end
 
 ThatLuckyBastard = {
-    -- run.players[name] = { class = "MAGE", loot = { { itemID, count }, ... } }
-    AddExampleRun = function(run)
-        run.example = true
-        for _, p in pairs(run.players) do p.items = {} end
-        ns.exampleRuns[#ns.exampleRuns + 1] = run
+    -- `def`: name, startedAt, length (minutes), players[name] = { class,
+    -- role }, bosses = { { minute, name } }, coins[name] = copper, and loot
+    -- = { { minute, who, itemID, count, roll } } in order, where roll[name]
+    -- is "n98", "g12" or "p" (see ThatLuckyBastard_Example/Example.lua).
+    AddExampleRun = function(def)
+        local start = def.startedAt or time()
+        local s = {
+            name = def.name, example = true, startedAt = start,
+            endedAt = def.length and start + math.floor(def.length * 60) or nil,
+            players = {}, names = {}, log = {}, rollLog = {}, rollStats = {}, bosses = {},
+        }
+        for name, p in pairs(def.players or {}) do
+            s.players[name] = { class = p.class, role = p.role, items = {}, money = def.coins and def.coins[name] }
+        end
+        for _, b in ipairs(def.bosses or {}) do
+            s.bosses[#s.bosses + 1] = { t = math.floor(b[1] * 60), name = b[2] }
+        end
+        s.kills = #s.bosses
+        ns.exampleRuns[#ns.exampleRuns + 1] = s
+        local loot, ids = def.loot or {}, {}
+        for _, l in ipairs(loot) do ids[l[3]] = true end
         -- Wait a moment so price addons have finished loading their data.
         C_Timer.After(3, function()
-            for _, p in pairs(run.players) do
-                for _, l in ipairs(p.loot or {}) do AddItemByID(p, l[1], l[2]) end
-            end
-            ns.Refresh()
+            LoadItems(ids, function(links) BuildExample(s, loot, links) end)
         end)
     end,
 }

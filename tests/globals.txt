@@ -29,5 +29,5 @@ UnitName YES hooksecurefunc issecretvalue tinsert wipe
 Auctionator TSM_API
 
 # The addon's own: saved data, slash command, named frames, the public table
-SLASH_THATLUCKYBASTARD1 SLASH_THATLUCKYBASTARD2 ThatLuckyBastard ThatLuckyBastardDB
+SLASH_THATLUCKYBASTARD1 ThatLuckyBastard ThatLuckyBastardDB
 ThatLuckyBastardFrame ThatLuckyBastardMeterFrame ThatLuckyBastard_OnAddonCompartmentClick

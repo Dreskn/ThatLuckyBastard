@@ -354,7 +354,7 @@ type_in("maxHistory", "10")
 check(#POPUPS == 1 and POPUPS[1].which == "THATLUCKYBASTARD_KEEP_FEWER" and o.maxHistory == 100 and #db.history == 12
       and box("maxHistory"):GetText() == "100",
       "a number that would delete runs asks first, deletes nothing yet, and the box shows the number in force")
-check(POPUPS[1].a == "10" and POPUPS[1].b == "The 1 oldest will be deleted now. Pinned runs stay.",
+check(POPUPS[1].a == "10 runs" and POPUPS[1].b == "The oldest will be deleted now. Pinned runs stay.",
       "it says how many go (" .. tostring(POPUPS[1].b) .. ")")
 StaticPopupDialogs.THATLUCKYBASTARD_KEEP_FEWER.OnAccept(nil, POPUPS[1].data)
 local pinnedLeft = false

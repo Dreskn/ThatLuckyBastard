@@ -1120,7 +1120,7 @@ local function BuildLines(sum, awards, insights)
         add({})
         add({ indent = 4, bg = 0.12, label = HeadCode() .. "Total|r", count = sum.count,
               vendor = Money(sum.vendor), market = Money(sum.market), share = "100%" })
-        add({ indent = 4, label = "Equal split (" .. n .. " players)",
+        add({ indent = 4, label = "Equal split (" .. n .. (n == 1 and " player)" or " players)"),
               vendor = Money(sum.vendor / n), market = Money(sum.market / n), share = Pct(1, n) })
     end
     local texts = Breakdown.FooterTexts(sum, insights, false)
