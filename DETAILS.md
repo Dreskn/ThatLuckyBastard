@@ -8,7 +8,7 @@ Everything the addon does, page by page, with its commands, options and limits. 
 - **Per item:** every item with its count and value, grouped by category: epic, blue and green BoE, Bind on Pickup, quest items, profession materials, other, coins, junk. Coins are one sum per player, with no items under it.
 - **Item menu:** right-click an item. *Auction price* or *Vendor price* sets its price for every copy in the run. *Ignore* keeps it listed, worth nothing: no value, no item count, no award, no drop in the statistics. For a stack, - and + set how many copies are ignored. *Split with* shares its value equally between the players you tick: it then shows under each of them with their share (1/2, 1/3...). Untick its looter to give it to the others. Copies picked up and roll wins stay with the looter; the value, Need and Greed value included, follows the shares. Ignore and Split cover the copies already looted: later copies follow the general rule, so a later copy of a split item shows as a line of its own. These marks are saved with the run and travel in its share code (versions before 0.7.0 read past them; 0.8.0 counts a partly ignored stack in full).
 - **Enchanting materials:** dust, essences, shards and crystals (Trade Goods › Enchanting) are ignored as they are looted, by anyone: nearly all come from disenchanting an item already counted. Counted again in the item menu, for the rare one from a chest. They close no bet calls and get no loot notice. Runs looted before 0.8.1 stay as they are. Statistics counted when the run closed keep what they counted.
-- **Two layouts:** one column per player (with portraits), or an expandable list. A group of more than five gets columns for its top five by loot, and the others on a *bench* under them: small cards side by side, each with a picture, the name, the award and the loot value one under the other (the options say which). One row of them is shown; it ends with an arrow marked **List**, with the number of players the row had no room for under it, which shows that run as a list without touching the option. At the top of the list its mirror, an arrow marked **Columns**, brings the columns back.
+- **Columns or list:** one column per player (with portraits), or an expandable list. A group of more than five gets columns for its top five by loot, and the others on a *bench* under them: small cards side by side, each with a picture, the name, the award and the loot value one under the other (the options say which). One row of them is shown; it ends with an arrow marked **List**, with the number of players the row had no room for under it, which shows that run as a list without touching the option. At the top of the list its mirror, an arrow marked **Columns**, brings the columns back.
 - **Mini mode:** the third layout (Options › Breakdown), in any theme. The window becomes a small one: under its title bar, one card per player with their picture, name, award and total (as far as the options show them), the biggest total first unless another order is chosen. There are no columns, no loot, no footer, and no buttons but the cogwheel beside the cross, which opens the options (in the full window it is at the foot, where the Options button was); the window is exactly as big as its cards: about 570 by 150 for five players, narrower for fewer, with only the dungeon's short name in its title bar (ZF, Mara, KDS, as in the meter). A run of more than five players shows its top five, and the row then ends with an arrow that counts the others and shows the run as a list in the full window, where the Columns arrow leads back. There is no race in mini mode.
 - **Need rolls:** Analysis › Rolls has an All | Need switch. Need lists only what was won on Need, with each player's Need wins and what they are worth. Hovering an item shows whether it was won on Need or Greed, and everyone's roll on it.
 - **The race:** when you leave a run alive, its columns race for their places (each time you leave it: go back in, and it is run again on the way out). They start side by side in name order, with no total showing. Each player's loot falls into their column as gold coins, one at a time and all at the same pace: they fall, spin, bounce and settle into a stack, with a clink as they land. When a player's last coin is down, their total is shown with their place. So the smallest stack is done first and takes the last place, and the last one still growing has won. A winner with half as much again as the next player or more fills their column, and the rest pours over the top, faster, rolling down into a heap around the stack. The columns then move to their places on the podium, and the loot, the shares and the awards appear. It takes about five seconds, and a click on the columns skips it; `/tlb race` plays it again for the run on show. It needs one column per player in podium order (both are the defaults) and two players or more with some loot between them; it can be switched off under End of run.
@@ -24,7 +24,7 @@ Everything the addon does, page by page, with its commands, options and limits. 
 
 Two windows about the run on show, opened from the main window's top row. Each closes again on a second click.
 
-- **Front page:** a mock newspaper written from the run, with a short story for every award. The headline goes to the run's most outstanding award: the one furthest from normal, whoever has it.
+- **Front page:** a mock newspaper written from the run, with a short story for every award. The headline goes to the run's most outstanding award: the one furthest from normal, whoever has it. Opened during a run, it reports on the run so far.
 - **Analysis:** three tabs about the run, following the main window from run to run:
   - *Timeline:* a chart of every player's running total through the run, with boss kills marked. You see when someone pulled ahead, and which drop did it.
   - *Rolls:* every roll that was won: the item, the winner, and what everyone else rolled.
@@ -95,7 +95,8 @@ A run starts automatically when you enter a dungeon (and raids, if enabled). The
 
 | Command | Effect |
 | --- | --- |
-| `/tlb` or `/lucky` | Open or close the window |
+| `/tlb` | Open or close the window |
+| `/tlb help` | List every command |
 | `/tlb options` | Open the options |
 | `/tlb paper` | The front page of the run on show |
 | `/tlb race` | The race again, for the run on show |
@@ -186,7 +187,7 @@ The commands changed with the name: `/fs` is now `/tlb`.
 
 ## Example data
 
-`ThatLuckyBastard_Example` is an optional test addon, found in the source repository rather than in the download. It adds three fake runs so the window can be tried without running a dungeon. Its runs are never saved; disable or delete it to remove them.
+`ThatLuckyBastard_Example` is an optional test addon, found in the source repository rather than in the download. It adds three made-up runs, with rolls, boss kills and coins, so every window can be tried without running a dungeon. Its runs are never saved; disable or delete it to remove them.
 
 ## Development
 
@@ -198,52 +199,10 @@ python tests/luacheck.py ThatLuckyBastard/*.lua
 
 `luacheck.py` compiles every file and fails one that nears Lua's limits (180 of 200 top-level locals, 50 of 60 outside variables in a function) or uses a global name missing from `tests/globals.txt`. The main window is `UI.lua` plus `Receipt`, `Footer`, `Bench`, `Columns` and `Race`, loaded in that order and sharing the `ns.Breakdown` table.
 
+Each `tests/test_*.lua` file is a suite, run on its own:
+
 ```bash
 python tests/run_tests.py ThatLuckyBastard tests/test_ui.lua
-```
-
-```bash
-python tests/run_tests.py ThatLuckyBastard tests/test_pin.lua
-```
-
-```bash
-python tests/run_tests.py ThatLuckyBastard tests/test_looks.lua
-```
-
-```bash
-python tests/run_tests.py ThatLuckyBastard tests/test_audit.lua
-```
-
-```bash
-python tests/run_tests.py ThatLuckyBastard tests/test_share.lua
-```
-
-```bash
-python tests/run_tests.py ThatLuckyBastard tests/test_options.lua
-```
-
-```bash
-python tests/run_tests.py ThatLuckyBastard tests/test_receipt.lua
-```
-
-```bash
-python tests/run_tests.py ThatLuckyBastard tests/test_summary.lua
-```
-
-```bash
-python tests/run_tests.py ThatLuckyBastard tests/test_regulars.lua
-```
-
-```bash
-python tests/run_tests.py ThatLuckyBastard tests/test_awards.lua
-```
-
-```bash
-python tests/run_tests.py ThatLuckyBastard tests/test_lifecycle.lua
-```
-
-```bash
-python tests/run_tests.py ThatLuckyBastard tests/test_storage.lua
 ```
 
 `tools/make_logo.py` draws the addon's mark (needs Pillow); the brand colours live at the top of `ThatLuckyBastard/Core.lua`. `tools/make_receipt_edge.py` draws the torn edge of the Receipt theme's receipts, and `tools/make_coin.py` the race's coin, which is our own drawing.
