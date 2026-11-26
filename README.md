@@ -20,7 +20,7 @@ It records what every player in your group loots, puts a gold value on it, and s
 - **While you play:** notices for valuable loot and familiar faces, one line in player and item tooltips, and a bet on the lucky bastard.
 - **Sharing:** post a run as a link in chat or as a short summary anyone can read, or copy it as a code to paste anywhere. Players with the addon open links and codes.
 
-| ![The race: each player's loot falls into their column as coins](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/race.png) | ![The front page](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/paper.png) |
+| ![The race: each player's loot falls into their column](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/race.png) | ![The front page](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/paper.png) |
 | --- | --- |
 | ![The timeline](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/timeline.png) | ![The meter](https://raw.githubusercontent.com/Dreskn/ThatLuckyBastard/main/.previews/meter.png) |
 
