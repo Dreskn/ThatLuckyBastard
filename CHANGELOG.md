@@ -1,11 +1,10 @@
 # Changelog
 
-## Unreleased
+## 0.8.4
 
 ### Changes
 
-- The race now drops the actual loot, each item as big as its worth.
-- The run's three best items fall last, one by one, while the totals count up.
+- New race visuals.
 
 ## 0.8.3
 
