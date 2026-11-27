@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.9.0
+
+### New
+
+- Farm tracker: shift-click the minimap button and watch your loot pop in, alone or in a group.
+- Farms in Statistics, and a solo page for runs done alone.
+- Add a note on runs (dungeon run or farming session).
+
 ## 0.8.4
 
 ### Changes
