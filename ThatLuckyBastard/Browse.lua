@@ -23,7 +23,7 @@ local _, ns = ...
 -- sorted by clicking a column title.
 
 local WIDTH, HEIGHT = 900, 480
-local TAB_W = 90 -- nine tabs across the window
+local TAB_W = 84 -- ten tabs across the window
 local ROW_H = 18
 local MAX_ROWS = 300
 local MAX_COLS = 8
@@ -34,6 +34,9 @@ b:SetPoint("CENTER", 0, -30)
 
 local mode = "dungeons"
 local sortCol, sortDesc = {}, {} -- per page: the column sorted by, and its direction
+local farmView = "zone"           -- the Farms page: "zone" (by zone) or "farm" (every farm)
+-- What the sort is kept under: the page, and on Farms its view.
+local function SortKey() return mode == "farms" and ("farms:" .. farmView) or mode end
 local Refresh
 
 ----------------------------------------------------------------------
@@ -144,10 +147,16 @@ PAGES.records = {
     end,
 }
 
+-- A run's note, in grey after its name (see ns.SetRunNote).
+local function WithNote(text, s)
+    if not s.note then return text end
+    return text .. "  |cff909090" .. s.note .. "|r"
+end
+
 PAGES.runs = {
     title = "Runs",
     blurb = "Click a run to open it.",
-    filter = "dungeon or player",
+    filter = "dungeon, player or note",
     cols = {
         { "Date", 120 }, { "Dungeon", 0 }, { "Time", 70, "RIGHT" }, { "Group", 95, "RIGHT" },
         { "Yours", 95, "RIGHT" }, { "Share", 55, "RIGHT" }, { "Fairness", 65, "RIGHT" }, { "Top looter", 150 },
@@ -156,19 +165,19 @@ PAGES.runs = {
         query = (query or ""):lower()
         local rows = {}
         for _, s in ipairs(ns.AllRuns()) do
-            local wanted = query == "" or Matches(s.name, query)
+            local wanted = query == "" or Matches(s.name, query) or Matches(s.note, query)
             if not wanted then
                 for name in pairs(s.players) do
                     if Matches(name, query) then wanted = true end
                 end
             end
-            if wanted then
+            if wanted and not s.manual then -- farms have their own page
                 local fig = RunFigures(s)
                 rows[#rows + 1] = {
                     run = s, pinned = s.pinned,
                     cells = {
                         DateText(s.startedAt),
-                        (s.name or "Run") .. (s.pinned and "  |cffffd100pinned|r" or ""),
+                        WithNote((s.name or "Run") .. (s.pinned and "  |cffffd100pinned|r" or ""), s),
                         fig.duration and ns.Duration(fig.duration) or "-",
                         ns.Money(fig.market),
                         ns.Money(fig.mine),
@@ -187,6 +196,85 @@ PAGES.runs = {
         return rows
     end,
 }
+
+-- Farms, kept apart from the dungeons, in two views (the switch on the
+-- page's second line): by zone, from the figures counted as each farm
+-- ended (ns.CommitFarm); and every farm still kept, with its note.
+local FARM_VIEWS = {}
+FARM_VIEWS.zone = {
+    title = "Farms",
+    blurb = "Your farms by zone. Best counts farms of 15 minutes or more.",
+    cols = {
+        { "Zone", 0 }, { "Farms", 45, "RIGHT" }, { "Time", 70, "RIGHT" }, { "Yours", 95, "RIGHT" },
+        { "Per hour", 95, "RIGHT" }, { "Best / hour", 95, "RIGHT" }, { "Top loot", 240 },
+    },
+    defaultSort = 5,
+    rows = function()
+        local rows = {}
+        for _, rec in pairs(ns.db.farms or {}) do
+            local perHour = (rec.time or 0) > 0 and rec.mine * 3600 / rec.time or nil
+            local top = ns.FarmTopItem(rec)
+            rows[#rows + 1] = {
+                link = top and top.link,
+                cells = {
+                    rec.name or "?",
+                    tostring(rec.farms or 0),
+                    ns.Duration(math.floor(rec.time or 0)),
+                    ns.Money(rec.mine),
+                    perHour and ns.Money(perHour) or "-",
+                    rec.best and ns.Money(rec.best) or "-",
+                    top and ("%dx %s  %s"):format(top.c, top.link or top.name or "?", ns.Money(top.v)) or "-",
+                },
+                keys = { rec.name or "?", rec.farms or 0, rec.time or 0, rec.mine or 0, perHour, rec.best, top and top.v },
+            }
+        end
+        if #rows == 0 then
+            return { { note = "No farm finished yet. Shift-click the minimap button for the farm tracker." } }
+        end
+        return rows
+    end,
+}
+FARM_VIEWS.farm = {
+    title = "Farms",
+    blurb = "Click a farm to open it.",
+    filter = "zone or note",
+    cols = {
+        { "Date", 120 }, { "Zone", 0 }, { "Time", 70, "RIGHT" }, { "Yours", 95, "RIGHT" },
+        { "Per hour", 95, "RIGHT" }, { "With", 80, "RIGHT" }, { "Note", 200 },
+    },
+    defaultSort = 1,
+    rows = function(query)
+        query = (query or ""):lower()
+        local rows = {}
+        for _, s in ipairs(ns.AllRuns()) do
+            if s.manual and (query == "" or Matches(s.name, query) or Matches(s.note, query)) then
+                local fig = RunFigures(s)
+                local n = 0
+                for _ in pairs(s.players) do n = n + 1 end
+                local perHour = fig.duration and fig.duration >= 60 and fig.mine * 3600 / fig.duration or nil
+                rows[#rows + 1] = {
+                    run = s, pinned = s.pinned,
+                    cells = {
+                        DateText(s.startedAt),
+                        (s.name or "Farm") .. (s.pinned and "  |cffffd100pinned|r" or "")
+                            .. (ns.InProgress(s) and "  |cff909090in progress|r" or ""),
+                        fig.duration and ns.Duration(fig.duration) or "-",
+                        ns.Money(fig.mine),
+                        perHour and ns.Money(perHour) or "-",
+                        n > 1 and (n .. " players") or "Solo",
+                        s.note and ("|cff909090" .. s.note .. "|r") or "",
+                    },
+                    keys = { s.startedAt or 0, s.name or "Farm", fig.duration, fig.mine, perHour, n, s.note or "" },
+                }
+            end
+        end
+        if #rows == 0 then
+            return { { note = query == "" and "No farm yet." or "No farm matches." } }
+        end
+        return rows
+    end,
+}
+PAGES.farms = FARM_VIEWS.zone
 
 PAGES.luck = {
     title = "Luck",
@@ -238,9 +326,9 @@ PAGES.regulars = {
     title = "Regulars",
     blurb = "People you have run with. Difference: your loot minus theirs.",
     cols = {
-        { "Player", 0 }, { "Runs", 55, "RIGHT" }, { "Theirs", 100, "RIGHT" }, { "Yours", 100, "RIGHT" },
-        { "Difference", 105, "RIGHT" }, { "Most often", 125, "RIGHT" },
-        { "Last run", 120, "RIGHT" },
+        { "Player", 0 }, { "Runs", 45, "RIGHT" }, { "Farms", 45, "RIGHT" }, { "Theirs", 95, "RIGHT" },
+        { "Yours", 95, "RIGHT" }, { "Difference", 100, "RIGHT" }, { "Most often", 120, "RIGHT" },
+        { "Last seen", 110, "RIGHT" },
     },
     defaultSort = 2,
     rows = function()
@@ -253,15 +341,16 @@ PAGES.regulars = {
             rows[#rows + 1] = {
                 cells = {
                     ns.ClassColored(ns.DisplayName(name), who.class),
-                    tostring(who.runs),
+                    tostring(who.runs or 0),
+                    tostring(who.farms or 0),
                     ns.Money(who.value),
                     mine and ns.Money(mine) or "-",
                     mine and Lead(mine - who.value) or "-",
                     top and ("%s x%d"):format(top.title, top.count) or "-",
                     DateText(who.last),
                 },
-                keys = { name, who.runs, who.value, mine or -1, mine and (mine - who.value) or -1e12,
-                         top and top.count or 0, who.last or 0 },
+                keys = { name, who.runs or 0, who.farms or 0, who.value, mine or -1,
+                         mine and (mine - who.value) or -1e12, top and top.count or 0, who.last or 0 },
             }
         end
         if #rows == 0 then
@@ -433,7 +522,7 @@ PAGES.awards = {
     end,
 }
 
-local PAGE_ORDER = { "dungeons", "records", "runs", "luck", "regulars", "drops", "roles", "search", "awards" }
+local PAGE_ORDER = { "dungeons", "farms", "records", "runs", "luck", "regulars", "drops", "roles", "search", "awards" }
 
 ----------------------------------------------------------------------
 -- Controls
@@ -466,6 +555,20 @@ search:SetScript("OnEscapePressed", search.ClearFocus)
 
 local exportBtn = ns.MakeButton("Export all runs", 120, function() ns.ShowExport("all") end, ui)
 
+-- The Farms page's switch: by zone, or every farm.
+local switch = {}
+for i, view in ipairs({ { "zone", "By zone" }, { "farm", "Every farm" } }) do
+    local s = ns.MakeButton(view[2], 80, function()
+        farmView = view[1]
+        PAGES.farms = FARM_VIEWS[view[1]]
+        search:SetText("")
+        Refresh()
+    end, ui)
+    s.isTab, s.view = true, view[1]
+    if i > 1 then s:SetPoint("LEFT", switch[i - 1], "RIGHT", 4, 0) end
+    switch[i] = s
+end
+
 local scroll = CreateFrame("ScrollFrame", nil, ui, "UIPanelScrollFrameTemplate")
 local content = CreateFrame("Frame", nil, scroll)
 content:SetSize(WIDTH - 46, 1)
@@ -480,10 +583,11 @@ for i = 1, MAX_COLS do
     hb:SetHeight(16)
     hb:SetScript("OnClick", function()
         if not hb.sortable then return end
-        if sortCol[mode] == i then
-            sortDesc[mode] = not sortDesc[mode]
+        local key = SortKey()
+        if sortCol[key] == i then
+            sortDesc[key] = not sortDesc[key]
         else
-            sortCol[mode], sortDesc[mode] = i, true -- biggest first is what one usually wants
+            sortCol[key], sortDesc[key] = i, true -- biggest first is what one usually wants
         end
         Refresh()
     end)
@@ -567,10 +671,17 @@ local function ApplyTheme()
     tabs[1]:ClearAllPoints()
     tabs[1]:SetPoint("TOPLEFT", 12, top)
     for _, tab in ipairs(tabs) do tab:SetFlat(flat) end
+    for _, s in ipairs(switch) do s:SetFlat(flat) end
     exportBtn:SetFlat(flat)
 
+    switch[1]:ClearAllPoints()
+    switch[1]:SetPoint("TOPLEFT", 12, top - 26)
     search:ClearAllPoints()
-    search:SetPoint("TOPLEFT", 18, top - 27)
+    if mode == "farms" then
+        search:SetPoint("LEFT", switch[2], "RIGHT", 14, 0) -- after the switch
+    else
+        search:SetPoint("TOPLEFT", 18, top - 27)
+    end
     exportBtn:ClearAllPoints()
     exportBtn:SetPoint("TOPRIGHT", -14, top - 26)
 
@@ -617,12 +728,20 @@ function Refresh()
     title:SetText(ns.Title("Statistics"))
     for i, key in ipairs(PAGE_ORDER) do tabs[i]:SetSelected(key == mode) end
 
-    -- Second line: the filter box with a hint beside it, or the description.
+    -- Second line: the filter box with a hint beside it, or the description
+    -- (on Farms, after its switch).
     search:SetShown(page.filter ~= nil)
+    for _, s in ipairs(switch) do
+        s:SetShown(mode == "farms")
+        s:SetSelected(s.view == farmView)
+    end
     blurb:ClearAllPoints()
     if page.filter then
         blurb:SetPoint("LEFT", search, "RIGHT", 10, 0)
         blurb:SetText("Filter: " .. page.filter .. (page.blurb ~= "" and ("      " .. page.blurb) or ""))
+    elseif mode == "farms" then
+        blurb:SetPoint("LEFT", switch[2], "RIGHT", 14, 0)
+        blurb:SetText(page.blurb)
     else
         blurb:SetPoint("LEFT", search, "LEFT", -4, 0)
         blurb:SetText(page.blurb)
@@ -635,10 +754,11 @@ function Refresh()
         if row.keys then sortable = true end
     end
     if sortable then
-        if not sortCol[mode] and page.defaultSort then
-            sortCol[mode], sortDesc[mode] = page.defaultSort, true
+        local key = SortKey()
+        if not sortCol[key] and page.defaultSort then
+            sortCol[key], sortDesc[key] = page.defaultSort, true
         end
-        if sortCol[mode] then data = Sorted(data, sortCol[mode], sortDesc[mode]) end
+        if sortCol[key] then data = Sorted(data, sortCol[key], sortDesc[key]) end
     end
     if #data > MAX_ROWS then
         for i = #data, MAX_ROWS + 1, -1 do data[i] = nil end
@@ -664,8 +784,8 @@ function Refresh()
         local hb = headerButtons[k]
         if col then
             local label = col[1]
-            if sortable and sortCol[mode] == k then
-                label = label .. (sortDesc[mode] and " |TInterface\\Buttons\\Arrow-Down-Up:11|t"
+            if sortable and sortCol[SortKey()] == k then
+                label = label .. (sortDesc[SortKey()] and " |TInterface\\Buttons\\Arrow-Down-Up:11|t"
                                                   or " |TInterface\\Buttons\\Arrow-Up-Up:11|t")
             end
             headers[k]:ClearAllPoints()

@@ -15,6 +15,7 @@ It records what every player in your group loots, puts a gold value on it, and s
 - **Need rolls:** Analysis › Rolls shows every roll, or only what was won on Need. Hover an item to see everyone's roll on it.
 - **The race:** as you leave, every player's loot falls into their column, each item as big as its worth, the run's three best last.
 - **Front page, analysis:** a mock newspaper, and the run's timeline, rolls and numbers, each in its own window.
+- **Farming:** a small tracker for farming outside dungeons, alone or in a group: a clock, gold per hour, and your loot popping up as it comes. A dungeon on the way can join the farm. Shift-click the minimap button.
 - **The meter:** a small window like a damage meter, with a bar per player that grows live as the loot comes in.
 - **Statistics:** your dungeons, records, luck, the people you run with and what dropped where, with item search and an export for spreadsheets.
 - **While you play:** notices for valuable loot and familiar faces, one line in player and item tooltips, and a bet on the lucky bastard.
@@ -48,7 +49,7 @@ The minimap button does the same: left-click for the window, right-click for the
 ## Good to know
 
 - The game only reports another player's loot when you are close to them. Loot picked up far away is missed.
-- Quest rewards, trades and crafted items are not counted.
+- Quest rewards (except on a farm), trades and crafted items are not counted.
 - Auction prices are taken as they are, so one unrealistic listing can distort a run.
 - Built for WoW Forever (interface 16001). The addon's text is in English only.
 

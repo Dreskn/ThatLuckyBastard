@@ -17,6 +17,8 @@ Footer.lua
 Bench.lua
 Columns.lua
 Race.lua
+Solo.lua
+Notes.lua
 Toast.lua
 Browse.lua
 Show.lua
@@ -27,6 +29,7 @@ Code.lua
 Share.lua
 Social.lua
 Meter.lua
+Farm.lua
 Bets.lua
 Coins.lua
 Options.lua

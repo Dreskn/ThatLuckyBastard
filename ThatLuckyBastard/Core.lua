@@ -586,8 +586,18 @@ local function AddPlayer(s, name, class)
     return p
 end
 
+-- Recording: a dungeon run until it is left; a farm (a run started by
+-- hand) until it ends, except while it is paused.
 local function Tracking(s)
-    return s and (s.manual or not s.leftAt)
+    if not s then return false end
+    if s.manual then return not s.pausedAt end
+    return not s.leftAt
+end
+
+-- A farm: a run started by hand (the farm strip's Start, /tlb start),
+-- anywhere outside a dungeon.
+function ns.IsFarm(s)
+    return s ~= nil and s.manual == true
 end
 
 local function SetRole(p, unit)
@@ -631,6 +641,23 @@ end
 
 local SplitRun -- defined with the zone rules, below
 
+-- In a farm, how long each player has been in the group, counted while
+-- the farm runs: p.time (seconds) and, while their stay goes on, p.since
+-- (when it began; never saved). Your own time is counted the same way.
+-- `set`: the group now (see GroupNow); nil ends every stay, at `at`.
+local function Presence(s, set, at)
+    at = at or time()
+    for name, p in pairs(s.players) do
+        local here = set ~= nil and (name == PLAYER_NAME or set[name] ~= nil)
+        if here and not p.since then
+            p.since = at
+        elseif not here and p.since then
+            p.time = (p.time or 0) + math.max(at - p.since, 0)
+            p.since = nil
+        end
+    end
+end
+
 local function UpdateRoster()
     local s = db.active
     if not Tracking(s) or not PLAYER_NAME then return end
@@ -639,6 +666,7 @@ local function UpdateRoster()
     if s.owner and s.owner ~= PLAYER_NAME then return end
     local set, n = GroupNow()
     if not s.manual and DifferentGroup(s, set, n) then return SplitRun(s) end
+    if s.solo then set, n = {}, 0 end -- a solo farm takes in nobody else
     local me = AddPlayer(s, PLAYER_NAME, PLAYER_CLASS)
     SetRole(me, "player")
     for name, unit in pairs(set) do
@@ -646,6 +674,7 @@ local function UpdateRoster()
         if issecret(class) then class = nil end
         SetRole(AddPlayer(s, name, class), unit)
     end
+    if s.manual then Presence(s, set) end
     if n > 0 then
         s.group = {}
         for name in pairs(set) do s.group[#s.group + 1] = name end
@@ -688,9 +717,10 @@ local CommitRun    -- defined with the records code, further down
 local function StripRun(s)
     s.rolls, s.pendingWins, s.killed = nil, nil, nil
     s.enteredAt, s.lastSeen, s.nextId = nil, nil, nil
-    s.leftDead, s.summarized, s.streakShown, s.group = nil, nil, nil, nil
+    s.leftDead, s.summarized, s.streakShown, s.group, s.solo = nil, nil, nil, nil, nil
+    s.asideAt, s.asked = nil, nil
     for _, p in pairs(s.players) do
-        p.joined = nil
+        p.joined, p.since = nil, nil
         for _, e in pairs(p.items) do
             e.lastAt, e.noAH, e.now = nil, nil, nil
         end
@@ -735,15 +765,20 @@ local function AtDefaults(fn, s)
     return out
 end
 
-local function FinalizeSession()
-    local s = db.active
+-- Files run `s` away (the one in progress, when nil). `ordered`: among
+-- the runs that ended after it, by when it ended (a farm set aside goes
+-- after the dungeons it waited through).
+local function FinalizeSession(s, ordered)
+    s = s or db.active
     if not s then return end
     PrintSummary(s) -- no-op if already printed or switched off
-    db.active = nil
+    if s == db.active then db.active = nil end
     s.endedAt = s.leftAt or time()
     DropLateJoiners(s)
     if HasLoot(s) then
-        table.insert(db.history, 1, s)
+        local at = 1
+        while ordered and db.history[at] and (db.history[at].endedAt or 0) > s.endedAt do at = at + 1 end
+        table.insert(db.history, at, s)
         ns.TrimHistory()
         -- Records and regulars are extras: a fault there must never cost
         -- the run itself, which is already safely in the history.
@@ -754,13 +789,14 @@ local function FinalizeSession()
     end
 end
 
-local function NewSession(name, instanceID, manual)
+local function NewSession(name, instanceID, manual, solo)
     FinalizeSession()
     db.active = {
         name = name or "Run",
         instanceID = instanceID,
         owner = PLAYER_NAME, -- the character recording it
         manual = manual or nil,
+        solo = (manual and solo) or nil, -- a farm recording you alone (see ns.SetFarmSolo)
         startedAt = time(),
         enteredAt = time(), -- last time we arrived in the instance
         lastSeen = time(),  -- last loot, or logout
@@ -779,7 +815,7 @@ end
 
 -- Optional one-line result in the chat window when a run ends.
 function PrintSummary(s)
-    if not s or s.summarized or not db.options.chatSummary then return end
+    if not s or s.summarized or s.manual or not db.options.chatSummary then return end
     local sum = ns.Summarize(s)
     local n = #sum.players
     if n == 0 or sum.market <= 0 then return end
@@ -854,9 +890,9 @@ end
 -- if the window is open on it). A run left again after coming back opens
 -- the window again, but the notice only the first time.
 local function ShowRunEnd(s)
-    ns.fresh = s
+    ns.fresh = not s.manual and s or nil -- a farm has no reveal (/tlb race still plays one)
     if ns.MeterAuto then ns.MeterAuto("leave") end
-    if db.options.popupLeave then ns.ShowWindow(true, s) else ns.Refresh() end
+    if db.options.popupLeave then ns.ShowWindow(not s.manual, s) else ns.Refresh() end
     if ns.BetResult then ns.BetResult(s) end
     if not s.streakShown then
         pcall(ns.StreakNotice, s)
@@ -875,6 +911,94 @@ function SplitRun(s)
     if ended then ShowRunEnd(ended) end
 end
 
+-- A farm ends at `at`: a pause going on ends there too, and so does
+-- everyone's stay in the group.
+local function EndFarm(s, at)
+    at = math.max(at or time(), s.startedAt or 0)
+    if s.pausedAt then
+        s.pausedFor = (s.pausedFor or 0) + math.max(at - s.pausedAt, 0)
+        s.pausedAt = nil
+    end
+    Presence(s, nil, at)
+    s.leftAt = at
+end
+
+-- Ended without a word or a window: at a login after a logout.
+local function EndFarmQuietly(s, at)
+    EndFarm(s, at)
+    s.summarized = true
+    FinalizeSession()
+end
+
+-- Going into a dungeon sets a farm aside (db.farmAside) while the
+-- dungeon's run is recorded: a pause going on and everyone's stay end at
+-- the door (s.asideAt), and its clock waits there. Out of the dungeon,
+-- the strip asks whether to add it and go on (ns.AnswerAside).
+local function SetAside(s, at)
+    at = at or time()
+    if s.pausedAt then
+        s.pausedFor = (s.pausedFor or 0) + math.max(at - s.pausedAt, 0)
+        s.pausedAt = nil
+    end
+    Presence(s, nil, at)
+    s.asideAt = at
+    if db.active == s then db.active = nil end
+    db.farmAside = s
+end
+
+-- A farm set aside ends where it was set aside, quietly. Returns it.
+local function EndAside()
+    local s = db.farmAside
+    if not s then return end
+    db.farmAside = nil
+    s.leftAt, s.asideAt, s.asked, s.summarized = s.asideAt, nil, nil, true
+    FinalizeSession(s, true)
+    return s
+end
+
+-- The dungeon runs recorded since farm `s` was set aside, oldest first.
+-- (The history is newest first, and every one of them started after it.)
+local function DungeonsSince(s)
+    local list = {}
+    for _, run in ipairs(ns.AllRuns()) do
+        if run ~= s and (run.startedAt or 0) < (s.asideAt or 0) then break end
+        if not run.manual and not run.example and (run.owner == nil or run.owner == s.owner) then
+            table.insert(list, 1, run)
+        end
+    end
+    return list
+end
+
+-- Inside a dungeon (or a raid, when raids are tracked): where runs are
+-- recorded by themselves.
+local function InTracked()
+    local inInstance, instanceType = IsInInstance()
+    return inInstance and (instanceType == "party" or (instanceType == "raid" and db.options.trackRaids)) or false
+end
+
+-- The farm set aside, when its question is up: you are out of the
+-- dungeon, and alive (left dead, it waits until you are; see Revived).
+-- Also returns the dungeon runs it would take in.
+function ns.AsideAsk()
+    local s = db.farmAside
+    if not s or InTracked() then return end
+    local run = db.active
+    if run and not run.manual and (not run.leftAt or run.leftDead) then return end
+    return s, DungeonsSince(s)
+end
+
+-- Out of the dungeon: the strip asks, and opens for it, once each time
+-- you come out.
+local function AskAside()
+    local s = ns.AsideAsk()
+    if not s then return end
+    if not s.asked then
+        s.asked = true
+        if ns.ShowFarmStrip then ns.ShowFarmStrip() end
+    end
+    ns.Refresh()
+end
+
 -- The rules, in full:
 --   * A run belongs to one instance. Arriving in a different one, or with
 --     no run in progress, starts a new run. Going from the run's dungeon
@@ -888,11 +1012,18 @@ end
 --     back with another group (see DifferentGroup) always starts one.
 --   * A run that was left is closed once RESUME_WINDOW has passed, or as
 --     soon as the instance is reset.
+--   * A farm goes on until Stop, through reloads. A real login ends it
+--     at the logout, quietly. Going into a dungeon sets it aside, and the
+--     dungeon's own run starts; out of it, the strip asks whether to add
+--     the dungeon and go on (ns.AnswerAside). Unanswered, a real login
+--     ends it at the dungeon's door, and so does starting another farm.
 --
 -- isLogin: a fresh login. entered: arrived through a loading screen that
 -- was neither a login nor a reload. Both are nil for plain zone changes.
-local function CheckZone(isLogin, entered)
+local function FollowZone(isLogin, entered)
     local s = db.active
+    local aside = db.farmAside
+    if aside and (isLogin or (aside.owner and aside.owner ~= PLAYER_NAME)) then EndAside() end
     -- Closes a run that ended a while ago: at the moment it was last seen,
     -- and without announcing anything.
     local function CloseStale()
@@ -902,16 +1033,18 @@ local function CheckZone(isLogin, entered)
     end
     -- A run recorded on another character of the account is over.
     if s and s.owner and s.owner ~= PLAYER_NAME then CloseStale() end
+    local tracked = InTracked()
     if s and s.manual then
-        -- A manual run ends with /tlb stop. One forgotten over a logout is
-        -- closed at a later login, or no dungeon run would ever start again.
-        if not (isLogin and time() - (s.lastSeen or 0) > RESUME_WINDOW) then return end
-        CloseStale()
+        if isLogin then
+            EndFarmQuietly(s, s.lastSeen) -- logged out: it ended there
+        elseif tracked then
+            SetAside(s)
+        else
+            return
+        end
+        s = nil
     end
-
-    local inInstance, instanceType = IsInInstance()
-    local tracked = inInstance
-        and (instanceType == "party" or (instanceType == "raid" and db.options.trackRaids))
+    if tracked and db.farmAside then db.farmAside.asked = nil end -- back in: asked again on the way out
 
     if tracked then
         local name, _, _, _, _, _, _, instanceID = GetInstanceInfo()
@@ -966,6 +1099,161 @@ local function CheckZone(isLogin, entered)
     end
 end
 
+local function CheckZone(isLogin, entered)
+    FollowZone(isLogin, entered)
+    AskAside()
+end
+
+----------------------------------------------------------------------
+-- Farms: runs started by hand, anywhere outside a dungeon (the farm
+-- strip, Farm.lua; /tlb start and stop). Paused, a farm records nothing
+-- and its clock stops (s.pausedAt: since when; s.pausedFor: the pauses
+-- before, in seconds). It is named after the zone it started in, and
+-- counted under that zone's map ID (s.zone).
+----------------------------------------------------------------------
+
+-- Starts a farm. Returns false and why when it cannot: inside a dungeon,
+-- whose run is recorded already.
+function ns.StartFarm()
+    local s = db.active
+    if s and s.manual then return true end
+    if InTracked() then return false, "Inside a dungeon, its run is recorded already." end
+    EndAside() -- a farm set aside, not taken up again, ended at the door
+    NewSession(GetRealZoneText() or "Farm", nil, true, (db.farmStrip or {}).solo)
+    local map = C_Map and C_Map.GetBestMapForUnit and C_Map.GetBestMapForUnit("player")
+    if map and not issecret(map) then db.active.zone = map end
+    ns.Refresh()
+    return true
+end
+
+function ns.PauseFarm()
+    local s = db.active
+    if not s or not s.manual or s.pausedAt then return end
+    Presence(s, nil)
+    s.pausedAt = time()
+    ns.Refresh()
+end
+
+function ns.ResumeFarm()
+    local s = db.active
+    if not s or not s.manual or not s.pausedAt then return end
+    s.pausedFor = (s.pausedFor or 0) + math.max(time() - s.pausedAt, 0)
+    s.pausedAt = nil
+    UpdateRoster() -- everyone's stay starts again
+    ns.Refresh()
+end
+
+-- Ends the farm and shows it (as a run left alive, without the reveal);
+-- a farm set aside, where it was set aside. Returns false when there is
+-- no farm.
+function ns.StopFarm()
+    local s = db.active
+    if not s or not s.manual then
+        local aside = EndAside()
+        if not aside then return false end
+        if HasLoot(aside) and db.options.popupLeave then ns.ShowWindow(false, aside) else ns.Refresh() end
+        return true
+    end
+    EndFarm(s, time())
+    s.summarized = true -- a farm has no chat line
+    FinalizeSession()
+    if HasLoot(s) then ShowRunEnd(s) else ns.Refresh() end
+    return true
+end
+
+-- Solo or not, for the farm going on and the next ones (db.farmStrip.solo).
+-- Solo, a farm records you alone, in a group too: nobody else's loot, no
+-- share of coins for them, no time in the group. Going solo, the others
+-- leave the farm, unless something of theirs is recorded already (their
+-- time with you stops there); going back, the group is taken in again,
+-- from then on.
+function ns.SetFarmSolo(solo)
+    db.farmStrip = db.farmStrip or {}
+    db.farmStrip.solo = solo or nil
+    local s = ns.ActiveFarm()
+    if not s then return end
+    s.solo = solo or nil
+    UpdateRoster() -- (not while paused: the stays are over already)
+    if solo then
+        local me = ns.Me(s)
+        for name, p in pairs(s.players) do
+            if name ~= me and not next(p.items) and (p.money or 0) == 0 then s.players[name] = nil end
+        end
+    end
+    ns.Refresh()
+end
+
+-- The strip's answer, out of the dungeon. Yes: the farm goes on, the
+-- time it was set aside on its clock, and each dungeon run since as one
+-- line of your share of it, at its value of then (s.dungeons: `name`,
+-- `v` its vendor value and `m` its value, in copper, `t` its time);
+-- the dungeon's run is over, and filed away. No: the farm ends where it
+-- was set aside.
+local function Round(n) return math.floor((n or 0) + 0.5) end
+function ns.AnswerAside(yes)
+    local s = db.farmAside
+    if not s then return end
+    if not yes then
+        EndAside()
+        ns.Refresh()
+        return
+    end
+    if not ns.AsideAsk() then return end -- still inside: nothing to add yet
+    local lines = s.dungeons or {}
+    for _, run in ipairs(DungeonsSince(s)) do
+        local mine
+        for _, p in ipairs(ns.Summarize(run).players) do
+            if p.name == ns.Me(run) then mine = p end
+        end
+        lines[#lines + 1] = { name = run.name or "Dungeon", v = Round(mine and mine.vendor), m = Round(mine and mine.market),
+                              t = Round(ns.RunDuration(run)) }
+    end
+    s.dungeons = lines[1] and lines or nil
+    local left = db.active
+    if left and not left.manual then FinalizeSession() end
+    db.farmAside = nil
+    s.asideAt, s.asked = nil, nil
+    s.lastSeen = time()
+    db.active = s
+    UpdateRoster() -- everyone's stay starts again
+    if left and ns.KeepOnRun then ns.KeepOnRun(left) end
+    ns.Refresh()
+end
+
+-- The farm set aside while you are in a dungeon, if any.
+function ns.FarmAside()
+    return db.farmAside
+end
+
+-- The farm going on, if any.
+function ns.ActiveFarm()
+    local s = db.active
+    return s and s.manual and s or nil
+end
+
+-- How long player `name` has been in a farm's group (seconds), the stay
+-- going on included.
+function ns.StayTime(s, name)
+    local p = s.players[name]
+    if not p then return 0 end
+    local t = p.time or 0
+    if p.since then t = t + math.max(time() - p.since, 0) end
+    return t
+end
+
+-- A run's note: one line of the player's own, never shared (it is kept
+-- with the run but no code carries it). Empty text removes it. Returns
+-- whether the run can have one.
+ns.NOTE_MAX = 80
+function ns.SetRunNote(s, text)
+    if not s or s.example then return false end
+    text = tostring(text or ""):gsub("[%c|]", ""):gsub("^%s+", ""):gsub("%s+$", "")
+    if #text > ns.NOTE_MAX * 3 then text = text:sub(1, ns.NOTE_MAX * 3):gsub("[\128-\255]+$", "") end
+    s.note = text ~= "" and text or nil
+    ns.Rerender()
+    return true
+end
+
 -- Moves roll wins from `wins` ({ need = n, greed = n, ... }) onto an item
 -- entry, as far as the entry has copies not yet accounted for. An entry's
 -- `need` / `greed` fields count how many of its copies were won that way.
@@ -993,6 +1281,22 @@ local function AnnounceLoot(s, name, e, count)
             local p = s.players[name]
             ns.Toast(name, p and p.class, e.link, count, value)
         end
+    end
+    if e.resolved then show() else C_Timer.After(TICKER_RETRY, show) end
+end
+
+-- A farm's pickup, for the farm strip's pop-ups (Farm.lua): what it is
+-- worth once the game knows the item, and what of that counts in the
+-- totals (nothing, in a category the options hide, unless they count
+-- those too).
+local function FarmPickup(s, name, e, count)
+    if not ns.FarmLoot then return end
+    local function show()
+        MarkPrice(s, e)
+        local value = e.count > 0 and ns.EntryMarket(e) / e.count * count or 0
+        local o = db.options
+        local counted = (o.cats[e.cat] ~= false or o.countHidden) and value or 0
+        ns.FarmLoot(name, e, count, value, counted)
     end
     if e.resolved then show() else C_Timer.After(TICKER_RETRY, show) end
 end
@@ -1043,6 +1347,7 @@ end
 local function RecordLoot(name, rawLink, count)
     local s = db.active
     if not Tracking(s) then return end
+    if s.solo and name ~= ns.Me(s) then return end -- a solo farm: yours alone
     local link = rawLink:match("(|c.-|Hitem:.-|h.-|h|r)") or rawLink:match("(|Hitem:.-|h.-|h)")
     if not link then return end
     local entryKey = EntryKey(link)
@@ -1088,6 +1393,7 @@ local function RecordLoot(name, rawLink, count)
         if not fresh or (wins.need or 0) + (wins.greed or 0) == 0 then pending[key] = nil end
     end
     if not mat then AnnounceLoot(s, name, e, count) end -- no notice for ignored copies
+    if s.manual then FarmPickup(s, name, e, count) end
     s.lastSeen = time()
     ns.Refresh()
 end
@@ -1104,13 +1410,77 @@ local function RecordMoney(copper, split)
         p.money = (p.money or 0) + copper
     end
     Give(PLAYER_NAME)
-    if split then
+    local others = 0
+    if split and not s.solo then
         for name, unit in pairs((GroupNow())) do
-            if not UnitIsVisible or UnitIsVisible(unit) then Give(name) end
+            if not UnitIsVisible or UnitIsVisible(unit) then
+                Give(name)
+                others = others + 1
+            end
         end
     end
+    -- On the farm strip: your share, and the others' (Farm.lua).
+    if s.manual and ns.FarmCoins then ns.FarmCoins(copper, copper * others) end
     s.lastSeen = time()
     ns.Refresh()
+end
+
+-- Quest rewards, on a farm. The items handed over at a turn-in come as
+-- "You receive item" lines, not loot ones; so do items bought from a
+-- vendor or given with a quest, which are not farmed. So only those
+-- within QUEST_WINDOW seconds of a turn-in count, before it or after.
+-- The gold comes with the turn-in itself, and counts as coins.
+local QUEST_WINDOW = 3
+local quests = { specs = {}, waiting = {} } -- `at`: GetTime() of the last turn-in on a farm
+for _, g in ipairs({ "LOOT_ITEM_PUSHED_SELF_MULTIPLE", "LOOT_ITEM_PUSHED_SELF" }) do
+    local pat, order = BuildPattern(_G[g])
+    if pat then quests.specs[#quests.specs + 1] = { pat = pat, order = order } end
+end
+
+-- The item and how many in a "You receive item" line; nil for any other.
+local function ParseReward(text)
+    for _, spec in ipairs(quests.specs) do
+        local c = { text:match(spec.pat) }
+        if #c > 0 then
+            local a = {}
+            for k, idx in ipairs(spec.order) do a[idx] = c[k] end
+            return a[1], tonumber(a[2]) or 1
+        end
+    end
+end
+
+local function Farming()
+    local s = db.active
+    return PLAYER_NAME ~= nil and s ~= nil and s.manual and Tracking(s)
+end
+
+-- A "You receive item" line: a reward when a quest was just turned in;
+-- otherwise kept a moment, in case the turn-in follows.
+local function RecordReward(link, count)
+    if not Farming() then return end
+    local now = GetTime()
+    if quests.at and now - quests.at <= QUEST_WINDOW then
+        RecordLoot(PLAYER_NAME, link, count)
+        return
+    end
+    local waiting = quests.waiting
+    for i = #waiting, 1, -1 do
+        if now - waiting[i].at > QUEST_WINDOW then table.remove(waiting, i) end
+    end
+    waiting[#waiting + 1] = { link = link, count = count, at = now }
+end
+
+-- A quest turned in: the items received just before, and its gold.
+local function QuestTurnedIn(money)
+    local waiting = quests.waiting
+    quests.waiting = {}
+    if not Farming() then return end
+    local now = GetTime()
+    quests.at = now
+    for _, w in ipairs(waiting) do
+        if now - w.at <= QUEST_WINDOW then RecordLoot(PLAYER_NAME, w.link, w.count) end
+    end
+    if type(money) == "number" and money > 0 then RecordMoney(money, false) end
 end
 
 -- A roll in progress: who chose what and who rolled what. `rk` tells
@@ -1389,6 +1759,9 @@ function ns.Summarize(s, needOnly)
                      needWins = 0, greedWins = 0, bestQuality = 0,
                      -- every shown item in one group, for the ungrouped layout
                      all = { items = {} },
+                     -- a farm's dungeons, counted in vendor and market: their
+                     -- value, and the lines (see ns.AnswerAside)
+                     dungeon = 0, dungeons = nil,
                      -- every item counted in the totals, hidden ones too when they count
                      held = {} }
         byName[name] = ps
@@ -1482,6 +1855,17 @@ function ns.Summarize(s, needOnly)
             if shown or o.countHidden then
                 ps.money, ps.vendor, ps.market = money, ps.vendor + money, ps.market + money
             end
+        end
+        -- A farm's dungeons: the share of each of the one who recorded it,
+        -- one sum with no items under it.
+        if s.dungeons and not needOnly and ps.name == (s.owner or s.recordedBy or PLAYER_NAME) then
+            local vendor = 0
+            for _, d in ipairs(s.dungeons) do
+                vendor = vendor + (d.v or 0)
+                ps.dungeon = ps.dungeon + (o.valueMode == "vendor" and (d.v or 0) or (d.m or 0))
+            end
+            ps.dungeons = s.dungeons
+            ps.vendor, ps.market = ps.vendor + vendor, ps.market + ps.dungeon
         end
         out.count, out.vendor, out.market = out.count + ps.count, out.vendor + ps.vendor, out.market + ps.market
         out.money = out.money + ps.money
@@ -2370,7 +2754,7 @@ end
 -- The awards to show for a run: none while it is still going, and none
 -- when awards are switched off.
 function ns.RunAwards(s, sum)
-    if not db.options.showAwards or ns.InProgress(s) then return {} end
+    if not db.options.showAwards or ns.InProgress(s) or s.manual then return {} end -- farms have none
     return ns.Awards(s, sum)
 end
 
@@ -2446,11 +2830,14 @@ end
 ----------------------------------------------------------------------
 
 -- Seconds from the start of a run to its end (or to now while it is in
--- progress).
+-- progress; to the dungeon's door for a farm set aside), less a farm's
+-- pauses.
 function ns.RunDuration(s)
     if not s.startedAt then return end
-    local finish = s.endedAt or s.leftAt or (s == db.active and time()) or nil
-    if finish then return math.max(finish - s.startedAt, 0) end
+    local finish = s.endedAt or s.leftAt or s.asideAt or (s == db.active and time()) or nil
+    if not finish then return end
+    local paused = (s.pausedFor or 0) + (s.pausedAt and math.max(finish - s.pausedAt, 0) or 0)
+    return math.max(finish - s.startedAt - paused, 0)
 end
 
 -- The figures records are made of. `sum` is a full summary of the run.
@@ -2473,6 +2860,27 @@ function CommitRun(s)
     s.recorded = true
     local st = RunStats(s, sum)
     s.stats = { group = st.group, mine = st.mine }
+
+    -- A farm: the people you farmed with are counted apart from your
+    -- runs, their loot not at all (a gatherer's is not a share). What you
+    -- got goes to the zone's figures (ns.CommitFarm).
+    if s.manual then
+        for _, p in ipairs(sum.players) do
+            if p.name ~= ns.Me(s) then
+                local who = db.people[p.name]
+                if not who then
+                    who = { runs = 0, value = 0, mine = 0, awards = {} }
+                    db.people[p.name] = who
+                end
+                who.farms = (who.farms or 0) + 1
+                who.class = p.class or who.class
+                who.last = math.max(who.last or 0, s.startedAt or 0)
+            end
+        end
+        ns.CommitFarm(s, sum)
+        ns.CommitStats(s, sum)
+        return
+    end
 
     -- Regulars: each player's loot, and yours beside it.
     local awards = ns.Awards(s, sum)
@@ -2557,7 +2965,7 @@ end
 -- that came before it. (A run counted before that was kept is compared
 -- with every other run of the dungeon.)
 function ns.RunInsights(s, sum)
-    local out = { duration = ns.RunDuration(s) }
+    local out = { duration = ns.RunDuration(s), farm = s.manual or nil }
     if out.duration and out.duration >= ns.MIN_TIMED_RUN then
         out.perHour = sum.market * 3600 / out.duration
     end
@@ -2634,6 +3042,7 @@ function handlers.ADDON_LOADED(name)
     db.dropRuns = db.dropRuns or {} -- [instanceID] = the number of runs those drops were counted over
     db.roles = db.roles or {}     -- [role] and
     db.classes = db.classes or {} -- [class] = how loot shares turn out
+    db.farms = db.farms or {}     -- [zone] = figures for farms there (Data.lua)
     db.options = db.options or {}
     -- Left behind by features that no longer exist.
     db.options.compact, db.options.popupBoss = nil, nil
@@ -2689,7 +3098,7 @@ local function RebuildRegulars()
     db.regularsBoth = true
     local tally = {}
     for _, s in ipairs(db.history) do
-        if not s.example and s.players then
+        if not s.example and not s.manual and s.players then
             local sum = ns.Summarize(s)
             local me, mine = ns.Me(s), 0
             for _, p in ipairs(sum.players) do
@@ -2729,7 +3138,7 @@ local function RebuildAwards()
     db.awardsCounted = true
     local tally = {}
     for _, s in ipairs(db.history) do
-        if not s.example and s.players then
+        if not s.example and not s.manual and s.players then
             local ok, awards = pcall(function() return ns.Awards(s, ns.Summarize(s)) end)
             if ok then
                 local me = ns.Me(s)
@@ -2756,6 +3165,19 @@ local function RebuildAwards()
     end
 end
 
+-- Once, when farms arrive (0.9.0): the runs started by hand before then
+-- go into their zone's figures, oldest first, as far as they are kept.
+local function CountOldFarms()
+    if db.farmsCounted then return end
+    db.farmsCounted = true
+    for i = #db.history, 1, -1 do
+        local s = db.history[i]
+        if s.manual and not s.example and s.players then
+            pcall(AtDefaults, function(run) ns.CommitFarm(run, ns.Summarize(run)) end, s)
+        end
+    end
+end
+
 function handlers.PLAYER_LOGIN()
     -- On Forever a character has a first and a second name. UnitName
     -- returns them separately; GetUnitName gives the full name, which is
@@ -2771,6 +3193,7 @@ function handlers.PLAYER_LOGIN()
     end
     RebuildRegulars()
     RebuildAwards()
+    CountOldFarms()
     -- People met in a single run, long ago, are forgotten: with random
     -- groups the list would otherwise grow for ever.
     local cutoff = time() - FORGET_AFTER
@@ -2796,8 +3219,16 @@ function handlers.CHAT_MSG_LOOT(text)
     if name and link then
         RecordLoot(name, link, count)
     else
-        HandleRoll(text)
+        local reward, n = ParseReward(text)
+        if reward then RecordReward(reward, n) else HandleRoll(text) end
     end
+end
+
+-- On a farm, a quest's rewards count (see RecordReward).
+function handlers.QUEST_TURNED_IN(questID, _, money)
+    if issecret(money) then money = nil end
+    Capture("QUEST", ("turned in %s, %s copper"):format(issecret(questID) and "?" or tostring(questID), tostring(money)))
+    QuestTurnedIn(money)
 end
 
 function handlers.CHAT_MSG_MONEY(text)
@@ -2862,6 +3293,7 @@ local function Revived()
         PrintSummary(s)
         ShowRunEnd(s)
     end
+    AskAside()
 end
 function handlers.PLAYER_ALIVE() Revived() end
 function handlers.PLAYER_UNGHOST() Revived() end
@@ -2870,7 +3302,9 @@ function handlers.PLAYER_UNGHOST() Revived() end
 function handlers.PLAYER_LOGOUT()
     if db.active then db.active.lastSeen = time() end
     -- Today's prices are for today: none goes into the saved file.
-    for _, s in ipairs(ns.AllRuns()) do
+    local runs = ns.AllRuns()
+    runs[#runs + 1] = db.farmAside
+    for _, s in ipairs(runs) do
         for _, p in pairs(s.players or {}) do
             for _, e in pairs(p.items or {}) do e.now = nil end
         end
@@ -3033,6 +3467,7 @@ end
 -- how many were left.
 local function ClearRuns()
     wipe(db.shared)
+    db.farmAside = nil
     local left = 0
     if db.active then
         if db.active.pinned then left = left + 1 else db.active = nil end
@@ -3072,8 +3507,9 @@ StaticPopupDialogs["THATLUCKYBASTARD_CLEAR_RUNS"] = {
 -- that is: yours (the one in progress among them) and those shared with
 -- you.
 function ns.AskClearRuns()
-    local own, going = 0, db.active ~= nil and not db.active.pinned
-    if going then own = 1 end
+    local own, going = 0, (db.active ~= nil and not db.active.pinned) or db.farmAside ~= nil
+    if db.active and not db.active.pinned then own = 1 end
+    if db.farmAside then own = own + 1 end
     for _, s in ipairs(db.history) do
         if not s.pinned then own = own + 1 end
     end
@@ -3107,10 +3543,14 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
     elseif cmd == "stats" then
         ns.ShowBrowse("dungeons")
     elseif cmd == "dungeons" or cmd == "runs" or cmd == "luck" or cmd == "drops" or cmd == "roles"
-            or cmd == "regulars" or cmd == "records" or cmd == "awards" then
+            or cmd == "regulars" or cmd == "records" or cmd == "awards" or cmd == "farms" then
         ns.ShowBrowse(cmd)
     elseif cmd == "paper" then
-        ns.OpenRunWindow("paper", ns.ViewedRun())
+        if ns.IsFarm(ns.ViewedRun()) then
+            Print("A farm has no Front page.")
+        else
+            ns.OpenRunWindow("paper", ns.ViewedRun())
+        end
     elseif cmd == "race" then
         ns.ShowWindow(true, ns.ViewedRun()) -- the reveal again, for the run on show
         if not ns.Racing() then
@@ -3141,11 +3581,15 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
         if not ns.SetTheme(arg) then
             Print("Themes: modern, classic, receipt. Example: /tlb theme receipt")
         end
+    elseif cmd == "farm" then
+        ns.ToggleFarmStrip()
     elseif cmd == "start" then
-        NewSession(GetRealZoneText() or "Manual run", nil, true)
-        Print("Manual run started. Use /tlb stop to end it.")
+        local ok, why = ns.StartFarm()
+        if ok then ns.ShowFarmStrip() else Print(why) end
     elseif cmd == "stop" then
-        if db.active then
+        if ns.StopFarm() then
+            return
+        elseif db.active then
             FinalizeSession()
             CheckZone() -- a run ended by hand inside a dungeon: tracking goes on with a new one
             Print("Run ended.")
@@ -3170,7 +3614,7 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
         Print("/tlb paper - the front page of the run on show")
         Print("/tlb race - the race again, for the run on show")
         Print("/tlb analysis - its timeline, rolls and numbers (also /tlb timeline, rolls, numbers)")
-        Print("/tlb stats - dungeons, records, runs, luck, regulars, drops, roles")
+        Print("/tlb stats - dungeons, farms, records, runs, luck, regulars, drops, roles")
         Print("/tlb search <item> - find an item in past runs")
         Print("/tlb awards - what each award means")
         Print("/tlb meter - the loot meter")
@@ -3181,7 +3625,8 @@ SlashCmdList.THATLUCKYBASTARD = function(msg)
         Print("/tlb pin - pin or unpin the run on show; pinned runs are never deleted")
         Print("/tlb delete - delete the run on show")
         Print("/tlb clear - delete all runs except pinned ones (asks first)")
-        Print("/tlb start, /tlb stop - track a run by hand, outside a dungeon")
+        Print("/tlb farm - the farm tracker (also: shift-click the minimap button)")
+        Print("/tlb start, /tlb stop - start or stop a farm")
         Print("/tlb theme modern, classic or receipt")
         Print("/tlb capture - record raw loot messages, for troubleshooting")
     end

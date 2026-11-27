@@ -42,6 +42,7 @@ local MAX_PICKUPS = 5000
 local MAX_ROLLS = 2000
 local MAX_ROLL_ENTRIES = 10000 -- players' entries, all rolls together
 local MAX_BOSSES = 60
+local MAX_DUNGEONS = 60        -- dungeons taken into one farm
 local DAMAGED = "This code is incomplete or damaged. Copy all of it, and try again."
 local TOO_LONG = "This is too long to be a run's code."
 
@@ -188,7 +189,8 @@ function ns.EncodeRun(s, written)
         local p = s.players[name]
         local st = s.rollStats and s.rollStats[name] or {}
         local fields = { Join({ N(Name(name)), S(p.class), p.role and p.role:sub(1, 1) or "",
-                                N(st.sum), N(st.n), N(st.high), N(st.low), N(st.passes), N(p.money) }, ".") }
+                                N(st.sum), N(st.n), N(st.high), N(st.low), N(st.passes), N(p.money),
+                                N(p.time) }, ".") }
         local entries = {}
         for _, e in pairs(p.items) do entries[#entries + 1] = e end
         table.sort(entries, function(a, b)
@@ -249,12 +251,18 @@ function ns.EncodeRun(s, written)
     end
     table.sort(switched)
 
+    -- A farm's dungeons: name'vendor'value'seconds each.
+    local dungeons = {}
+    for _, d in ipairs(s.dungeons or {}) do
+        dungeons[#dungeons + 1] = table.concat({ S(d.name), N(d.v), N(d.m), N(d.t) }, "'")
+    end
+
     local finish = s.endedAt or s.leftAt or time()
     local nameList = {}
     for i, name in ipairs(names) do nameList[i] = S(name) end
     local body = PREFIX .. table.concat({
         Join({ S(s.name or "Run"), N(s.instanceID), N(s.startedAt), N(math.max(finish - (s.startedAt or finish), 0)),
-               N(owner), N(s.kills) }, ","),
+               N(owner), N(s.kills), s.manual and "1" or "", N(s.pausedFor), table.concat(dungeons, ".") }, ","),
         table.concat(nameList, ","),
         table.concat(tails, ","),
         table.concat(players, ";"),
@@ -315,6 +323,21 @@ local function Build(sec, itemNames, read)
     if s.name == "" then s.name = "Run" end
     s.endedAt = s.startedAt + (Num(head[4], 0, 7 * 86400) or 0)
     s.recordedBy = NameAt(head[5])
+    -- A farm, and its pauses (0.9.0); older versions read past them.
+    assert(head[7] == nil or head[7] == "" or head[7] == "1", "farm")
+    s.manual = head[7] == "1" or nil
+    s.pausedFor = Num(head[8], 0, 7 * 86400)
+    -- The dungeons taken into a farm (0.9.0): each one's name, your share
+    -- at vendor value and at its value, and its time.
+    local dungeons = Split(head[9], ".")
+    assert(#dungeons <= MAX_DUNGEONS and (s.manual or not dungeons[1]), "dungeons")
+    for i, text in ipairs(dungeons) do
+        local f = Split(text, "'")
+        assert(#f <= 4, "dungeon")
+        dungeons[i] = { name = ReadS(f[1], 80), v = Num(f[2], 0, 1e11) or 0, m = Num(f[3], 0, 1e11) or 0,
+                        t = Num(f[4], 0, 7 * 86400) or 0 }
+    end
+    s.dungeons = dungeons[1] and dungeons or nil
 
     local tails = Split(sec[3], ",")
     assert(#tails <= MAX_ITEMS, "tails")
@@ -331,7 +354,7 @@ local function Build(sec, itemNames, read)
         assert(name and not s.players[name] and class:match("^%u*$"), "player")
         -- Coins (copper) came with 0.6.1: older versions read past them.
         local p = { class = class ~= "" and class or nil, role = ROLES[h[3] or ""], items = {},
-                    money = Num(h[9], 0, 1e11) }
+                    money = Num(h[9], 0, 1e11), time = Num(h[10], 0, 7 * 86400) } -- time: in a farm's group (0.9.0)
         if (h[5] or "") ~= "" then
             s.rollStats = s.rollStats or {}
             s.rollStats[name] = { sum = Num(h[4], 0, 1e7) or 0, n = Num(h[5], 0, 1e5), high = Num(h[6], 0, 100),
@@ -574,12 +597,14 @@ end
 
 -- What a code carries of a run. Everything else goes into `x`.
 local CODED = { name = true, instanceID = true, startedAt = true, endedAt = true, kills = true, names = true,
-                players = true, rollStats = true, log = true, rollLog = true, bosses = true, priceSwitched = true }
+                players = true, rollStats = true, log = true, rollLog = true, bosses = true, priceSwitched = true,
+                manual = true, pausedFor = true, dungeons = true }
 -- Of the moment only: never saved, so not compared.
 local ITEM_PASSING = { lastAt = true, noAH = true, now = true }
-local PLAYER_PASSING = { joined = true }
--- What a code holds of a player (money: their coins, in copper).
-local PLAYER_CODED = { class = true, role = true, items = true, money = true }
+local PLAYER_PASSING = { joined = true, since = true }
+-- What a code holds of a player (money: their coins, in copper; time: in
+-- a farm's group, in seconds).
+local PLAYER_CODED = { class = true, role = true, items = true, money = true, time = true }
 local NAME_END = "|" -- cannot be part of a name inside a link
 
 -- [run] = the record it was read from, or was last packed as: a run whose
@@ -643,7 +668,9 @@ local function Lossless(s, back, written, read)
     for name, p in pairs(s.players) do
         players = players + 1
         local q = back.players[name]
-        if not q or p.class ~= q.class or p.role ~= q.role or p.money ~= q.money then return false, "player" end
+        if not q or p.class ~= q.class or p.role ~= q.role or p.money ~= q.money or p.time ~= q.time then
+            return false, "player"
+        end
         for k in pairs(p) do
             if not PLAYER_CODED[k] and not PLAYER_PASSING[k] then return false, "player." .. k end
         end
@@ -695,6 +722,7 @@ local function Plain(s, written)
             if not PLAYER_CODED[k] and not PLAYER_PASSING[k] then return false end
         end
         if p.money ~= nil and not Whole(p.money) then return false end
+        if p.time ~= nil and not Whole(p.time) then return false end
         for _ in pairs(p.items) do items = items + 1 end
     end
     if items ~= #written then return false end

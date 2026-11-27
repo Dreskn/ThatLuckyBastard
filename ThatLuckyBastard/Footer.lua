@@ -61,7 +61,7 @@ local function FooterTexts(sum, insights, includeTotals)
     if insights then
         local parts = {}
         if insights.duration then
-            parts[#parts + 1] = lo .. "Run time|r  " .. Duration(insights.duration)
+            parts[#parts + 1] = lo .. (insights.farm and "Farmed|r  " or "Run time|r  ") .. Duration(insights.duration)
             if insights.perHour then
                 parts[#parts + 1] = lo .. "Group per hour|r  " .. Money(insights.perHour)
             end

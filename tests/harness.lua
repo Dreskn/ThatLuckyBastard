@@ -196,6 +196,8 @@ function PlaySound() end
 function CreateColor(r, g, b, a) return { r = r, g = g, b = b, a = a } end
 function Screenshot() end
 function IsModifiedClick() return false end
+function IsShiftKeyDown() return SHIFT == true end -- SHIFT: the tests hold the key
+C_Map = { GetBestMapForUnit = function() return WORLD.map end } -- WORLD.map: the zone's map ID
 function GetCursorPosition() return 0, 0 end
 function UIFrameFadeIn() end
 function GetCoinTextureString(c) return tostring(c) .. "c" end
@@ -338,6 +340,8 @@ LOOT_ITEM = "%s receives loot: %s."
 LOOT_ITEM_MULTIPLE = "%s receives loot: %sx%d."
 LOOT_ITEM_SELF = "You receive loot: %s."
 LOOT_ITEM_SELF_MULTIPLE = "You receive loot: %sx%d."
+LOOT_ITEM_PUSHED_SELF = "You receive item: %s."
+LOOT_ITEM_PUSHED_SELF_MULTIPLE = "You receive item: %sx%d."
 INSTANCE_RESET_SUCCESS = "%s has been reset."
 local H = "|HlootHistory:%d|h[Loot]|h: "
 LOOT_ROLL_NEED = H .. "%s has selected Need for: %s"

@@ -1,8 +1,8 @@
 local _, ns = ...
 
 -- Minimap button: left-click opens the window, right-click the options,
--- drag moves it around the minimap. Shown or hidden by the showMinimap
--- option; its position is saved as an angle.
+-- shift-click the farm strip, drag moves it around the minimap. Shown or
+-- hidden by the showMinimap option; its position is saved as an angle.
 
 local b = CreateFrame("Button", "ThatLuckyBastardMinimapButton", Minimap)
 b:SetSize(32, 32)
@@ -47,7 +47,9 @@ b:SetScript("OnDragStart", function(self) self:SetScript("OnUpdate", FollowCurso
 b:SetScript("OnDragStop", function(self) self:SetScript("OnUpdate", nil) end)
 
 b:SetScript("OnClick", function(_, button)
-    if button == "RightButton" then
+    if IsShiftKeyDown() then
+        ns.ToggleFarmStrip()
+    elseif button == "RightButton" then
         ns.ToggleOptions()
     else
         ns.ToggleWindow()
@@ -59,6 +61,7 @@ b:SetScript("OnEnter", function(self)
     GameTooltip:AddLine(ns.BRAND)
     GameTooltip:AddLine("Left-click: loot breakdown", 1, 1, 1)
     GameTooltip:AddLine("Right-click: options", 1, 1, 1)
+    GameTooltip:AddLine("Shift-click: farm tracker", 1, 1, 1)
     GameTooltip:AddLine("Drag: move this button", 1, 1, 1)
     GameTooltip:Show()
 end)

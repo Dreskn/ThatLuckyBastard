@@ -18,7 +18,19 @@ Everything the addon does, page by page, with its commands, options and limits. 
   - *From WoW lore, and for roles, classes and bosses:* AFK (picked up nothing, rolled on nothing), Hunter Loot (a hunter who won on Need), Need Before Greed (chose Need on two rolls more than the group's average), 50 DKP Minus (lost three rolls more than the group's average), Tank Tax, Healer's Tip and Top DPS (one and a half times the average of their role, two or more of it), Class Act and Class Clown (one and a half times, or half, the average of their class, three or more of it), and Boss's Pet (loot from a boss: one player per boss, one in all in a party; it ranks just above the consolation prizes).
   - *Consolation prizes* go only to players nothing else fits, the best of them first: Collector, Busy Hands, Always Second, Average Joe, Magpie, Boss Magnet, Trash Panda, Leftovers, Booby Prize, Runner-up, First Dibs and Last Call. They score below 0.3, so they never take another award's place. A player left with nothing at all is a Tourist.
 - **Under the breakdown:** run time, group loot per hour, a fairness score, any dungeon record the run set, how it compares with your average over the earlier runs there, and the streak it belongs to.
+- **Notes:** click the run's date at the foot of the window to write a note: one line of your own (up to 80 letters), shown there, on the solo page and in Statistics. Enter keeps it, Escape lets it go, an empty note removes it. It is kept with the run and never shared.
 - **History:** past runs are kept and can be browsed. **Pin** a run and it is never deleted: not by the limit on runs to keep, not by `/tlb clear`. **Delete** removes just the run on show, after asking; `/tlb clear` asks too. **Reprice** puts today's auction prices on the run on show, after asking: for when the auction house wasn't scanned before it (see Prices).
+
+## Farming
+
+- **The farm tracker:** a small strip for farming outside dungeons, alone or in a group. Shift-click the minimap button to open it (or the Farm button, or `/tlb farm`). **Start** begins a farm where you are, named after the zone. The strip shows the clock and its keys, and under them your gold: your total, your coins, your items and your gold per hour. In a group, a switch sits above it: **group**, with the group's total, or **solo**. **Pause** records nothing and stops the clock; **Stop** ends the farm and opens it in the window. Drag the strip to move it; under the mouse, the padlock locks its place and the cross hides it (a farm goes on). It is where you left it, and open if it was, at your next login.
+- **Pop-ups:** each item you pick up drops out from under the strip with how many and their worth, stays a moment, then folds back in, and its worth goes into your total. The same item again adds to its line; at most five show at once. Coins you loot rise as small amounts out of your gold, and in a group what the others get rises above the switch. The valuable loot notice still shows, with its own option.
+- **Solo in a group:** click the switch above the strip to slide it to **solo**: only your loot is recorded (and only your share of coins), and Stop opens the solo page. Those in the group with nothing recorded yet leave the farm. Slide it back to take the group in, from then on. The next farm starts the way you left it.
+- **Quests:** on a farm, quest rewards count: the items you are handed when you turn a quest in, and its gold, with your coins. Items you buy from a vendor do not.
+- **A dungeon on the way:** entering a dungeon sets the farm aside, its clock waiting at the door, and the dungeon's own run starts. When you come out alive, the strip asks **Add <dungeon> and resume?** Yes: the farm goes on, with the dungeon's time on its clock and your share of the dungeon as one line (a small **dungeons** figure on the strip). No: the farm ends at the dungeon's door. Going back in first (a corpse run, say), the question waits until you are out again; two dungeons before an answer are asked about together. A farm's figures in Statistics leave its dungeons out.
+- **How a farm ends:** with Stop, or No on the way out of a dungeon. A `/reload` carries on. Logging out, or a disconnect, ends it at the moment you logged out (or at the dungeon's door, if it was set aside). Starting another farm before answering ends the one set aside at the door. Nothing else ends it.
+- **After Stop:** alone, the solo page: the time farmed (pauses left out; the time in dungeons, if any), your total, gold per hour against your average and your best in that zone, the best item, your note, and your loot with how many came per hour. A dungeon run done alone gets the same page. In a group, the usual columns, each with that player's time in the group. Farms have no race, awards, bets or Front page (`/tlb race` still plays the race on a group farm).
+- **Counted apart:** farms have their own page in Statistics and stay out of the dungeon pages. The people you farm with count on Regulars as farms, not runs; what they loot on a farm counts in none of your comparisons.
 
 ## Front page and analysis
 
@@ -42,10 +54,11 @@ Two windows about the run on show, opened from the main window's top row. Each c
 Tables over all your runs, from the Statistics button beside Options. Click a column title to sort.
 
 - **Dungeons:** per dungeon, the number of runs, average group loot, your average, average time, gold per hour for the group and for you, and average fairness. Sort by "Group / hour" to pick tonight's dungeon.
+- **Farms:** by zone, the farms you did there, their time, your loot, your gold per hour, your best per hour (farms of 15 minutes or more) and the item that brought you the most. Switch to **Every farm** for each farm with its time, gold per hour, whether you were alone, and its note; filter by zone or note, click one to open it.
 - **Records:** your richest run, best personal haul, biggest single item and fastest run per dungeon.
-- **Runs:** every run that is kept, with time, loot, your share, fairness and top looter. Filter by dungeon or player; click a run to open it.
+- **Runs:** every dungeon run that is kept, with time, loot, your share, fairness, top looter and its note. Filter by dungeon, player or note; click a run to open it.
 - **Luck:** rolls entered, wins expected and wins had, for you and for everyone you run with, plus average rolls.
-- **Regulars:** the people you run with: runs together, their loot and yours in those runs, the difference, and the award they had most often in your runs. Every award counts alike.
+- **Regulars:** the people you run with: runs and farms together (counted apart), their loot and yours in those runs, the difference, and the award they had most often in your runs. Every award counts alike.
 - **Drops:** per dungeon, every item seen, in how many of your runs, how many of it, its average value, and who got it last.
 - **Roles:** how loot shares turn out by role and by class, against an equal share.
 - **Find item:** search past runs for an item to see when it dropped and who got it.
@@ -101,7 +114,7 @@ A run starts automatically when you enter a dungeon (and raids, if enabled). The
 | `/tlb paper` | The front page of the run on show |
 | `/tlb race` | The race again, for the run on show |
 | `/tlb analysis` | Its timeline, rolls and numbers (also `/tlb timeline`, `rolls`, `numbers`) |
-| `/tlb stats` | Statistics (also `/tlb dungeons`, `records`, `runs`, `luck`, `regulars`, `drops`, `roles`) |
+| `/tlb stats` | Statistics (also `/tlb dungeons`, `farms`, `records`, `runs`, `luck`, `regulars`, `drops`, `roles`) |
 | `/tlb search <item name>` | Find an item in past runs |
 | `/tlb awards` | What every award means |
 | `/tlb export` | The run on show as text for a spreadsheet; `/tlb export all` for every run |
@@ -110,14 +123,15 @@ A run starts automatically when you enter a dungeon (and raids, if enabled). The
 | `/tlb meter` | The loot meter |
 | `/tlb bet` | Your call on the lucky bastard |
 | `/tlb theme modern` / `classic` / `receipt` | Change the look |
-| `/tlb start` | Track a run manually, outside a dungeon |
-| `/tlb stop` | End the current run |
+| `/tlb farm` | The farm tracker |
+| `/tlb start` | Start a farm, where you are |
+| `/tlb stop` | Stop the farm, or end the current run |
 | `/tlb pin` | Pin the run on show so that it is never deleted; again to unpin |
 | `/tlb delete` | Delete the run on show (asks first; not for a pinned run) |
 | `/tlb clear` | Delete all runs except pinned ones, those shared with you included (asks first, saying how many) |
 | `/tlb capture` | Record raw loot and roll messages, for troubleshooting |
 
-The minimap button does the same: left-click for the window, right-click for the options, drag to move it.
+The minimap button does the same: left-click for the window, right-click for the options, shift-click for the farm tracker, drag to move it.
 
 ### Starting a new run
 
@@ -148,7 +162,7 @@ Every option says what it does under the mouse. One that does nothing as things 
 ## Limitations
 
 - **Range.** The game only reports another player's loot when you are reasonably close to them. Loot picked up far away from you is missed.
-- **Not counted:** quest rewards, trades and crafted items.
+- **Not counted:** quest rewards (except on a farm), trades and crafted items.
 - **Coins before 0.6.1** were not recorded: older runs count without them, in a dungeon's averages and records too.
 - **Trades after the run are invisible.** If someone hands an item on, That Lucky Bastard still counts it for the player who looted it.
 - **New figures start now.** The timeline, the roll sheet, roll luck and loot by source rely on details recorded from version 0.2.0 on. Runs recorded before have none of them.

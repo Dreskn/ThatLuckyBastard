@@ -193,13 +193,30 @@ check(ns.AwardsText(tied, 2) == "Hoarder x2, Jackpot x2", "then by title: " .. n
 
 print("-- a player whose old runs are gone comes back")
 WORLD.party = { { "Old Pal", "MAGE", "DAMAGER" } }
-SlashCmdList.THATLUCKYBASTARD("start")
+WORLD.inInstance, WORLD.instanceID, WORLD.instance = true, 9101, "Pal Keep"
+Fire("PLAYER_ENTERING_WORLD", false, false)
 Fire("GROUP_ROSTER_UPDATE")
 Loot(("%s receives loot: %s."):format("Old Pal", ItemLink(101, "Blue Thing", 3)))
 Loot(("You receive loot: %s."):format(ItemLink(100, "Green Gloves", 2)))
+WORLD.inInstance = false
+Fire("PLAYER_ENTERING_WORLD", false, false)
 SlashCmdList.THATLUCKYBASTARD("stop")
 pal = db.people["Old Pal"]
 check(pal.runs == 1 and pal.value > 0 and pal.value < 100000 and pal.mine and pal.mine > 0,
       "both totals start again from this run, so they cover the same runs")
+
+print("-- a farm together counts apart")
+local value = pal.value
+NOW = NOW + 600
+SlashCmdList.THATLUCKYBASTARD("start")
+Fire("GROUP_ROSTER_UPDATE")
+Loot(("%s receives loot: %s."):format("Old Pal", ItemLink(101, "Blue Thing", 3)))
+NOW = NOW + 300
+SlashCmdList.THATLUCKYBASTARD("stop")
+check(pal.farms == 1 and pal.runs == 1 and pal.value == value and pal.last == db.history[1].startedAt,
+      "a farm adds to their farms, not to their runs or loot, and is the last time you met")
+TEXTLOG = {}
+ns.ShowBrowse("regulars")
+check(drew("Farms"), "Regulars has a Farms column")
 
 print(FAILED and (FAILED .. " check(s) FAILED") or "all checks passed (regulars)")

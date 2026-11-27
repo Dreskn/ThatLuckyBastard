@@ -496,7 +496,7 @@ local function NumberLines(s)
     local sum = ns.Summarize(s)
     local over = not ns.InProgress(s)
 
-    local fair = ns.Fairness(sum)
+    local fair = not s.manual and ns.Fairness(sum) -- a farm's gatherer is no unfairness
     if fair then
         head("Fairness")
         local text = ("%d / 100."):format(fair)

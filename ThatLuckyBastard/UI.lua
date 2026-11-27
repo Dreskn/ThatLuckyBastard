@@ -1081,8 +1081,13 @@ local function BuildLines(sum, awards, insights)
             frac = sum.market > 0 and p.market / sum.market or 0,
         })
         if open then
-            if p.count == 0 and p.money == 0 and #p.all.items == 0 then
+            if p.count == 0 and p.money == 0 and #p.all.items == 0 and not p.dungeons then
                 add({ indent = 24, wide = true, label = NoLootLabel(sum) })
+            end
+            -- A farm's dungeons (ns.AnswerAside): one line each, first.
+            for _, d in ipairs(p.dungeons or {}) do
+                add({ indent = 24, label = HeadCode() .. (d.name or "") .. "|r", vendor = Money(d.v or 0),
+                      market = Money(o.valueMode == "vendor" and (d.v or 0) or (d.m or 0)) })
             end
             for _, cat in ipairs(o.groupByCategory and CATS or { false }) do
                 local group = GroupOf(p, cat)
@@ -1306,12 +1311,14 @@ versionLabel:SetText(ns.VERSION ~= "" and ("v" .. ns.VERSION) or "")
 --                a window of its own each (Analysis: its timeline, rolls
 --                and numbers; who needed what is under its Rolls)
 --   Meter        the loot meter (Meter.lua), for the run in progress
+--   Farm         the farm strip (Farm.lua)
 --   Bet          your call on the lucky bastard (Bets.lua; not there
 --                while bets are switched off)
 --   Expand all   opens every player's loot (only in the list view)
 -- and on its own on the right, Share: the run on show as a link in chat
 -- or as a code (Share.lua). Each button closes its window again on a
--- second click. Six of them and Share fit the narrowest window.
+-- second click. Six of them and Share fit the narrowest window. A farm
+-- has no Front page and no Bet: Analysis then comes first.
 local TOP_W, TOP_GAP = 80, 4
 local topRow = {}
 local function TopButton(label, onClick)
@@ -1323,6 +1330,7 @@ end
 local pageBtn = TopButton("Front page", function() ns.ToggleRunWindow("paper", ns.ViewedRun()) end)
 local analysisBtn = TopButton("Analysis", function() ns.ToggleRunWindow("analysis", ns.ViewedRun()) end)
 f.meterBtn = TopButton("Meter", function() ns.ToggleMeter() end)
+f.farmBtn = TopButton("Farm", function() ns.ToggleFarmStrip() end) -- the farm strip (Farm.lua)
 local betBtn = TopButton("Bet", function() ns.ToggleBet(ns.ViewedRun()) end)
 local shareBtn = MakeButton("Share", TOP_W, function() ns.ToggleShare(ns.ViewedRun()) end)
 shareBtn.loud = true -- a red key in the Receipt theme
@@ -1498,18 +1506,18 @@ function Render()
 
     local sum
     if s then
-        local tag = ""
+        local tag = s.manual and "  farm" or ""
         if s.example then
             tag = "  example data"
         elseif s.sharedBy then
             tag = "  shared by " .. ns.DisplayName(s.sharedBy)
         elseif ns.InProgress(s) then
-            tag = "  in progress"
+            tag = tag .. "  in progress"
         end
         title:SetText(ns.Title(s.name or "Run"))
-        runLabel:SetText(("%s  |cff909090(%d/%d)%s|r%s"):format(
+        runLabel:SetText(("%s  |cff909090(%d/%d)%s|r%s%s"):format(
             ns.DateText(s.startedAt), viewIndex, #runs, tag,
-            s.pinned and "  |cffffd100pinned|r" or ""))
+            s.pinned and "  |cffffd100pinned|r" or "", s.note and ("   " .. s.note) or ""))
         sum = ns.Summarize(s)
     end
 
@@ -1518,7 +1526,7 @@ function Render()
     shownAwards = awards
     local insights = s and o.showInsights and ns.RunInsights(s, sum) or nil
     if insights then
-        insights.fair = ns.Fairness(sum)
+        insights.fair = not s.manual and ns.Fairness(sum) or nil -- a farm's gatherer is no unfairness
         insights.streak = o.streak and ns.Streak(s) or nil
     end
 
@@ -1540,8 +1548,13 @@ function Render()
     -- players the row ends with an arrow that shows the run as a list, in
     -- the full window, whose Columns arrow leads back.
     local small = useColumns and mini
+    local solo = useColumns and not small and #sum.players == 1 and Breakdown.RenderSolo ~= nil
     for _, b in ipairs(topRow) do b:SetShown(not small) end
-    betBtn:SetShown(not small and o.bets and true or false)
+    local farm = s ~= nil and s.manual == true
+    pageBtn:SetShown(not small and not farm)
+    analysisBtn:ClearAllPoints()
+    if farm then analysisBtn:SetPoint("TOPLEFT", 12, theme.toolbarY) else analysisBtn:SetPoint("LEFT", pageBtn, "RIGHT", TOP_GAP, 0) end
+    betBtn:SetShown(not small and o.bets and not farm and true or false)
     shareBtn:SetShown(not small)
     for _, w in ipairs(f.footRow) do w:SetShown(not small) end
     scroll:ClearAllPoints()
@@ -1594,7 +1607,8 @@ function Render()
     local paper = theme.paper and true or false
     slot:SetShown(paper and useColumns and not small)
     slotLip:SetShown(paper and useColumns and not small)
-    listPaper:SetShown(paper and not useColumns)
+    listPaper:SetShown(paper and (solo or not useColumns))
+    if not solo and Breakdown.HideSolo then Breakdown.HideSolo() end
     if small then
         -- No columns, so no reveal either.
         reveal.pending = false
@@ -1619,6 +1633,15 @@ function Render()
         f.full = f.full or { f:GetWidth(), f:GetHeight() }
         if f.SetResizeBounds then f:SetResizeBounds(MINI_W, 80, 1100, 1000) end
         f:SetSize(wide + 24, high + (theme.flat and 46 or 30) + 12)
+    elseif solo then
+        -- One player: what they got, with the time it took, and no race.
+        reveal.pending = false
+        Breakdown.CancelReveal()
+        for _, c in ipairs(cols) do c:Hide() end
+        for _, fs in ipairs(footLines) do fs:Hide() end
+        Breakdown.HideBench()
+        Breakdown.ShowBackButton(false)
+        Breakdown.RenderSolo(s, sum, insights)
     elseif useColumns then
         for _, r in ipairs(rows) do r:Hide() end
         Breakdown.ShowBackButton(false)
@@ -1636,7 +1659,7 @@ function Render()
         local top = Breakdown.ShowBackButton(big and o.useColumns and true or false)
         Breakdown.ink = paper
         RenderList(sum and BuildLines(sum, awards, insights) or {
-            { indent = 4, wide = true, label = "No run recorded yet. Enter a dungeon, or type /tlb start." },
+            { indent = 4, wide = true, label = "No run recorded yet. Enter a dungeon, or start a farm (shift-click the minimap button)." },
         }, showVendor, showShare, top)
         Breakdown.ink = false
     end
@@ -1652,7 +1675,8 @@ end
 local PLAYER_ROW_EXTRA = 14 -- player rows are taller, to hold the picture
 
 -- `top`: room to leave above the first line (see ShowBackButton).
-function RenderList(lines, showVendor, showShare, top)
+-- `left`: room to leave on the left (the solo page's figures).
+function RenderList(lines, showVendor, showShare, top, left)
     local o = ns.db.options
     local rowH = theme.rowH
     local playerH = rowH + PLAYER_ROW_EXTRA
@@ -1663,7 +1687,7 @@ function RenderList(lines, showVendor, showShare, top)
         local h = line.p and playerH or rowH
         r.line = line
         r:ClearAllPoints()
-        r:SetPoint("TOPLEFT", 0, -y)
+        r:SetPoint("TOPLEFT", left or 0, -y)
         r:SetPoint("TOPRIGHT", 0, -y)
         r:SetHeight(h)
         y = y + h
@@ -1751,6 +1775,7 @@ local REFRESH_DELAY = 0.1
 
 function ns.Refresh()
     if ns.MeterRefresh then ns.MeterRefresh() end -- the meter keeps up, whether this window is open or not
+    if ns.FarmRefresh then ns.FarmRefresh() end   -- and so does the farm strip
     if pending or not f:IsShown() then return end
     pending = true
     C_Timer.After(REFRESH_DELAY, function()
@@ -1816,6 +1841,15 @@ function ns.ViewedRun()
     return runs[1]
 end
 
+-- Keeps the window on run `s` if it is on show, wherever the list puts
+-- it now: a farm taken up again comes before the dungeon just shown.
+function ns.KeepOnRun(s)
+    if not f:IsShown() or currentRun ~= s then return end
+    for i, run in ipairs(Runs()) do
+        if run == s then viewIndex = i end
+    end
+end
+
 -- For the window's other files (see Breakdown, at the top): what they use
 -- from this one.
 Breakdown.cols, Breakdown.f, Breakdown.scroll, Breakdown.content = cols, f, scroll, content
@@ -1838,6 +1872,7 @@ Breakdown.listRuns, Breakdown.LEGEND, Breakdown.LEGEND_INK = listRuns, LEGEND, L
 Breakdown.GoodCode, Breakdown.BadCode, Breakdown.HeadCode = GoodCode, BadCode, HeadCode
 Breakdown.LowCode, Breakdown.STAMP_RED, Breakdown.STAMP_BLUE = LowCode, STAMP_RED, STAMP_BLUE
 Breakdown.RED_STAMPS, Breakdown.MEDIA = RED_STAMPS, MEDIA
+Breakdown.RenderList, Breakdown.runLabel, Breakdown.rows = RenderList, runLabel, rows
 
 -- Shared with the other panels.
 ns.MoneyPlain = function(copper) return MoneyText(copper, false) end

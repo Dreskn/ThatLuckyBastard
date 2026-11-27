@@ -319,7 +319,7 @@ end
 --     "dungeon" or "both", total, mine, duration,
 --     standings = { { name, class, value, runs }, ... } richest first }
 function ns.Streak(s)
-    if s.example or not s.startedAt then return end
+    if s.example or s.manual or not s.startedAt then return end -- dungeon runs only, not farms
     local all = ns.AllRuns()
     local index
     for i, run in ipairs(all) do
@@ -331,7 +331,7 @@ function ns.Streak(s)
     local group, dungeon = true, true
     for i = index + 1, #all do
         local older, newer = all[i], chain[#chain]
-        if not older.startedAt or newer.startedAt - EndOf(older) > STREAK_GAP then break end
+        if older.manual or not older.startedAt or newer.startedAt - EndOf(older) > STREAK_GAP then break end
         local g = group and SameGroup(s, older)
         local d = dungeon and s.instanceID ~= nil and s.instanceID == older.instanceID
         if not (g or d) then break end
@@ -437,8 +437,9 @@ function ns.CommitStats(s, sum)
         end
     end
 
-    -- Shares by role and class, each measured against an equal share.
-    if n >= MIN_ROLE_GROUP and sum.market > 0 then
+    -- Shares by role and class, each measured against an equal share (in
+    -- dungeons: a farm's gatherer would skew them).
+    if n >= MIN_ROLE_GROUP and sum.market > 0 and not s.manual then
         local equal = sum.market / n
         for _, p in ipairs(sum.players) do
             Bump(db.roles, p.role or "NONE", p.market / equal)
@@ -505,6 +506,108 @@ function ns.CommitStats(s, sum)
             who.rollN = (who.rollN or 0) + st.n
         end
     end
+end
+
+----------------------------------------------------------------------
+-- Farms by zone
+--
+-- db.farms[zone] keeps, per zone farmed (its map ID; its name for farms
+-- without one): `name`, `farms`, `time` (seconds, pauses left out),
+-- `mine` (your loot, copper), `best` (your best gold per hour there, over
+-- farms of FARM_BEST_MIN or more) and `items[item key] = { name, q, link,
+-- c, v }`: what you got there (copies, worth at the prices of the time),
+-- the FARM_ITEMS most valuable kept. Counted once per farm, when it ends,
+-- like the dungeon records. s.stats.zone keeps how the zone stood
+-- before the farm, for its page.
+----------------------------------------------------------------------
+
+local FARM_BEST_MIN = 900 -- seconds: shorter farms do not set a best per hour
+local FARM_ITEMS = 30
+
+function ns.FarmKey(s)
+    return s.zone or s.name or "?"
+end
+
+-- Your loot in a summarized run (copper).
+local function MineIn(s, sum)
+    for _, p in ipairs(sum.players) do
+        if p.name == ns.Me(s) then return p.market, p end
+    end
+    return 0
+end
+
+function ns.CommitFarm(s, sum)
+    if s.farmCounted or s.example or not s.manual then return end
+    s.farmCounted = true
+    local db = ns.db
+    db.farms = db.farms or {}
+    local key = ns.FarmKey(s)
+    local rec = db.farms[key]
+    if not rec then
+        rec = { farms = 0, time = 0, mine = 0, items = {} }
+        db.farms[key] = rec
+    end
+    s.stats = s.stats or {}
+    s.stats.zone = { farms = rec.farms, time = rec.time, mine = rec.mine, best = rec.best }
+    -- The zone's figures are about farming there: the dungeons taken into
+    -- the farm (ns.AnswerAside) are left out, their gold and their time.
+    local mine, p = MineIn(s, sum)
+    mine = mine - (p and p.dungeon or 0)
+    local duration = ns.RunDuration(s) or 0
+    for _, d in ipairs(s.dungeons or {}) do duration = duration - (d.t or 0) end
+    duration = math.max(duration, 0)
+    rec.name = s.name or rec.name
+    rec.farms = rec.farms + 1
+    rec.time = rec.time + duration
+    rec.mine = rec.mine + mine
+    if duration >= FARM_BEST_MIN then
+        local perHour = mine * 3600 / duration
+        if not rec.best or perHour > rec.best then rec.best = perHour end
+    end
+    local me = s.players[ns.Me(s)]
+    for _, e in pairs(me and me.items or {}) do
+        local copies = ns.CountedCopies(e)
+        if copies > 0 then
+            local id = ns.ItemKey(e)
+            local it = rec.items[id]
+            if not it then
+                it = { c = 0, v = 0 }
+                rec.items[id] = it
+            end
+            it.c, it.v = it.c + copies, it.v + ns.EntryMarket(e)
+            it.name, it.q, it.link = ns.ItemName(e), ns.Quality(e), e.link
+        end
+    end
+    -- Only the most valuable are kept: a zone farmed for years stays small.
+    local list = {}
+    for id, it in pairs(rec.items) do list[#list + 1] = { id = id, v = it.v } end
+    if #list > FARM_ITEMS then
+        table.sort(list, function(a, b) return a.v > b.v end)
+        for i = FARM_ITEMS + 1, #list do rec.items[list[i].id] = nil end
+    end
+end
+
+-- How a farm compares with the others in its zone: your gold per hour
+-- there before it, and your best. Returns { perHour, best, farms } or nil
+-- when it is the first. (A farm still going is compared with them all.)
+function ns.FarmZone(s)
+    local before = s.stats and s.stats.zone
+    if not before then
+        local rec = ns.db.farms and ns.db.farms[ns.FarmKey(s)]
+        if not rec or s.farmCounted then return end
+        before = rec
+    end
+    if (before.farms or 0) == 0 or (before.time or 0) <= 0 then return end
+    return { perHour = before.mine * 3600 / before.time, best = before.best, farms = before.farms }
+end
+
+-- The item that brought the most in a zone's figures: { name, q, link, c, v }.
+function ns.FarmTopItem(rec)
+    local top
+    for _, it in pairs(rec.items or {}) do
+        if not top or it.v > top.v then top = it end
+    end
+    return top
 end
 
 -- For the item tooltip: in how many of your runs an item was seen, over

@@ -28,6 +28,7 @@ local FillPortrait, PlayKit, TAIL_H = Breakdown.FillPortrait, Breakdown.PlayKit,
 local EDGE_H, StyleAward, ShowTail = Breakdown.EDGE_H, Breakdown.StyleAward, Breakdown.ShowTail
 local FooterTexts, ItemLine = Breakdown.FooterTexts, Breakdown.ItemLine
 local NoLootLabel, GroupOf = Breakdown.NoLootLabel, Breakdown.GroupOf
+local HeadCode = Breakdown.HeadCode
 local RenderBench = Breakdown.RenderBench
 
 -- mode: "3d" model, "2d" portrait, "class" icon or "none". A model or a
@@ -358,6 +359,22 @@ local function BuildColumnLines(sum, o)
         end
     end
 
+    -- A farm's dungeons (ns.AnswerAside): a line each, first, under the
+    -- one whose share they are; with aligned items, a dash for the others.
+    local most = 0
+    for _, p in ipairs(sum.players) do most = math.max(most, #(p.dungeons or {})) end
+    for i, p in ipairs(sum.players) do
+        for k = 1, most do
+            local d = p.dungeons and p.dungeons[k]
+            if d then
+                add(i, { label = HeadCode() .. (d.name or "") .. "|r",
+                         value = Money(o.valueMode == "vendor" and (d.v or 0) or (d.m or 0)) })
+            elseif o.alignItems then
+                add(i, { label = "|cff505050-|r" })
+            end
+        end
+    end
+
     -- `false` stands for "no categories": one group holding everything.
     for _, cat in ipairs(o.groupByCategory and CATS or { false }) do
         if cat and cat.coins then
@@ -372,7 +389,7 @@ local function BuildColumnLines(sum, o)
     -- which says it already; unless nobody has anything.
     for i, p in ipairs(sum.players) do
         -- (Nothing counted, and nothing listed either: an ignored item is.)
-        if p.count == 0 and p.money == 0 and #p.all.items == 0
+        if p.count == 0 and p.money == 0 and #p.all.items == 0 and most == 0
                 and (not o.alignItems or (sum.count == 0 and sum.money == 0)) then
             add(i, { label = NoLootLabel(sum) })
         end
@@ -463,6 +480,20 @@ local function DrawHead(c, p, v)
     c.share:SetShown(yShare ~= nil)
     c.share:SetFontObject(paper and "ThatLuckyBastardReceiptInk" or "GameFontHighlightSmall")
     if yShare then PlaceText(c.share, yShare) end
+    -- In a farm: their time in the group.
+    if v.yStay and not c.stay then
+        c.stay = c:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        c.stay:SetJustifyH("CENTER")
+    end
+    if c.stay then
+        c.stay:SetShown(v.yStay ~= nil)
+        if v.yStay then
+            PlaceText(c.stay, v.yStay)
+            c.stay:SetFontObject(paper and "ThatLuckyBastardReceiptGrey" or "GameFontHighlightSmall")
+            local stay = ns.Duration(ns.StayTime(v.farmRun, p.name))
+            c.stay:SetText(paper and ("IN GROUP " .. stay) or ("|cff909090In group|r " .. stay))
+        end
+    end
 
     -- Modern's decoration: the glow, the strip and the pill. None on paper.
     local flat = theme.flat and not paper
@@ -704,6 +735,10 @@ local function RenderColumns(sum, awards, insights)
     if o.showVendor and o.valueMode ~= "vendor" then yVendor = y; y = y - 14 end
     if o.showShare then yShare = y; y = y - 16 end
     if showBar then yBar = y; y = y - 9 end
+    -- A farm: how long each player was in the group (people come and go).
+    local farmRun = ns.IsFarm(Breakdown.CurrentRun()) and Breakdown.CurrentRun() or nil
+    local yStay
+    if farmRun then yStay = y - 2; y = y - 16 end
 
     -- The award card goes under the totals. Every column keeps room for
     -- one when anyone has one, so the item rows stay level.
@@ -736,7 +771,7 @@ local function RenderColumns(sum, awards, insights)
         equal = equal, showBar = showBar, headerH = headerH, racing = racing, token = token,
         revealIndex = 0, -- award cards come up one after another: how many so far
         yRank = yRank, yPortrait = yPortrait, yName = yName, yMarket = yMarket, yVendor = yVendor,
-        yShare = yShare, yBar = yBar, yAward = yAward,
+        yShare = yShare, yBar = yBar, yAward = yAward, yStay = yStay, farmRun = farmRun,
     }
 
     for i, p in ipairs(view.players) do
@@ -786,4 +821,5 @@ end
 
 -- For the window's other files.
 Breakdown.RenderColumns, Breakdown.CancelReveal = RenderColumns, CancelReveal
+Breakdown.BuildColumnLines = BuildColumnLines
 Breakdown.SCREENSHOT_DELAY = SCREENSHOT_DELAY
